@@ -1,7 +1,14 @@
 "use client";
 
 import { FirebaseError } from "firebase/app";
-import { addDoc, collection, doc, Timestamp, updateDoc } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDocs,
+  Timestamp,
+  updateDoc,
+} from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db } from "./client-app";
 import { functionsClient } from "./functions";
@@ -101,6 +108,12 @@ export type MarkPlayersAsContactedPayload = {
   userIds: string[];
   lastContactChannel: AdminFollowUpChannel;
   followUpNote?: string;
+};
+
+export type SendBulkReminderResult = {
+  success: boolean;
+  remindedCount: number;
+  remindedMerchantIds: string[];
 };
 
 export function getRebuildAdminStatsErrorMessage(error: unknown) {
@@ -356,4 +369,52 @@ export async function markPlayersAsContactedAction(payload: MarkPlayersAsContact
       ),
     ),
   );
+}
+
+export async function sendBulkReminder(): Promise<SendBulkReminderResult> {
+  const [merchantsSnapshot, gamesSnapshot] = await Promise.all([
+    getDocs(collection(db, "enseignes")),
+    getDocs(collection(db, "games")),
+  ]);
+
+  const now = Date.now();
+  const activeMerchantIds = new Set<string>();
+
+  gamesSnapshot.docs.forEach((gameDoc) => {
+    const endDate = gameDoc.get("end_date");
+    const startDate = gameDoc.get("start_date");
+    const isVisible = gameDoc.get("visible_public");
+    const merchantRef = gameDoc.get("enseigne_id");
+
+    if (!merchantRef?.id || !(endDate instanceof Timestamp) || !(startDate instanceof Timestamp)) {
+      return;
+    }
+
+    if (
+      isVisible !== false &&
+      startDate.toMillis() <= now &&
+      endDate.toMillis() >= now
+    ) {
+      activeMerchantIds.add(merchantRef.id);
+    }
+  });
+
+  const remindedMerchantIds = merchantsSnapshot.docs
+    .map((merchantDoc) => merchantDoc.id)
+    .filter((merchantId) => !activeMerchantIds.has(merchantId));
+
+  await Promise.all(
+    remindedMerchantIds.map((merchantId) =>
+      updateDoc(
+        doc(db, "enseignes", merchantId),
+        buildMarkAsContactedPatch("manual", "Relance groupee depuis le dashboard"),
+      ),
+    ),
+  );
+
+  return {
+    success: true,
+    remindedCount: remindedMerchantIds.length,
+    remindedMerchantIds,
+  };
 }
