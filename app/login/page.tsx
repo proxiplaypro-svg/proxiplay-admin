@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { useAdminAuth } from "@/lib/firebase/useAdminAuth";
+import { useAdminAuth } from "../../lib/firebase/useAdminAuth";
 
 function getFirebaseErrorMessage(error: unknown) {
   if (
