@@ -1,0 +1,57 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email in [
+          "proxiplay.pro@gmail.com"
+        ];
+    }
+
+    match /admin_stats/{document=**} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /enseignes/{document=**} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /games/{gameId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+
+      match /participants/{participantId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+
+    match /users/{document=**} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /users/{userId}/fcm_tokens/{tokenId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /prizes/{document=**} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /ff_push_notifications/{document=**} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+  }
+}
