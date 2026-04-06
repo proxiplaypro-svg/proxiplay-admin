@@ -2,6 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  getDocs,
+  limit,
+  query,
+  Timestamp,
+  type DocumentData,
+  type DocumentReference,
+  type QueryDocumentSnapshot,
+} from "firebase/firestore";
 import { GameCard } from "@/components/admin/jeux/GameCard";
 import {
   GameFilters,
@@ -10,13 +20,236 @@ import {
 } from "@/components/admin/jeux/GameFilters";
 import { GameEditModal } from "@/components/admin/jeux/GameEditModal";
 import { duplicateGame } from "@/lib/firebase/adminActions";
+import { db } from "@/lib/firebase/client-app";
 import {
-  getGamesAdminData,
   getGamesQueryErrorMessage,
   updateGame,
   updateGameStatus,
 } from "@/lib/firebase/gamesQueries";
 import type { Game, GameMerchantOption } from "@/types/dashboard";
+
+type GameCollectionName = "games" | "jeux";
+type MerchantCollectionName = "enseignes" | "merchants";
+
+type FirestoreGameDocument = {
+  title?: string;
+  name?: string;
+  description?: string;
+  conditions?: string;
+  merchantId?: string;
+  merchant_id?: string;
+  enseigne_name?: string;
+  merchantName?: string;
+  enseigne_id?: DocumentReference | string | null;
+  start_date?: Timestamp;
+  startDate?: Timestamp;
+  end_date?: Timestamp;
+  endDate?: Timestamp;
+  status?: string;
+  imageUrl?: string;
+  photo?: string;
+  coverUrl?: string;
+  visible_public?: boolean;
+  isPrivate?: boolean;
+  private?: boolean;
+  sessionCount?: number | string;
+  partiesCount?: number | string;
+  participations?: number | string;
+  participations_count?: number | string;
+};
+
+type FirestoreMerchantDocument = {
+  name?: string;
+  title?: string;
+  merchantName?: string;
+};
+
+function readText(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const normalized = value?.trim();
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return "";
+}
+
+function readNullableText(...values: Array<string | null | undefined>) {
+  const value = readText(...values);
+  return value.length > 0 ? value : null;
+}
+
+function readNumber(...values: Array<number | string | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.trunc(value);
+    }
+
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number.parseInt(value, 10);
+
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+}
+
+function readTimestamp(...values: Array<Timestamp | null | undefined>) {
+  return values.find((value) => value instanceof Timestamp) ?? null;
+}
+
+function readMerchantId(value: FirestoreGameDocument["enseigne_id"], fallback?: string | null) {
+  if (typeof fallback === "string" && fallback.trim().length > 0) {
+    return fallback.trim();
+  }
+
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return value.trim() || null;
+  }
+
+  return value.id ?? null;
+}
+
+function normalizeStatus(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase();
+
+  switch (normalized) {
+    case "active":
+    case "actif":
+    case "public":
+      return "actif" as const;
+    case "expired":
+    case "expire":
+    case "expiré":
+    case "termine":
+    case "terminé":
+      return "expire" as const;
+    case "draft":
+    case "brouillon":
+    case "inactive":
+    case "inactif":
+      return "brouillon" as const;
+    case "private":
+    case "prive":
+    case "privé":
+      return "prive" as const;
+    default:
+      return null;
+  }
+}
+
+function deriveStatus(game: FirestoreGameDocument, now = Date.now()) {
+  const explicitStatus = normalizeStatus(game.status);
+  const isPrivate = game.isPrivate === true || game.private === true;
+  const isPublic = game.visible_public !== false;
+  const endTimestamp = readTimestamp(game.end_date, game.endDate);
+  const endValue = endTimestamp?.toMillis() ?? null;
+  const startTimestamp = readTimestamp(game.start_date, game.startDate);
+  const startValue = startTimestamp?.toMillis() ?? null;
+
+  if (explicitStatus) {
+    return explicitStatus;
+  }
+
+  if (isPrivate) {
+    return "prive" as const;
+  }
+
+  if (endValue !== null && endValue < now) {
+    return "expire" as const;
+  }
+
+  if (!isPublic) {
+    return "brouillon" as const;
+  }
+
+  if (startValue !== null && startValue > now) {
+    return "brouillon" as const;
+  }
+
+  return "actif" as const;
+}
+
+async function pickCollectionName<TName extends string>(
+  names: readonly TName[],
+  preferred: TName,
+) {
+  const snapshots = await Promise.all(
+    names.map(async (name) => ({
+      name,
+      snapshot: await getDocs(query(collection(db, name), limit(1))),
+    })),
+  );
+
+  const withDocs = snapshots.find((entry) => !entry.snapshot.empty);
+  return withDocs?.name ?? preferred;
+}
+
+function mapMerchantOption(
+  snapshot: QueryDocumentSnapshot<DocumentData>,
+  collectionName: MerchantCollectionName,
+): GameMerchantOption {
+  const merchant = snapshot.data() as FirestoreMerchantDocument;
+
+  return {
+    id: snapshot.id,
+    name: readText(merchant.name, merchant.title, merchant.merchantName, "Marchand sans nom"),
+    collectionName,
+  };
+}
+
+function mapGameDocument(
+  snapshot: QueryDocumentSnapshot<DocumentData>,
+  collectionName: GameCollectionName,
+  merchantsById: Map<string, GameMerchantOption>,
+): Game {
+  const game = snapshot.data() as FirestoreGameDocument;
+  const title = readText(game.title, game.name, "Jeu sans titre");
+  const description = readText(game.description, game.conditions);
+  const merchantId = readMerchantId(game.enseigne_id, game.merchantId ?? game.merchant_id ?? null);
+  const merchantName =
+    readNullableText(
+      game.merchantName,
+      game.enseigne_name,
+      merchantId ? merchantsById.get(merchantId)?.name : null,
+    ) ?? "Marchand inconnu";
+  const startTimestamp = readTimestamp(game.start_date, game.startDate);
+  const endTimestamp = readTimestamp(game.end_date, game.endDate);
+  const imageUrl = readNullableText(game.imageUrl, game.photo, game.coverUrl);
+  const status = deriveStatus(game);
+
+  return {
+    id: snapshot.id,
+    title,
+    description,
+    merchantId,
+    merchantName,
+    startDate: startTimestamp ? startTimestamp.toDate().toISOString() : null,
+    endDate: endTimestamp ? endTimestamp.toDate().toISOString() : null,
+    startDateValue: startTimestamp?.toMillis() ?? null,
+    endDateValue: endTimestamp?.toMillis() ?? null,
+    status,
+    imageUrl,
+    isPrivate: status === "prive",
+    sessionCount: readNumber(
+      game.sessionCount,
+      game.partiesCount,
+      game.participations,
+      game.participations_count,
+    ),
+    collectionName,
+    imageMissing: !imageUrl,
+  };
+}
 
 function formatCount(value: number) {
   return new Intl.NumberFormat("fr-FR").format(value);
@@ -67,15 +300,32 @@ export default function AdminGamesPage() {
       setError(null);
 
       try {
-        const data = await getGamesAdminData();
+        const [gameCollection, merchantCollection] = await Promise.all([
+          pickCollectionName(["games", "jeux"] as const, "games"),
+          pickCollectionName(["enseignes", "merchants"] as const, "enseignes"),
+        ]);
+
+        const [gamesSnapshot, merchantsSnapshot] = await Promise.all([
+          getDocs(collection(db, gameCollection)),
+          getDocs(collection(db, merchantCollection)),
+        ]);
+
+        const merchantOptions = merchantsSnapshot.docs
+          .map((snapshot) => mapMerchantOption(snapshot, merchantCollection))
+          .sort((left, right) => left.name.localeCompare(right.name, "fr"));
+
+        const merchantsById = new Map(merchantOptions.map((merchant) => [merchant.id, merchant]));
+        const gameItems = gamesSnapshot.docs
+          .map((snapshot) => mapGameDocument(snapshot, gameCollection, merchantsById))
+          .sort((left, right) => (left.endDateValue ?? 0) - (right.endDateValue ?? 0));
 
         if (!active) {
           return;
         }
 
-        setGames(data.games);
-        setMerchants(data.merchants);
-        setMerchantCollectionName(data.merchantCollection);
+        setGames(gameItems);
+        setMerchants(merchantOptions);
+        setMerchantCollectionName(merchantCollection);
       } catch (loadError) {
         console.error(loadError);
 
