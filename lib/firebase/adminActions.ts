@@ -13,6 +13,10 @@ import { httpsCallable } from "firebase/functions";
 import { db } from "./client-app";
 import { functionsClient } from "./functions";
 import type { AdminFollowUpChannel, AdminFollowUpStatus } from "./adminQueries";
+import {
+  duplicateGameDocument,
+  type DuplicateGameResult,
+} from "./gamesQueries";
 
 export type RebuildAdminStatsResult = {
   success: boolean;
@@ -114,6 +118,12 @@ export type SendBulkReminderResult = {
   success: boolean;
   remindedCount: number;
   remindedMerchantIds: string[];
+};
+
+export type DuplicateGamePayload = {
+  gameId: string;
+  collectionName: "games" | "jeux";
+  merchantCollectionName?: "enseignes" | "merchants";
 };
 
 export function getRebuildAdminStatsErrorMessage(error: unknown) {
@@ -417,4 +427,8 @@ export async function sendBulkReminder(): Promise<SendBulkReminderResult> {
     remindedCount: remindedMerchantIds.length,
     remindedMerchantIds,
   };
+}
+
+export async function duplicateGame(payload: DuplicateGamePayload): Promise<DuplicateGameResult> {
+  return duplicateGameDocument(payload, payload.merchantCollectionName ?? "enseignes");
 }

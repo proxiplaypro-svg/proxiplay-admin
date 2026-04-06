@@ -94,3 +94,29 @@ export interface DashboardData {
   notifications: NotificationItem[];
   activePlayersExport: ActivePlayerExportRow[];
 }
+
+export type GameStatus = "actif" | "expire" | "brouillon" | "prive";
+
+export interface Game {
+  id: string;
+  title: string;
+  description: string;
+  merchantId: string | null;
+  merchantName: string;
+  startDate: string | null;
+  endDate: string | null;
+  startDateValue: number | null;
+  endDateValue: number | null;
+  status: GameStatus;
+  imageUrl: string | null;
+  isPrivate: boolean;
+  sessionCount: number;
+  collectionName: "games" | "jeux";
+  imageMissing: boolean;
+}
+
+export interface GameMerchantOption {
+  id: string;
+  name: string;
+  collectionName: "enseignes" | "merchants";
+}
