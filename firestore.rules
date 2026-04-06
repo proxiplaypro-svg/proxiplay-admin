@@ -14,24 +14,35 @@ service cloud.firestore {
         ];
     }
 
+    function hasAdminClaim() {
+      return isSignedIn()
+        && request.auth.token.admin == true;
+    }
+
     match /admin_stats/{document=**} {
       allow read: if isAdmin();
       allow write: if false;
     }
 
     match /enseignes/{document=**} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read, write: if hasAdminClaim();
+    }
+
+    match /merchants/{document=**} {
+      allow read, write: if hasAdminClaim();
     }
 
     match /games/{gameId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read, write: if hasAdminClaim();
 
       match /participants/{participantId} {
         allow read: if isAdmin();
         allow write: if false;
       }
+    }
+
+    match /jeux/{gameId} {
+      allow read, write: if hasAdminClaim();
     }
 
     match /users/{document=**} {
