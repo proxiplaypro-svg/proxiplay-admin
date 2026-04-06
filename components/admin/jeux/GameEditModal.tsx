@@ -72,6 +72,9 @@ function normalizeDate(value: string) {
   return value ? new Date(`${value}T00:00:00`).toISOString() : null;
 }
 
+const inputClassName =
+  "w-full rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-white px-3 py-[10px] text-[13px] text-[var(--color-text-primary,#171717)] outline-none placeholder:text-[var(--color-text-tertiary,#9a9a9a)]";
+
 export function GameEditModal({
   game,
   merchants,
@@ -178,33 +181,40 @@ export function GameEditModal({
   };
 
   return (
-    <div className="game-edit-modal-overlay" role="presentation" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-[rgba(15,23,42,0.48)] p-4" role="presentation" onClick={onClose}>
       <div
-        className="game-edit-modal"
+        className="mx-auto mt-[8vh] w-full max-w-[580px] rounded-[12px] bg-white shadow-[0_20px_60px_rgba(15,23,42,0.16)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="game-edit-modal-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="game-edit-modal-header">
-          <h2 id="game-edit-modal-title">Modifier le jeu</h2>
-          <button type="button" className="game-edit-modal-close" onClick={onClose} aria-label="Fermer">
+        <div className="flex items-center justify-between border-b border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] px-5 py-4">
+          <h2 id="game-edit-modal-title" className="text-[18px] font-medium text-[var(--color-text-primary,#171717)]">
+            Modifier le jeu
+          </h2>
+          <button
+            type="button"
+            className="text-[22px] leading-none text-[var(--color-text-tertiary,#9a9a9a)]"
+            onClick={onClose}
+            aria-label="Fermer"
+          >
             ×
           </button>
         </div>
 
-        <form className="game-edit-modal-body" onSubmit={handleSubmit}>
+        <form className="flex flex-col gap-4 px-5 py-4" onSubmit={handleSubmit}>
           {hasMissingImage ? (
-            <div className="game-edit-warning">
-              <strong>Image manquante</strong>
-              <p>Ce jeu n&apos;a pas d&apos;image — il ne s&apos;affiche pas correctement pour les joueurs.</p>
+            <div className="rounded-[8px] border border-[#F09595] bg-[#FCEBEB] px-3 py-3 text-[12px] text-[#A32D2D]">
+              <strong>⚠ Image manquante</strong>
+              <p className="mt-1">Ce jeu ne s&apos;affiche pas correctement.</p>
             </div>
           ) : null}
 
-          <label className="game-edit-field">
-            <span className="search-label">Titre du jeu</span>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Titre</span>
             <input
-              className="search-input"
+              className={inputClassName}
               type="text"
               value={form.title}
               onChange={(event) => updateForm("title", event.target.value)}
@@ -212,21 +222,20 @@ export function GameEditModal({
             />
           </label>
 
-          <label className="game-edit-field">
-            <span className="search-label">Description / conditions</span>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Description</span>
             <textarea
-              className="game-edit-textarea"
-              rows={5}
+              className={`${inputClassName} min-h-16 resize-none`}
               value={form.description}
               onChange={(event) => updateForm("description", event.target.value)}
             />
           </label>
 
-          <div className="game-edit-modal-grid">
-            <label className="game-edit-field">
-              <span className="search-label">Marchand</span>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Marchand</span>
               <select
-                className="games-filter-select"
+                className={inputClassName}
                 value={form.merchantId}
                 onChange={(event) => updateForm("merchantId", event.target.value)}
               >
@@ -239,10 +248,10 @@ export function GameEditModal({
               </select>
             </label>
 
-            <label className="game-edit-field">
-              <span className="search-label">Statut</span>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Statut</span>
               <select
-                className="games-filter-select"
+                className={inputClassName}
                 value={form.status}
                 onChange={(event) => updateForm("status", event.target.value as GameStatus)}
               >
@@ -253,20 +262,20 @@ export function GameEditModal({
               </select>
             </label>
 
-            <label className="game-edit-field">
-              <span className="search-label">Date de debut</span>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Date début</span>
               <input
-                className="search-input"
+                className={inputClassName}
                 type="date"
                 value={form.startDate}
                 onChange={(event) => updateForm("startDate", event.target.value)}
               />
             </label>
 
-            <label className="game-edit-field">
-              <span className="search-label">Date de fin</span>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Date fin</span>
               <input
-                className="search-input"
+                className={inputClassName}
                 type="date"
                 value={form.endDate}
                 onChange={(event) => updateForm("endDate", event.target.value)}
@@ -274,29 +283,19 @@ export function GameEditModal({
             </label>
           </div>
 
-          <div className="game-edit-field">
-            <div className="game-edit-image-head">
-              <span className="search-label">Image du jeu</span>
-              <button
-                type="button"
-                className="row-link-button secondary"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Changer l&apos;image
-              </button>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Image</span>
+              {previewUrl ? (
+                <button
+                  type="button"
+                  className="rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-white px-3 py-2 text-[11px] font-medium text-[var(--color-text-primary,#171717)]"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Changer l&apos;image
+                </button>
+              ) : null}
             </div>
-
-            {previewUrl ? (
-              <div className="game-edit-preview-shell">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="game-edit-preview" src={previewUrl} alt={form.title || "Apercu du jeu"} />
-              </div>
-            ) : (
-              <div className="game-edit-empty-image">
-                <strong>Image manquante</strong>
-                <p>Ajoute une image pour corriger l&apos;affichage joueur.</p>
-              </div>
-            )}
 
             <input
               ref={fileInputRef}
@@ -306,52 +305,79 @@ export function GameEditModal({
               onChange={(event) => applyFile(event.target.files?.[0] ?? null)}
             />
 
-            <div
-              className={`game-edit-dropzone ${dragActive ? "drag-active" : ""} ${hasMissingImage ? "missing" : ""}`}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragActive(true);
-              }}
-              onDragLeave={() => setDragActive(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragActive(false);
-                applyFile(event.dataTransfer.files?.[0] ?? null);
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
+            {previewUrl ? (
+              <div className="flex items-center gap-3 rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-3 py-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="h-[52px] w-[52px] rounded-[8px] object-cover" src={previewUrl} alt={form.title || "Apercu du jeu"} />
+                <div className="text-[11px] text-[var(--color-text-secondary,#7b7b7b)]">
+                  Image prête. Tu peux la remplacer avant d&apos;enregistrer.
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`cursor-pointer rounded-[8px] border border-dashed px-4 py-5 text-center ${
+                  dragActive ? "border-[#E24B4A] bg-[#FFF4F4]" : "border-[#F09595] bg-[#FCEBEB]"
+                }`}
+                onDragOver={(event) => {
                   event.preventDefault();
-                  fileInputRef.current?.click();
-                }
-              }}
-            >
-              <strong>Glisser une image ici ou cliquer pour parcourir</strong>
-              <span>JPG, PNG ou WEBP · max 2 Mo</span>
-            </div>
+                  setDragActive(true);
+                }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragActive(false);
+                  applyFile(event.dataTransfer.files?.[0] ?? null);
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+              >
+                <strong className="block text-[12px] font-medium text-[#A32D2D]">
+                  Glisser une image ou cliquer
+                </strong>
+                <span className="mt-1 block text-[11px] text-[#A32D2D]">JPG/PNG/WEBP, max 2Mo</span>
+              </div>
+            )}
           </div>
 
           {validationError ? (
-            <div className="dashboard-banner error">
-              <strong>Validation</strong>
-              <p>{validationError}</p>
+            <div className="rounded-[8px] border border-[#F09595] bg-[#FCEBEB] px-3 py-3 text-[12px] text-[#A32D2D]">
+              {validationError}
             </div>
           ) : null}
 
           {feedback && feedbackTone ? (
-            <div className={`dashboard-banner ${feedbackTone}`}>
-              <strong>{feedbackTone === "success" ? "Enregistre" : "Erreur"}</strong>
-              <p>{feedback}</p>
+            <div
+              className={`rounded-[8px] px-3 py-3 text-[12px] ${
+                feedbackTone === "success"
+                  ? "border border-[#B9D98E] bg-[#F2F8E8] text-[#3B6D11]"
+                  : "border border-[#F09595] bg-[#FCEBEB] text-[#A32D2D]"
+              }`}
+            >
+              {feedback}
             </div>
           ) : null}
 
-          <div className="game-edit-modal-footer">
-            <button type="button" className="row-link-button secondary" onClick={onClose} disabled={saving}>
+          <div className="flex items-center justify-end gap-2 border-t border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] pt-4">
+            <button
+              type="button"
+              className="rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-white px-4 py-[10px] text-[12px] font-medium text-[var(--color-text-primary,#171717)]"
+              onClick={onClose}
+              disabled={saving}
+            >
               Annuler
             </button>
-            <button type="submit" className="row-link-button" disabled={saving}>
+            <button
+              type="submit"
+              className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={saving}
+            >
               {saving ? "Enregistrement..." : "Enregistrer"}
             </button>
           </div>

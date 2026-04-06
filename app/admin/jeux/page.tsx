@@ -134,7 +134,7 @@ export default function AdminJeuxPage() {
 
     return `${formatCount(total)} jeux au total · ${formatCount(active)} actifs · ${formatCount(
       expiringSoon,
-    )} expirent bientot · ${formatCount(toFix)} a corriger`;
+    )} expirent bientôt · ${formatCount(toFix)} à corriger`;
   }, [games]);
 
   const handleExportCsv = () => {
@@ -188,7 +188,7 @@ export default function AdminJeuxPage() {
 
       setGames((current) => [result.game, ...current]);
       setSelectedGame(result.game);
-      setModalFeedback("Copie creee. Tu peux ajuster les champs avant publication.");
+      setModalFeedback("Copie créée. Tu peux ajuster les champs avant publication.");
       setModalFeedbackTone("success");
     } catch (duplicateError) {
       console.error(duplicateError);
@@ -245,7 +245,7 @@ export default function AdminJeuxPage() {
         current.map((game) => (game.id === updatedGame.id ? updatedGame : game)),
       );
       setSelectedGame(updatedGame);
-      setModalFeedback("Jeu enregistre avec succes.");
+      setModalFeedback("Jeu enregistré avec succès.");
       setModalFeedbackTone("success");
     } catch (saveError) {
       console.error(saveError);
@@ -257,59 +257,63 @@ export default function AdminJeuxPage() {
   };
 
   return (
-    <section className="games-manager-page">
-      <header className="games-manager-header">
+    <section className="flex flex-col gap-4 bg-[var(--color-background-tertiary,var(--background))] text-[var(--color-text-primary,var(--foreground))]">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1>Jeux &amp; campagnes</h1>
-          <p>{summary}</p>
+          <h1 className="text-[28px] font-semibold tracking-[-0.03em]">Jeux &amp; campagnes</h1>
+          <p className="mt-1 text-[13px] text-[var(--color-text-secondary,#7b7b7b)]">{summary}</p>
         </div>
 
-        <div className="games-manager-header-actions">
-          <button type="button" className="row-link-button secondary" onClick={handleExportCsv}>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-4 py-[10px] text-[12px] font-medium text-[var(--color-text-primary,#171717)] transition hover:bg-[rgba(0,0,0,0.02)]"
+            onClick={handleExportCsv}
+          >
             Exporter CSV
           </button>
-          <Link className="row-link-button secondary" href="/admin/jeux/nouveau">
+          <Link
+            className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881d]"
+            href="/admin/jeux/nouveau"
+          >
             + Nouveau jeu
           </Link>
         </div>
       </header>
 
-      <div className="games-manager-filter-shell">
-        <GameFilters
-          status={statusFilter}
-          merchantId={merchantFilter}
-          search={search}
-          sort={sort}
-          merchants={merchants}
-          onStatusChange={setStatusFilter}
-          onMerchantChange={setMerchantFilter}
-          onSearchChange={setSearch}
-          onSortChange={setSort}
-        />
-      </div>
+      <GameFilters
+        status={statusFilter}
+        merchantId={merchantFilter}
+        search={search}
+        sort={sort}
+        merchants={merchants}
+        onStatusChange={setStatusFilter}
+        onMerchantChange={setMerchantFilter}
+        onSearchChange={setSearch}
+        onSortChange={setSort}
+      />
 
       {error ? (
-        <div className="dashboard-banner error">
-          <strong>Impossible de charger ou modifier les jeux</strong>
-          <p>{error}</p>
+        <div className="rounded-[12px] border border-[#F09595] bg-[#FCEBEB] px-4 py-3 text-[12px] text-[#A32D2D]">
+          {error}
         </div>
       ) : null}
 
       {loading ? (
-        <div className="games-manager-list">
+        <div className="flex flex-col gap-2">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="game-manager-card skeleton-card">
-              <div className="game-manager-skeleton-block" />
-            </div>
+            <div
+              key={index}
+              className="h-[86px] animate-pulse rounded-[12px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)]"
+            />
           ))}
         </div>
       ) : filteredGames.length === 0 ? (
-        <div className="empty-state">
-          <strong>Aucun jeu a afficher</strong>
-          <p>Les filtres actifs ne retournent aucun document.</p>
+        <div className="rounded-[12px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-4 py-5 text-[13px] text-[var(--color-text-secondary,#7b7b7b)]">
+          Aucun jeu à afficher avec les filtres actuels.
         </div>
       ) : (
-        <div className="games-manager-list">
+        <div className="flex flex-col gap-2">
           {filteredGames.map((game) => (
             <GameCard
               key={game.id}

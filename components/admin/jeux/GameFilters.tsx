@@ -17,6 +17,12 @@ type GameFiltersProps = {
   onSortChange: (value: GamesSortValue) => void;
 };
 
+const fieldLabelClassName =
+  "text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]";
+
+const selectClassName =
+  "min-w-[132px] border-0 bg-transparent px-0 py-0 text-[13px] font-medium text-[var(--color-text-primary,#171717)] outline-none";
+
 export function GameFilters({
   status,
   merchantId,
@@ -29,12 +35,14 @@ export function GameFilters({
   onSortChange,
 }: GameFiltersProps) {
   return (
-    <section className="games-manager-filters">
-      <div className="games-manager-filter-grid">
-        <label className="games-filter-field">
-          <span className="search-label">Statut</span>
+    <section
+      className="flex flex-col gap-3 rounded-[12px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <label className="flex min-w-0 items-center gap-2 lg:flex-none">
+          <span className={fieldLabelClassName}>Statut</span>
           <select
-            className="games-filter-select"
+            className={selectClassName}
             value={status}
             onChange={(event) => onStatusChange(event.target.value as GamesFilterValue)}
           >
@@ -46,10 +54,12 @@ export function GameFilters({
           </select>
         </label>
 
-        <label className="games-filter-field">
-          <span className="search-label">Marchand</span>
+        <div className="hidden h-6 w-px bg-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] lg:block" />
+
+        <label className="flex min-w-0 items-center gap-2 lg:flex-none">
+          <span className={fieldLabelClassName}>Marchand</span>
           <select
-            className="games-filter-select"
+            className={`${selectClassName} max-w-[190px]`}
             value={merchantId}
             onChange={(event) => onMerchantChange(event.target.value)}
           >
@@ -62,30 +72,33 @@ export function GameFilters({
           </select>
         </label>
 
-        <label className="games-filter-field">
-          <span className="search-label">Tri</span>
+        <div className="hidden h-6 w-px bg-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] lg:block" />
+
+        <label className="flex min-w-0 items-center gap-2 lg:flex-none">
+          <span className={fieldLabelClassName}>Tri</span>
           <select
-            className="games-filter-select"
+            className={`${selectClassName} max-w-[170px]`}
             value={sort}
             onChange={(event) => onSortChange(event.target.value as GamesSortValue)}
           >
-            <option value="end_asc">Expiration (proche)</option>
-            <option value="end_desc">Expiration (lointaine)</option>
-            <option value="sessions_desc">Nombre de parties</option>
+            <option value="end_asc">Expiration proche</option>
+            <option value="end_desc">Expiration lointaine</option>
+            <option value="sessions_desc">Parties desc</option>
           </select>
         </label>
-      </div>
 
-      <label className="games-filter-field games-manager-search">
-        <span className="search-label">Recherche</span>
-        <input
-          className="search-input"
-          type="search"
-          placeholder="Rechercher un jeu..."
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-        />
-      </label>
+        <div className="hidden h-6 w-px bg-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] lg:block" />
+
+        <label className="min-w-0 flex-1">
+          <input
+            className="w-full border-0 bg-transparent px-0 py-0 text-[13px] text-[var(--color-text-primary,#171717)] outline-none placeholder:text-[var(--color-text-tertiary,#9a9a9a)]"
+            type="search"
+            placeholder="Rechercher un jeu..."
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+          />
+        </label>
+      </div>
     </section>
   );
 }

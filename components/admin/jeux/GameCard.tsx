@@ -35,9 +35,9 @@ function getProgress(game: Game) {
   if (!game.startDateValue || !game.endDateValue || game.endDateValue <= game.startDateValue) {
     return {
       progress: 0,
-      tone: "neutral",
-      helper: "Dates a verifier",
-    } as const;
+      barClassName: "bg-[#E24B4A]",
+      helper: "0% ecoule · dates a verifier",
+    };
   }
 
   const duration = game.endDateValue - game.startDateValue;
@@ -52,32 +52,32 @@ function getProgress(game: Game) {
   if (now >= game.endDateValue) {
     return {
       progress: 100,
-      tone: "red",
-      helper: `Termine le ${formatDate(game.endDate)}`,
-    } as const;
+      barClassName: "bg-[#E24B4A]",
+      helper: `100% ecoule · 0j restants`,
+    };
   }
 
   if (remainingRatio < 0.1) {
     return {
       progress,
-      tone: "red",
+      barClassName: "bg-[#E24B4A]",
       helper: `${progress}% ecoule · ${remainingDays}j restants`,
-    } as const;
+    };
   }
 
   if (remainingRatio < 0.3) {
     return {
       progress,
-      tone: "amber",
+      barClassName: "bg-[#EF9F27]",
       helper: `${progress}% ecoule · ${remainingDays}j restants`,
-    } as const;
+    };
   }
 
   return {
     progress,
-    tone: "green",
+    barClassName: "bg-[#639922]",
     helper: `${progress}% ecoule · ${remainingDays}j restants`,
-  } as const;
+  };
 }
 
 function getBadge(game: Game) {
@@ -85,35 +85,56 @@ function getBadge(game: Game) {
   const endValue = game.endDateValue ?? 0;
 
   if (game.imageMissing) {
-    return { label: "image manquante", tone: "missing" } as const;
+    return {
+      label: "image manquante",
+      className: "bg-[#FCEBEB] text-[#A32D2D]",
+    };
   }
 
   if (game.status === "prive") {
-    return { label: "prive", tone: "private" } as const;
+    return {
+      label: "prive",
+      className: "bg-[#E6F1FB] text-[#185FA5]",
+    };
   }
 
   if (game.status === "brouillon") {
-    return { label: "brouillon", tone: "draft" } as const;
+    return {
+      label: "brouillon",
+      className: "bg-[#FAEEDA] text-[#633806]",
+    };
   }
 
   if (game.status === "expire" || (endValue > 0 && endValue < now)) {
-    return { label: "expire", tone: "expired" } as const;
+    return {
+      label: "expire",
+      className: "bg-[#F1EFE8] text-[#5F5E5A]",
+    };
   }
 
   if (endValue > now) {
     const remainingDays = Math.ceil((endValue - now) / (1000 * 60 * 60 * 24));
 
     if (remainingDays <= 7) {
-      return { label: `expire dans ${remainingDays}j`, tone: "soon" } as const;
+      return {
+        label: "expire bientot",
+        className: "bg-[#FAEEDA] text-[#633806]",
+      };
     }
   }
 
-  return { label: "actif", tone: "active" } as const;
+  return {
+    label: "actif",
+    className: "bg-[#EAF3DE] text-[#3B6D11]",
+  };
 }
 
 function isSwitchOn(game: Game) {
   return game.status === "actif" || game.status === "prive";
 }
+
+const actionButtonClassName =
+  "rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-3 py-2 text-[11px] font-medium text-[var(--color-text-primary,#171717)] transition hover:bg-[rgba(0,0,0,0.02)] disabled:cursor-not-allowed disabled:opacity-60";
 
 export function GameCard({
   game,
@@ -127,67 +148,80 @@ export function GameCard({
   const progress = getProgress(game);
 
   return (
-    <article className={`game-manager-card ${game.imageMissing ? "missing-image" : ""}`}>
-      <div className="game-manager-visual">
+    <article
+      className={`grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-[12px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-4 py-3 ${
+        game.imageMissing ? "rounded-l-none border-l-2 border-l-[#E24B4A]" : ""
+      }`}
+    >
+      <div className="flex h-12 w-12 items-center justify-center">
         {game.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="game-manager-thumb" src={game.imageUrl} alt={game.title} />
+          <img
+            className="h-12 w-12 rounded-[8px] object-cover"
+            src={game.imageUrl}
+            alt={game.title}
+          />
         ) : (
-          <div className="game-manager-thumb placeholder">
-            <span className="game-manager-missing-icon">×</span>
+          <div className="flex h-12 w-12 items-center justify-center rounded-[8px] border border-[#F09595] bg-[#FCEBEB] text-[22px] leading-none text-[#E24B4A]">
+            ✕
           </div>
         )}
       </div>
 
-      <div className="game-manager-main">
-        <div className="game-manager-topline">
-          <div className="game-manager-copy">
-            <h3>{game.title}</h3>
-            <div className="game-manager-meta">
-              <span>{game.merchantName}</span>
-              <span>{`${formatDate(game.startDate)} → ${formatDate(game.endDate)}`}</span>
-              <span>{`${new Intl.NumberFormat("fr-FR").format(game.sessionCount)} parties`}</span>
-            </div>
-          </div>
-
-          <div className="game-manager-badges">
-            <span className={`game-manager-badge ${badge.tone}`}>{badge.label}</span>
-            {game.imageMissing ? <span className="game-manager-badge fixing">a corriger</span> : null}
-          </div>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="truncate text-[14px] font-medium text-[var(--color-text-primary,#171717)]">
+            {game.title}
+          </h3>
+          <span className={`rounded-full px-2 py-1 text-[10.5px] font-medium leading-none ${badge.className}`}>
+            {badge.label}
+          </span>
         </div>
 
-        <div className="game-manager-progress-row">
-          <div className="game-manager-progress-track" aria-hidden="true">
-            <span
-              className={`game-manager-progress-bar ${progress.tone}`}
+        <p className="mt-1 truncate text-[11px] text-[var(--color-text-secondary,#7b7b7b)]">
+          {`${game.merchantName} · ${formatDate(game.startDate)} · ${formatDate(game.endDate)} · ${new Intl.NumberFormat(
+            "fr-FR",
+          ).format(game.sessionCount)} parties`}
+        </p>
+
+        <div className="mt-2 flex items-center gap-2">
+          <div className="h-[3px] w-full max-w-[280px] overflow-hidden rounded-full bg-[rgba(0,0,0,0.08)]">
+            <div
+              className={`h-full rounded-full ${progress.barClassName}`}
               style={{ width: `${progress.progress}%` }}
             />
           </div>
-          <p className="game-manager-progress-helper">
-            {game.imageMissing ? "Bloque — image requise" : progress.helper}
-          </p>
+          <span className="whitespace-nowrap text-[11px] text-[var(--color-text-tertiary,#9a9a9a)]">
+            {progress.helper}
+          </span>
         </div>
       </div>
 
-      <div className="game-manager-actions">
+      <div className="flex items-center gap-2">
         <button
           type="button"
-          className={`game-manager-switch ${isSwitchOn(game) ? "on" : "off"}`}
+          className={`relative h-[18px] w-8 rounded-full transition ${
+            isSwitchOn(game) ? "bg-[#639922]" : "bg-[rgba(17,24,39,0.18)]"
+          }`}
           onClick={() => onToggle(game)}
           disabled={isTogglePending}
           aria-pressed={isSwitchOn(game)}
           aria-label={isSwitchOn(game) ? "Desactiver le jeu" : "Activer le jeu"}
         >
-          <span className="game-manager-switch-thumb" />
+          <span
+            className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition ${
+              isSwitchOn(game) ? "left-[16px]" : "left-[2px]"
+            }`}
+          />
         </button>
 
-        <button type="button" className="row-link-button secondary" onClick={() => onEdit(game)}>
+        <button type="button" className={actionButtonClassName} onClick={() => onEdit(game)}>
           Modifier
         </button>
 
         <button
           type="button"
-          className="row-link-button secondary"
+          className={actionButtonClassName}
           onClick={() => onDuplicate(game)}
           disabled={isDuplicatePending}
         >
