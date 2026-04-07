@@ -9,6 +9,7 @@ import { MerchantPanel } from "@/components/admin/commercants/MerchantPanel";
 import {
   buildMerchantEmailLink,
   buildWhatsAppLink,
+  ensureMerchantsAdminAccess,
   getMerchantsPilotageData,
   getMerchantsPilotageErrorMessage,
   updateMerchantProfile,
@@ -114,6 +115,7 @@ export default function AdminCommercantsPage() {
       setError(null);
 
       try {
+        await ensureMerchantsAdminAccess();
         const data = await getMerchantsPilotageData();
 
         if (!cancelled) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { FirebaseError } from "firebase/app";
+import type { User } from "firebase/auth";
 import {
   collection,
   deleteField,
@@ -21,6 +22,7 @@ import type {
   MerchantPilotageStatus,
   MerchantRelanceHistoryItem,
 } from "@/types/dashboard";
+import { auth } from "./auth";
 import { db } from "./client-app";
 
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -112,6 +114,35 @@ export type UpdateMerchantProfileInput = {
 const THIRTY_DAYS_IN_MS = 30 * 24 * 60 * 60 * 1000;
 const FOURTEEN_DAYS_IN_MS = 14 * 24 * 60 * 60 * 1000;
 const SEVEN_DAYS_IN_MS = 7 * 24 * 60 * 60 * 1000;
+const ADMIN_FALLBACK_EMAIL = "proxiplay.pro@gmail.com";
+
+function isFallbackAdminEmail(email: string | null | undefined) {
+  return email?.trim().toLowerCase() === ADMIN_FALLBACK_EMAIL;
+}
+
+async function hasMerchantsAdminAccess(user: User | null) {
+  if (!user) {
+    return false;
+  }
+
+  const tokenResult = await user.getIdTokenResult();
+
+  return tokenResult.claims.admin === true || isFallbackAdminEmail(user.email);
+}
+
+export async function ensureMerchantsAdminAccess() {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error("Connexion requise pour acceder a l administration des commercants.");
+  }
+
+  if (await hasMerchantsAdminAccess(user)) {
+    return user;
+  }
+
+  throw new Error("Acces admin requis pour lire ou modifier les commercants.");
+}
 
 function readText(...values: Array<string | null | undefined>) {
   for (const value of values) {
@@ -492,6 +523,8 @@ function mapMerchantDocument(
 }
 
 export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData> {
+  await ensureMerchantsAdminAccess();
+
   const [merchantCollectionName, gamesCollectionName] = await Promise.all([
     pickCollectionName(["enseignes", "merchants"] as const, "enseignes"),
     pickCollectionName(["games", "jeux"] as const, "games"),
@@ -661,6 +694,8 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
 }
 
 export async function updateMerchantProfile(input: UpdateMerchantProfileInput) {
+  await ensureMerchantsAdminAccess();
+
   const merchantRef = doc(db, input.merchantCollectionName, input.merchantId);
   const trimmedPhone = input.phone.trim();
 

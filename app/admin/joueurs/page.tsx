@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getAdminFollowUpErrorMessage,
   markPlayerAsContactedAction,
@@ -12,1039 +12,238 @@ import {
   getPlayersPushStatuses,
   type AdminPlayerListItem,
 } from "@/lib/firebase/adminQueries";
+import { buildWhatsAppLink } from "@/lib/firebase/merchantsQueries";
 
 type FollowUpFilter = "tous" | "a_faire" | "relance" | "sans_reponse" | "ok";
+type ActivityFilter = "tous" | "actif" | "inactif";
 type LastContactSort = "recent_first" | "oldest_first" | "never_first";
 
-function formatOptionalCount(value: number | null) {
-  if (value === null) {
-    return "Non renseigne";
-  }
+const thClass = "px-[14px] py-[10px] text-left text-[10.5px] uppercase tracking-[0.05em] text-[#999999]";
 
-  return new Intl.NumberFormat("fr-FR").format(value);
+function n(v: string) {
+  return v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
-
-function normalizeString(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+function fmt(v: number | null) {
+  return v === null ? "Non renseigne" : new Intl.NumberFormat("fr-FR").format(v);
 }
-
-function isValidCity(value: string) {
-  const trimmedValue = value.trim();
-  const normalizedValue = normalizeString(trimmedValue);
-
-  if (normalizedValue.length < 3) {
-    return false;
-  }
-
-  return /^[a-z\s'’\-]+$/i.test(trimmedValue);
+function formatCount(v: number) {
+  return new Intl.NumberFormat("fr-FR").format(v);
 }
-
-function formatCity(value: string) {
-  return value
-    .trim()
-    .split(/([\s'’-]+)/)
-    .map((part) => {
-      if (/^[\s'’-]+$/.test(part)) {
-        return part;
-      }
-
-      const lowerPart = part.toLowerCase();
-      return `${lowerPart.charAt(0).toUpperCase()}${lowerPart.slice(1)}`;
-    })
-    .join("");
+function formatPercent(v: number) {
+  return `${Math.round(v)}%`;
 }
-
-function getHighlightedTextParts(value: string, query: string) {
-  const normalizedValue = normalizeString(value);
-  const normalizedQuery = normalizeString(query.trim());
-
-  if (!normalizedQuery) {
-    return [{ text: value, highlighted: false }];
-  }
-
-  const matchIndex = normalizedValue.indexOf(normalizedQuery);
-  if (matchIndex === -1) {
-    return [{ text: value, highlighted: false }];
-  }
-
-  const indexMap: number[] = [];
-
-  for (let index = 0; index < value.length; index += 1) {
-    const normalizedChunk = value[index].normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    for (let chunkIndex = 0; chunkIndex < normalizedChunk.length; chunkIndex += 1) {
-      indexMap.push(index);
-    }
-  }
-
-  const startIndex = indexMap[matchIndex] ?? 0;
-  const endNormalizedIndex = matchIndex + normalizedQuery.length - 1;
-  const endIndex = (indexMap[endNormalizedIndex] ?? value.length - 1) + 1;
-
-  return [
-    { text: value.slice(0, startIndex), highlighted: false },
-    { text: value.slice(startIndex, endIndex), highlighted: true },
-    { text: value.slice(endIndex), highlighted: false },
-  ].filter((part) => part.text.length > 0);
+function label(p: AdminPlayerListItem) {
+  return p.fullName !== "Non renseigne" ? p.fullName : p.email !== "Non renseigne" ? p.email : "Non renseigne";
 }
-
-function renderHighlightedText(value: string, query: string): ReactNode {
-  return getHighlightedTextParts(value, query).map((part, index) => (
-    <Fragment key={`${part.text}-${index}`}>
-      {part.highlighted ? <mark className="city-option-highlight">{part.text}</mark> : part.text}
-    </Fragment>
-  ));
+function initials(p: AdminPlayerListItem) {
+  return label(p).split(/[.\s@_-]+/).filter(Boolean).slice(0, 2).map((x) => x[0]?.toUpperCase() ?? "").join("") || "PP";
 }
-
-function getPlayerLabel(player: AdminPlayerListItem) {
-  if (player.fullName !== "Non renseigne") {
-    return player.fullName;
-  }
-
-  if (player.email !== "Non renseigne") {
-    return player.email;
-  }
-
-  return "Non renseigne";
+function activityColors(p: AdminPlayerListItem) {
+  return p.assiduityLabel === "Tres actif" || p.assiduityLabel === "Actif"
+    ? { avatar: "bg-[#EAF3DE] text-[#3B6D11]", badge: "bg-[#EAF3DE] text-[#3B6D11]" }
+    : p.assiduityLabel === "A relancer"
+      ? { avatar: "bg-[#FAEEDA] text-[#633806]", badge: "bg-[#FAEEDA] text-[#633806]" }
+      : p.assiduityLabel === "Jamais actif"
+        ? { avatar: "bg-[#F7F7F5] text-[#666666]", badge: "bg-[#F1EFE8] text-[#5F5E5A]" }
+        : { avatar: "bg-[#FCEBEB] text-[#A32D2D]", badge: "bg-[#FCEBEB] text-[#A32D2D]" };
 }
-
-function getPlayerRelaunchAction(player: AdminPlayerListItem) {
-  if (player.email !== "Non renseigne") {
-    return {
-      href: `mailto:${encodeURIComponent(player.email)}?subject=${encodeURIComponent(`Relance ProxiPlay - ${getPlayerLabel(player)}`)}`,
-      label: "Relancer",
-      disabled: false,
-    };
-  }
-
-  if (player.phone !== "Non renseigne") {
-    return {
-      href: `tel:${player.phone}`,
-      label: "Relancer",
-      disabled: false,
-    };
-  }
-
-  return {
-    href: null,
-    label: "Aucun contact",
-    disabled: true,
-  };
-}
-
-function getPushStatusLabel(pushStatus: AdminPlayerListItem["pushStatus"]) {
-  if (pushStatus === "actif") {
-    return "Push actif";
-  }
-
-  if (pushStatus === "inconnu") {
-    return "Push inconnu";
-  }
-
-  return "Non verifie";
-}
-
-function getFollowUpStatusLabel(status: AdminPlayerListItem["followUp"]["followUpStatus"]) {
-  switch (status) {
-    case "relance":
-      return "Relance";
-    case "sans_reponse":
-      return "Sans reponse";
-    case "ok":
-      return "OK";
-    default:
-      return "A faire";
-  }
-}
-
-function getFollowUpChannelLabel(channel: AdminPlayerListItem["followUp"]["lastContactChannel"]) {
-  switch (channel) {
-    case "email":
-      return "email";
-    case "phone":
-      return "telephone";
-    case "manual":
-      return "manuel";
-    default:
-      return "inconnu";
-  }
+function relaunch(p: AdminPlayerListItem) {
+  if (p.phone !== "Non renseigne" && p.phone.trim()) return { href: buildWhatsAppLink(p.phone, label(p)), channel: "phone" as const, disabled: false };
+  if (p.email !== "Non renseigne" && p.email.trim()) return { href: `mailto:${encodeURIComponent(p.email)}?subject=${encodeURIComponent(`Relance ProxiPlay - ${label(p)}`)}`, channel: "email" as const, disabled: false };
+  return { href: null, channel: "unknown" as const, disabled: true };
 }
 
 export default function AdminPlayersPage() {
   const [players, setPlayers] = useState<AdminPlayerListItem[]>([]);
   const [search, setSearch] = useState("");
-  const [activityFilter, setActivityFilter] = useState<"tous" | "actif" | "inactif">("tous");
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("tous");
   const [statusFilter, setStatusFilter] = useState("tous");
   const [pushFilter, setPushFilter] = useState<"tous" | "actif" | "inconnu">("tous");
   const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilter>("tous");
   const [lastContactSort, setLastContactSort] = useState<LastContactSort>("recent_first");
   const [cityFilter, setCityFilter] = useState("toutes");
-  const [citySearch, setCitySearch] = useState("");
-  const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [selection, setSelection] = useState<string[]>([]);
-  const [bulkEmailLoading, setBulkEmailLoading] = useState(false);
-  const [pendingRelaunchId, setPendingRelaunchId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   useEffect(() => {
-    let isCancelled = false;
-
-    const fetchPlayers = async () => {
-      setLoading(true);
-      setError(null);
-
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true); setError(null);
       try {
         const items = await getPlayersList();
-        if (!isCancelled) {
-          setPlayers(items);
-        }
-      } catch (fetchError) {
-        console.error(fetchError);
-        if (!isCancelled) {
-          setError("Impossible de charger la liste des joueurs depuis Firestore.");
-        }
+        if (!cancelled) setPlayers(items);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) setError("Impossible de charger la liste des joueurs depuis Firestore.");
       } finally {
-        if (!isCancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     };
-
-    void fetchPlayers();
-
-    return () => {
-      isCancelled = true;
-    };
+    void run();
+    return () => { cancelled = true; };
   }, []);
 
-  const baseFilteredPlayers = useMemo(() => {
-    const normalizedSearch = normalizeString(search.trim());
-    const normalizedCityFilter = cityFilter;
-
-    return players.filter((player) => {
-      const matchesSearch =
-        normalizedSearch.length === 0 ||
-        normalizeString(getPlayerLabel(player)).includes(normalizedSearch) ||
-        normalizeString(player.fullName).includes(normalizedSearch) ||
-        normalizeString(player.email).includes(normalizedSearch) ||
-        normalizeString(player.city).includes(normalizedSearch);
-      const matchesActivity =
-        activityFilter === "tous" ||
-        (activityFilter === "actif" && player.activityState === "actif") ||
-        (activityFilter === "inactif" &&
-          (player.activityState === "inactif" || player.activityState === "jamais"));
-      const matchesStatus =
-        statusFilter === "tous" || player.playerStatusCached === statusFilter;
-      const matchesFollowUp =
-        followUpFilter === "tous" || player.followUp.followUpStatus === followUpFilter;
-      const matchesCity =
-        normalizedCityFilter === "toutes" ||
-        normalizeString(formatCity(player.city)) === normalizedCityFilter;
-
-      return matchesSearch && matchesActivity && matchesStatus && matchesFollowUp && matchesCity;
+  const statuses = useMemo(() => [...new Set(players.map((p) => p.playerStatusCached).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), [players]);
+  const cities = useMemo(() => {
+    const map = new Map<string, string>();
+    players.forEach((p) => {
+      if (p.city === "Non renseignee" || n(p.city).length < 3) return;
+      if (!map.has(n(p.city))) map.set(n(p.city), p.city);
     });
-  }, [activityFilter, cityFilter, followUpFilter, players, search, statusFilter]);
+    return [...map.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, "fr"));
+  }, [players]);
 
-  const playersPendingPushCheck = useMemo(() => {
-    if (pushFilter === "tous") {
-      return [];
-    }
+  const base = useMemo(() => players.filter((p) => {
+    const q = n(search.trim());
+    const matchSearch = q.length === 0 || n(label(p)).includes(q) || n(p.fullName).includes(q) || n(p.email).includes(q) || n(p.city).includes(q);
+    const matchActivity = activityFilter === "tous" || (activityFilter === "actif" && p.activityState === "actif") || (activityFilter === "inactif" && (p.activityState === "inactif" || p.activityState === "jamais"));
+    const matchStatus = statusFilter === "tous" || p.playerStatusCached === statusFilter;
+    const matchFollow = followUpFilter === "tous" || p.followUp.followUpStatus === followUpFilter;
+    const matchCity = cityFilter === "toutes" || n(p.city) === cityFilter;
+    return matchSearch && matchActivity && matchStatus && matchFollow && matchCity;
+  }), [activityFilter, cityFilter, followUpFilter, players, search, statusFilter]);
 
-    return baseFilteredPlayers
-      .filter((player) => player.pushStatus === "non_verifie")
-      .map((player) => player.id);
-  }, [baseFilteredPlayers, pushFilter]);
-
+  const pendingPush = useMemo(() => pushFilter === "tous" ? [] : base.filter((p) => p.pushStatus === "non_verifie").map((p) => p.id), [base, pushFilter]);
   useEffect(() => {
-    if (playersPendingPushCheck.length === 0) {
-      return;
-    }
-
-    let isCancelled = false;
-
-    const loadPushStatuses = async () => {
+    if (pendingPush.length === 0) return;
+    let cancelled = false;
+    const run = async () => {
       try {
-        const pushStatuses = await getPlayersPushStatuses(playersPendingPushCheck);
+        const statusesMap = await getPlayersPushStatuses(pendingPush);
+        if (cancelled) return;
+        setPlayers((cur) => cur.map((p) => statusesMap.get(p.id) ? { ...p, pushStatus: statusesMap.get(p.id)! } : p));
+      } catch (e) { console.error(e); }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [pendingPush]);
 
-        if (isCancelled) {
+  const filtered = useMemo(() => {
+    const pushReady = pushFilter === "tous" ? base : base.filter((p) => p.pushStatus === pushFilter || p.pushStatus === "non_verifie");
+    return [...pushReady].sort((a, b) => {
+      if (lastContactSort === "never_first" && a.followUp.hasLastContact !== b.followUp.hasLastContact) return a.followUp.hasLastContact ? 1 : -1;
+      if (a.followUp.lastContactAtValue === b.followUp.lastContactAtValue) return label(a).localeCompare(label(b), "fr");
+      return lastContactSort === "oldest_first" ? a.followUp.lastContactAtValue - b.followUp.lastContactAtValue : b.followUp.lastContactAtValue - a.followUp.lastContactAtValue;
+    });
+  }, [base, lastContactSort, pushFilter]);
+
+  const visibleIds = useMemo(() => filtered.map((p) => p.id), [filtered]);
+  const selectedIds = useMemo(() => visibleIds.filter((id) => selection.has(id)), [selection, visibleIds]);
+  const selectedPlayers = useMemo(() => filtered.filter((p) => selection.has(p.id)), [filtered, selection]);
+  const allVisibleSelected = visibleIds.length > 0 && selectedIds.length === visibleIds.length;
+  useEffect(() => { setSelection((cur) => { const next = new Set([...cur].filter((id) => visibleIds.includes(id))); return next.size === cur.size ? cur : next; }); }, [visibleIds]);
+
+  const overview = useMemo(() => {
+    const total = filtered.length;
+    const active = filtered.filter((p) => p.assiduityLabel === "Tres actif" || p.assiduityLabel === "Actif").length;
+    const relaunchCount = filtered.filter((p) => p.assiduityLabel === "A relancer").length;
+    const inactive = filtered.filter((p) => p.assiduityLabel === "Inactif" || p.assiduityLabel === "Jamais actif").length;
+    return { total, active, relaunchCount, inactive };
+  }, [filtered]);
+
+  const exportCsv = (rows: AdminPlayerListItem[], filename: string) => {
+    const csv = [["Joueur","Email","Ville","Parties","Gains","Activite","Push"], ...rows.map((p) => [label(p), p.email, p.city, String(p.gamesPlayedCount ?? 0), String(p.winsCount ?? 0), p.assiduityLabel, p.pushStatus])].map((r) => r.map((c) => `"${c.replaceAll('"','""')}"`).join(",")).join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
+
+  const platformBadge = (platform: "iOS" | "Android" | "Inconnue") =>
+    platform === "iOS"
+      ? "bg-[#E6F1FB] text-[#185FA5]"
+      : platform === "Android"
+        ? "bg-[#EAF3DE] text-[#3B6D11]"
+        : "bg-[#F7F7F5] text-[#666666]";
+
+  const bulkNotify = (source: AdminPlayerListItem[] = selectedPlayers) => {
+    void (async () => {
+      const contactable = source.filter((p) => p.email.trim() && p.email !== "Non renseigne");
+      const emails = [...new Set(contactable.map((p) => p.email.trim()))];
+      if (emails.length === 0) { setFeedback("Aucun email exploitable dans la selection visible."); return; }
+      setBulkLoading(true); setFeedback(null);
+      try {
+        await markPlayersAsContactedAction({ userIds: contactable.map((p) => p.id), lastContactChannel: "email" });
+        const now = Date.now();
+        const nowLabel = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(now));
+        setPlayers((cur) => cur.map((p) => contactable.some((c) => c.id === p.id) ? { ...p, followUp: { ...p.followUp, lastContactAtLabel: nowLabel, lastContactAtValue: now, lastContactChannel: "email", followUpStatus: "relance", hasLastContact: true } } : p));
+        const subject = encodeURIComponent("Relance ProxiPlay");
+        const body = encodeURIComponent("Bonjour,\n\nJe reviens vers vous au sujet de votre activite ProxiPlay.\n\nBien a vous,\nL equipe ProxiPlay");
+        window.location.href = `mailto:?bcc=${encodeURIComponent(emails.join(","))}&subject=${subject}&body=${body}`;
+        setFeedback(`${emails.length} adresse(s) email preparee(s) et marquee(s) comme relancees.`);
+      } catch (e) {
+        console.error(e); setFeedback(getAdminFollowUpErrorMessage(e));
+      } finally { setBulkLoading(false); }
+    })();
+  };
+
+  const oneNotify = (p: AdminPlayerListItem) => {
+    const action = relaunch(p);
+    if (action.disabled || !action.href) { setFeedback("Aucun canal de relance exploitable pour ce joueur."); return; }
+    void (async () => {
+      setPendingId(p.id); setFeedback(null);
+      try {
+        await markPlayerAsContactedAction({ userId: p.id, lastContactChannel: action.channel });
+        const now = Date.now();
+        const nowLabel = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(now));
+        setPlayers((cur) => cur.map((x) => x.id === p.id ? { ...x, followUp: { ...x.followUp, lastContactAtLabel: nowLabel, lastContactAtValue: now, lastContactChannel: action.channel, followUpStatus: "relance", hasLastContact: true } } : x));
+        const href = action.href;
+        if (!href) {
+          setFeedback("Aucun canal de relance exploitable pour ce joueur.");
           return;
         }
-
-        setPlayers((currentPlayers) =>
-          currentPlayers.map((player) => {
-            const pushStatus = pushStatuses.get(player.id);
-            return pushStatus ? { ...player, pushStatus } : player;
-          }),
-        );
-      } catch (pushError) {
-        console.error(pushError);
-      }
-    };
-
-    void loadPushStatuses();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [playersPendingPushCheck]);
-
-  const availableStatuses = useMemo(() => {
-    return [...new Set(players.map((player) => player.playerStatusCached).filter(Boolean))].sort(
-      (left, right) => left.localeCompare(right, "fr"),
-    );
-  }, [players]);
-
-  const availableCities = useMemo(() => {
-    const cityMap = new Map<string, string>();
-
-    players.forEach((player) => {
-      if (player.city === "Non renseignee" || !isValidCity(player.city)) {
-        return;
-      }
-
-      const formattedCity = formatCity(player.city);
-      const normalizedCity = normalizeString(formattedCity);
-
-      if (!cityMap.has(normalizedCity)) {
-        cityMap.set(normalizedCity, formattedCity);
-      }
-    });
-
-    return [...cityMap.entries()]
-      .map(([normalizedValue, label]) => ({ normalizedValue, label }))
-      .sort((left, right) => left.label.localeCompare(right.label, "fr"));
-  }, [players]);
-
-  const visibleCityOptions = useMemo(() => {
-    const normalizedQuery = normalizeString(citySearch.trim());
-
-    const rankedCities = availableCities
-      .filter((city) =>
-        normalizedQuery.length === 0 || city.normalizedValue.includes(normalizedQuery),
-      )
-      .map((city) => ({
-        ...city,
-        startsWithQuery:
-          normalizedQuery.length > 0 && city.normalizedValue.startsWith(normalizedQuery),
-        matchIndex:
-          normalizedQuery.length > 0
-            ? city.normalizedValue.indexOf(normalizedQuery)
-            : 0,
-      }))
-      .sort((left, right) => {
-        if (left.startsWithQuery !== right.startsWithQuery) {
-          return left.startsWithQuery ? -1 : 1;
-        }
-
-        if (left.matchIndex !== right.matchIndex) {
-          return left.matchIndex - right.matchIndex;
-        }
-
-        return left.label.localeCompare(right.label, "fr");
-      });
-
-    return rankedCities.slice(0, 15);
-  }, [availableCities, citySearch]);
-
-  const isResolvingPushFilter =
-    pushFilter !== "tous" && playersPendingPushCheck.length > 0;
-
-  const filteredPlayers = useMemo(() => {
-    const pushFilteredPlayers =
-      pushFilter === "tous" || isResolvingPushFilter
-        ? baseFilteredPlayers
-        : baseFilteredPlayers.filter((player) => player.pushStatus === pushFilter);
-
-    return [...pushFilteredPlayers].sort((left, right) => {
-      if (lastContactSort === "never_first") {
-        if (left.followUp.hasLastContact !== right.followUp.hasLastContact) {
-          return left.followUp.hasLastContact ? 1 : -1;
-        }
-      }
-
-      const leftValue = left.followUp.lastContactAtValue;
-      const rightValue = right.followUp.lastContactAtValue;
-
-      if (leftValue === rightValue) {
-        return getPlayerLabel(left).localeCompare(getPlayerLabel(right), "fr");
-      }
-
-      if (lastContactSort === "oldest_first") {
-        return leftValue - rightValue;
-      }
-
-      return rightValue - leftValue;
-    });
-  }, [baseFilteredPlayers, isResolvingPushFilter, lastContactSort, pushFilter]);
-
-  const playerOverview = useMemo(() => {
-    const totalPlayers = filteredPlayers.length;
-    const activePlayers = filteredPlayers.filter(
-      (player) => player.assiduityLabel === "Tres actif" || player.assiduityLabel === "Actif",
-    ).length;
-    const relaunchPlayers = filteredPlayers.filter(
-      (player) => player.assiduityLabel === "A relancer",
-    ).length;
-    const inactivePlayers = filteredPlayers.filter(
-      (player) => player.assiduityLabel === "Inactif" || player.assiduityLabel === "Jamais actif",
-    ).length;
-
-    return {
-      totalPlayers,
-      activePlayers,
-      relaunchPlayers,
-      inactivePlayers,
-    };
-  }, [filteredPlayers]);
-
-  const visiblePlayerIds = useMemo(
-    () => filteredPlayers.map((player) => player.id),
-    [filteredPlayers],
-  );
-  const selectedVisibleIds = useMemo(
-    () => selection.filter((id) => visiblePlayerIds.includes(id)),
-    [selection, visiblePlayerIds],
-  );
-  const selectedVisiblePlayers = useMemo(
-    () => filteredPlayers.filter((player) => selectedVisibleIds.includes(player.id)),
-    [filteredPlayers, selectedVisibleIds],
-  );
-  const allVisibleSelected =
-    visiblePlayerIds.length > 0 && selectedVisibleIds.length === visiblePlayerIds.length;
-
-  useEffect(() => {
-    setSelection((current) => {
-      const nextSelection = current.filter((id) => visiblePlayerIds.includes(id));
-
-      if (nextSelection.length === current.length) {
-        return current;
-      }
-
-      return nextSelection;
-    });
-  }, [visiblePlayerIds]);
-
-  const activeFilterLabels = useMemo(() => {
-    const labels: string[] = [];
-
-    if (search.trim().length > 0) {
-      labels.push(`Recherche: ${search.trim()}`);
-    }
-
-    if (activityFilter !== "tous") {
-      labels.push(activityFilter === "actif" ? "Actifs" : "Inactifs");
-    }
-
-    if (pushFilter !== "tous") {
-      labels.push(pushFilter === "actif" ? "Push actif" : "Push inconnu");
-    }
-
-    if (followUpFilter !== "tous") {
-      labels.push(`Suivi: ${getFollowUpStatusLabel(followUpFilter)}`);
-    }
-
-    if (statusFilter !== "tous") {
-      labels.push(`Statut: ${statusFilter}`);
-    }
-
-    if (cityFilter !== "toutes") {
-      const activeCity = availableCities.find((city) => city.normalizedValue === cityFilter);
-      labels.push(`Ville: ${activeCity?.label ?? cityFilter}`);
-    }
-
-    return labels;
-  }, [activityFilter, availableCities, cityFilter, followUpFilter, pushFilter, search, statusFilter]);
-
-  const handleDeletePlaceholder = (player: AdminPlayerListItem) => {
-    const confirmed = window.confirm(
-      `La suppression definitive de ${getPlayerLabel(player)} n est pas encore branchee de facon securisee.\n\nConfirmer pour afficher la recommandation admin.`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setPendingDeleteId(player.id);
-    setActionFeedback(
-      `Suppression non activee pour ${getPlayerLabel(player)}. Recommandation V1: passer par une action de suspension admin securisee plutot qu une suppression directe.`,
-    );
-    setPendingDeleteId(null);
-  };
-
-  const togglePlayerSelection = (playerId: string) => {
-    setSelection((current) =>
-      current.includes(playerId)
-        ? current.filter((id) => id !== playerId)
-        : [...current, playerId],
-    );
-  };
-
-  const toggleAllVisiblePlayers = () => {
-    setSelection(allVisibleSelected ? [] : visiblePlayerIds);
-  };
-
-  const handleBulkPlayerEmail = () => {
-    void (async () => {
-      const contactablePlayers = selectedVisiblePlayers.filter(
-        (player) => player.email.trim().length > 0 && player.email !== "Non renseigne",
-      );
-      const emails = [...new Set(contactablePlayers.map((player) => player.email.trim()))];
-
-      if (emails.length === 0) {
-        setActionFeedback("Aucun email exploitable dans la selection visible.");
-        return;
-      }
-
-      setBulkEmailLoading(true);
-      setActionFeedback(null);
-
-      try {
-        await markPlayersAsContactedAction({
-          userIds: contactablePlayers.map((player) => player.id),
-          lastContactChannel: "email",
-        });
-
-        const now = Date.now();
-        const nowLabel = new Intl.DateTimeFormat("fr-FR", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }).format(new Date(now));
-
-        setPlayers((current) =>
-          current.map((player) =>
-            contactablePlayers.some((item) => item.id === player.id)
-              ? {
-                  ...player,
-                  followUp: {
-                    ...player.followUp,
-                    lastContactAtLabel: nowLabel,
-                    lastContactAtValue: now,
-                    lastContactChannel: "email",
-                    followUpStatus: "relance",
-                    hasLastContact: true,
-                  },
-                }
-              : player,
-          ),
-        );
-
-        const subject = encodeURIComponent("Relance ProxiPlay");
-        const body = encodeURIComponent(
-          "Bonjour,\n\nJe reviens vers vous au sujet de votre activite ProxiPlay.\n\nBien a vous,\nL equipe ProxiPlay",
-        );
-
-        window.location.href = `mailto:?bcc=${encodeURIComponent(emails.join(","))}&subject=${subject}&body=${body}`;
-        setActionFeedback(`${emails.length} adresse(s) email preparee(s) et marquee(s) comme relancees.`);
-      } catch (actionError) {
-        console.error(actionError);
-        setActionFeedback(getAdminFollowUpErrorMessage(actionError));
-      } finally {
-        setBulkEmailLoading(false);
-      }
+        window.location.href = href;
+        setFeedback(`Relance joueur preparee et suivi mis a jour via ${action.channel === "email" ? "email" : "WhatsApp"}.`);
+      } catch (e) {
+        console.error(e); setFeedback(getAdminFollowUpErrorMessage(e));
+      } finally { setPendingId(null); }
     })();
-  };
-
-  const handlePlayerRelaunch = (player: AdminPlayerListItem) => {
-    const relaunchAction = getPlayerRelaunchAction(player);
-
-    if (relaunchAction.disabled || !relaunchAction.href) {
-      setActionFeedback("Aucun canal de relance exploitable pour ce joueur.");
-      return;
-    }
-
-    const channel = relaunchAction.href.startsWith("mailto:") ? "email" : "phone";
-
-    void (async () => {
-      setPendingRelaunchId(player.id);
-      setActionFeedback(null);
-
-      try {
-        await markPlayerAsContactedAction({
-          userId: player.id,
-          lastContactChannel: channel,
-        });
-
-        const now = Date.now();
-        const nowLabel = new Intl.DateTimeFormat("fr-FR", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }).format(new Date(now));
-
-        setPlayers((current) =>
-          current.map((currentPlayer) =>
-            currentPlayer.id === player.id
-              ? {
-                  ...currentPlayer,
-                  followUp: {
-                    ...currentPlayer.followUp,
-                    lastContactAtLabel: nowLabel,
-                    lastContactAtValue: now,
-                    lastContactChannel: channel,
-                    followUpStatus: "relance",
-                    hasLastContact: true,
-                  },
-                }
-              : currentPlayer,
-          ),
-        );
-
-        window.location.href = relaunchAction.href;
-        setActionFeedback(`Relance joueur preparee et suivi mis a jour via ${channel === "email" ? "email" : "telephone"}.`);
-      } catch (actionError) {
-        console.error(actionError);
-        setActionFeedback(getAdminFollowUpErrorMessage(actionError));
-      } finally {
-        setPendingRelaunchId(null);
-      }
-    })();
-  };
-
-  const handleCopyPlayerPhones = async () => {
-    const phones = selectedVisiblePlayers
-      .map((player) => ({
-        name: getPlayerLabel(player),
-        phone: player.phone.trim(),
-      }))
-      .filter((item) => item.phone.length > 0 && item.phone !== "Non renseigne");
-
-    if (phones.length === 0) {
-      setActionFeedback("Aucun telephone exploitable dans la selection visible.");
-      return;
-    }
-
-    const payload = phones.map((item) => `${item.name} - ${item.phone}`).join("\n");
-
-    try {
-      await navigator.clipboard.writeText(payload);
-      setActionFeedback(`${phones.length} telephone(s) copie(s) dans le presse-papiers.`);
-    } catch (copyError) {
-      console.error(copyError);
-      setActionFeedback("Impossible de copier les telephones pour le moment.");
-    }
   };
 
   return (
-    <section className="content-grid">
-      <div className="panel panel-wide">
-        <div className="panel-heading">
-          <h2>Joueurs</h2>
-          <p>
-            Vue admin V1 des joueurs pour le suivi, le contact et les premieres actions
-            support a partir des champs deja presents dans `users`.
-          </p>
+    <section className="space-y-4 bg-[#F7F7F5] text-[#1A1A1A]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1A1A1A]">Joueurs</h1>
+          <p className="mt-2 text-[13px] text-[#666666]">{formatCount(players.length)} joueurs · suivi, contact et actions support</p>
         </div>
-
-        <div className="overview-grid players-overview-grid">
-          <div className="overview-card">
-            <span>Joueurs visibles</span>
-            <strong>{playerOverview.totalPlayers}</strong>
-          </div>
-          <div className="overview-card">
-            <span>Actifs</span>
-            <strong>{playerOverview.activePlayers}</strong>
-          </div>
-          <div className="overview-card">
-            <span>A relancer</span>
-            <strong>{playerOverview.relaunchPlayers}</strong>
-          </div>
-          <div className="overview-card">
-            <span>Inactifs</span>
-            <strong>{playerOverview.inactivePlayers}</strong>
-          </div>
+        <div className="flex flex-wrap gap-3">
+          <button type="button" onClick={() => exportCsv(filtered, "proxiplay-joueurs.csv")} className="rounded-[10px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] text-[#1A1A1A] transition hover:bg-[#FAFAF8]">Exporter CSV</button>
+          <button type="button" onClick={() => bulkNotify(selectedPlayers.length > 0 ? selectedPlayers : filtered)} disabled={bulkLoading} className="rounded-[10px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#57881D]">{bulkLoading ? "Preparation..." : "Envoyer une notif"}</button>
         </div>
-
-        <div className="games-toolbar">
-          <label className="search-field">
-            <span className="search-label">Recherche</span>
-            <input
-              className="search-input"
-              type="search"
-              placeholder="Rechercher par nom, email ou ville"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-
-          <div className="filter-group" aria-label="Filtres joueurs">
-            <button
-              type="button"
-              className={`filter-chip ${activityFilter === "tous" ? "active" : ""}`}
-              onClick={() => setActivityFilter("tous")}
-            >
-              Tous
-            </button>
-            <button
-              type="button"
-              className={`filter-chip ${activityFilter === "actif" ? "active" : ""}`}
-              onClick={() => setActivityFilter("actif")}
-            >
-              Actifs
-            </button>
-            <button
-              type="button"
-              className={`filter-chip ${activityFilter === "inactif" ? "active" : ""}`}
-              onClick={() => setActivityFilter("inactif")}
-            >
-              Inactifs
-            </button>
-          </div>
-
-          <div className="filter-group">
-            <label className="search-field">
-              <span className="search-label">Push</span>
-              <select
-                className="search-input"
-                value={pushFilter}
-                onChange={(event) =>
-                  setPushFilter(event.target.value as "tous" | "actif" | "inconnu")
-                }
-              >
-                <option value="tous">Tous</option>
-                <option value="actif">Push actif</option>
-                <option value="inconnu">Push inconnu</option>
-              </select>
-            </label>
-
-            <label className="search-field">
-              <span className="search-label">Statut joueur</span>
-              <select
-                className="search-input"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                <option value="tous">Tous</option>
-                {availableStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="search-field">
-              <span className="search-label">Suivi</span>
-              <select
-                className="search-input"
-                value={followUpFilter}
-                onChange={(event) => setFollowUpFilter(event.target.value as FollowUpFilter)}
-              >
-                <option value="tous">Tous</option>
-                <option value="a_faire">A faire</option>
-                <option value="relance">Relance</option>
-                <option value="sans_reponse">Sans reponse</option>
-                <option value="ok">OK</option>
-              </select>
-            </label>
-
-            <label className="search-field">
-              <span className="search-label">Derniere relance</span>
-              <select
-                className="search-input"
-                value={lastContactSort}
-                onChange={(event) => setLastContactSort(event.target.value as LastContactSort)}
-              >
-                <option value="recent_first">Plus recente</option>
-                <option value="oldest_first">Plus ancienne</option>
-                <option value="never_first">Jamais relance d abord</option>
-              </select>
-            </label>
-
-            <label className="search-field">
-              <span className="search-label">Ville</span>
-              <div className="city-filter-dropdown">
-                <input
-                  className="search-input"
-                  type="search"
-                  placeholder="Toutes"
-                  value={citySearch}
-                  onFocus={() => setIsCityDropdownOpen(true)}
-                  onBlur={() => {
-                    window.setTimeout(() => {
-                      setIsCityDropdownOpen(false);
-
-                      if (cityFilter === "toutes") {
-                        setCitySearch("");
-                        return;
-                      }
-
-                      const activeCity = availableCities.find(
-                        (city) => city.normalizedValue === cityFilter,
-                      );
-                      setCitySearch(activeCity?.label ?? "");
-                    }, 120);
-                  }}
-                  onChange={(event) => {
-                    setCitySearch(event.target.value);
-                    setIsCityDropdownOpen(true);
-
-                    if (event.target.value.trim().length === 0) {
-                      setCityFilter("toutes");
-                    }
-                  }}
-                />
-                {cityFilter !== "toutes" ? (
-                  <button
-                    type="button"
-                    className="city-filter-clear"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      setCityFilter("toutes");
-                      setCitySearch("");
-                      setIsCityDropdownOpen(false);
-                    }}
-                  >
-                    Effacer
-                  </button>
-                ) : null}
-                {isCityDropdownOpen ? (
-                  <div className="city-filter-menu">
-                    <button
-                      type="button"
-                      className={`city-filter-option ${cityFilter === "toutes" ? "active" : ""}`}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        setCityFilter("toutes");
-                        setCitySearch("");
-                        setIsCityDropdownOpen(false);
-                      }}
-                    >
-                      Toutes
-                    </button>
-                    {visibleCityOptions.map((city) => (
-                      <button
-                        key={city.normalizedValue}
-                        type="button"
-                        className={`city-filter-option ${cityFilter === city.normalizedValue ? "active" : ""}`}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          setCityFilter(city.normalizedValue);
-                          setCitySearch(city.label);
-                          setIsCityDropdownOpen(false);
-                        }}
-                      >
-                        {renderHighlightedText(city.label, citySearch)}
-                      </button>
-                    ))}
-                    {visibleCityOptions.length === 0 ? (
-                      <div className="city-filter-empty">Aucune ville valide</div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            </label>
-          </div>
-        </div>
-
-        {!loading && !error ? (
-          <div className="panel-heading" style={{ paddingTop: 0 }}>
-            <p>
-              {isResolvingPushFilter
-                ? "Verification des statuts push..."
-                : activeFilterLabels.length === 0
-                  ? `${players.length} joueurs affiches`
-                  : `${filteredPlayers.length} joueurs affiches sur ${players.length}`}
-            </p>
-            {!isResolvingPushFilter && activeFilterLabels.length > 0 ? (
-              <p>Filtres actifs: {activeFilterLabels.join(" · ")}</p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {loading ? (
-          <div className="games-loader">
-            <div className="loader" aria-hidden="true" />
-            <p>Chargement des joueurs Firestore...</p>
-          </div>
-        ) : null}
-
-        {!loading && error ? <p className="feedback error">{error}</p> : null}
-        {!loading && !error && actionFeedback ? <p className="feedback">{actionFeedback}</p> : null}
-        {!loading && !error && isResolvingPushFilter ? (
-          <p className="feedback">Verification du statut Push pour les joueurs affiches...</p>
-        ) : null}
-
-        {!loading && !error && selectedVisibleIds.length > 0 ? (
-          <div className="bulk-actions-bar">
-            <strong>{selectedVisibleIds.length} selectionne(s)</strong>
-            <div className="bulk-actions-group">
-              <button
-                className="primary-button bulk-action-button"
-                type="button"
-                disabled={bulkEmailLoading || pendingRelaunchId !== null}
-                onClick={handleBulkPlayerEmail}
-              >
-                {bulkEmailLoading ? "Mise a jour..." : "Relancer par email"}
-              </button>
-              <button className="secondary-button inline-secondary-button bulk-action-button" type="button" onClick={() => void handleCopyPlayerPhones()}>
-                Copier les telephones
-              </button>
-              <button
-                className="secondary-button inline-secondary-button bulk-action-button"
-                type="button"
-                onClick={() => setSelection([])}
-              >
-                Tout deselectionner
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {!loading && !error && filteredPlayers.length === 0 ? (
-          <div className="empty-state">
-            <strong>Aucun joueur a afficher</strong>
-            <p>
-              Aucun document `users` joueur ne correspond a la recherche ou aux filtres
-              selectionnes.
-            </p>
-          </div>
-        ) : null}
-
-        {!loading && !error && filteredPlayers.length > 0 ? (
-          <div className="games-admin-table">
-            <div className="players-table-header">
-              <label className="table-checkbox">
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  onChange={toggleAllVisiblePlayers}
-                  aria-label="Tout selectionner"
-                />
-              </label>
-              <span>Joueur</span>
-              <span>Contact</span>
-              <span>Performance</span>
-              <span>Activite</span>
-              <span>Actions</span>
-            </div>
-
-            <div className="games-table-body">
-              {filteredPlayers.map((player) => (
-                <article
-                  key={player.id}
-                  className={`players-table-row ${selectedVisibleIds.includes(player.id) ? "row-selected" : ""}`}
-                >
-                  {(() => {
-                    const relaunchAction = getPlayerRelaunchAction(player);
-                    const canViewDetails = player.id.trim().length > 0;
-
-                    return (
-                      <>
-                  <div className="games-cell checkbox-cell" data-label="Selection">
-                    <label className="table-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedVisibleIds.includes(player.id)}
-                        onChange={() => togglePlayerSelection(player.id)}
-                        aria-label={`Selectionner ${getPlayerLabel(player)}`}
-                      />
-                    </label>
-                  </div>
-                  <div className="games-cell" data-label="Joueur">
-                    <div className="player-identity">
-                      <strong>{getPlayerLabel(player)}</strong>
-                      {player.fullName !== "Non renseigne" &&
-                      getPlayerLabel(player) !== player.fullName ? (
-                        <span>{player.fullName}</span>
-                      ) : null}
-                    </div>
-                    {player.city !== "Non renseignee" ? <small>{player.city}</small> : null}
-                  </div>
-                  <div className="games-cell" data-label="Contact">
-                    <div className="player-contact-stack">
-                      <strong>{player.email}</strong>
-                      <span>{player.phone}</span>
-                    </div>
-                  </div>
-                  <div className="games-cell" data-label="Performance">
-                    <div className="player-metrics-grid">
-                      <div className="player-metric-tile">
-                        <span>Parties</span>
-                        <strong>{formatOptionalCount(player.gamesPlayedCount)}</strong>
-                      </div>
-                      <div className="player-metric-tile">
-                        <span>Gains</span>
-                        <strong>{formatOptionalCount(player.winsCount)}</strong>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="games-cell" data-label="Activite">
-                    <span
-                      className={`player-assiduity-pill ${player.activityState}`}
-                    >
-                      {player.assiduityLabel}
-                    </span>
-                    <span className="player-last-activity">{player.lastRealActivityLabel}</span>
-                    <span className={`player-push-pill ${player.pushStatus}`}>
-                      {getPushStatusLabel(player.pushStatus)}
-                    </span>
-                    <span className={`follow-up-badge ${player.followUp.followUpStatus}`}>
-                      {getFollowUpStatusLabel(player.followUp.followUpStatus)}
-                    </span>
-                    <small className="follow-up-meta">
-                      {player.followUp.hasLastContact
-                        ? `${player.followUp.lastContactAtLabel} via ${getFollowUpChannelLabel(player.followUp.lastContactChannel)}`
-                        : "Aucune relance renseignee"}
-                    </small>
-                  </div>
-                  <div className="games-cell" data-label="Actions">
-                    <div className="player-actions">
-                      {!relaunchAction.disabled && relaunchAction.href ? (
-                        <button
-                          className="row-link-button"
-                          type="button"
-                          disabled={bulkEmailLoading || pendingRelaunchId === player.id}
-                          onClick={() => handlePlayerRelaunch(player)}
-                        >
-                          {pendingRelaunchId === player.id ? "Mise a jour..." : relaunchAction.label}
-                        </button>
-                      ) : (
-                        <button
-                          className="row-link-button secondary"
-                          disabled
-                          type="button"
-                        >
-                          {relaunchAction.label}
-                        </button>
-                      )}
-                      {canViewDetails ? (
-                        <Link className="row-link-button secondary" href={`/admin/joueurs/${player.id}`}>
-                          Voir detail
-                        </Link>
-                      ) : (
-                        <button className="row-link-button secondary" type="button" disabled>
-                          Voir detail
-                        </button>
-                      )}
-                      <button
-                        className="row-link-button secondary"
-                        type="button"
-                        disabled={pendingDeleteId === player.id}
-                        onClick={() => handleDeletePlaceholder(player)}
-                      >
-                        {pendingDeleteId === player.id ? "Verification..." : "Supprimer"}
-                      </button>
-                    </div>
-                  </div>
-                      </>
-                    );
-                  })()}
-                </article>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {[{ label: "Joueurs visibles", value: fmt(overview.total), helper: "Total base", helperColor: "#999999", accent: "#E8E8E4", critical: false }, { label: "Actifs", value: fmt(overview.active), helper: `${formatPercent(overview.total ? (overview.active / overview.total) * 100 : 0)} de la base`, helperColor: "#3B6D11", accent: "#639922", critical: false }, { label: "A relancer", value: fmt(overview.relaunchCount), helper: `${formatPercent(overview.total ? (overview.relaunchCount / overview.total) * 100 : 0)} a recontacter`, helperColor: "#633806", accent: "#EF9F27", critical: false }, { label: "Inactifs", value: fmt(overview.inactive), helper: `${formatPercent(overview.total ? (overview.inactive / overview.total) * 100 : 0)} — a reactiver`, helperColor: "#A32D2D", accent: "#E24B4A", critical: true }].map((card) => <article key={card.label} className="overflow-hidden rounded-[10px] border border-[#E8E8E4] bg-white"><div className="h-[3px]" style={{ backgroundColor: card.accent }} /><div className="space-y-2 px-5 py-4"><p className="text-[11px] text-[#999999]">{card.label}</p><strong className="block text-[26px] font-medium leading-none" style={{ color: card.critical ? "#A32D2D" : "#1A1A1A" }}>{card.value}</strong><p className="text-[11px]" style={{ color: card.helperColor }}>{card.helper}</p></div></article>)}
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-[10px] border border-[#E8E8E4] bg-white p-3 lg:flex-row lg:items-center">
+        <div className="flex flex-wrap gap-2">{[{ value: "tous", label: "Tous" }, { value: "actif", label: "Actifs" }, { value: "inactif", label: "Inactifs" }].map((item) => <button key={item.value} type="button" onClick={() => setActivityFilter(item.value as ActivityFilter)} className={`rounded-full px-3 py-[8px] text-[12px] transition ${activityFilter === item.value ? "bg-[#EAF3DE] font-medium text-[#3B6D11]" : "text-[#666666] hover:bg-[#F7F7F5]"}`}>{item.label}</button>)}</div>
+        <div className="hidden h-6 w-px bg-[#F0F0EC] lg:block" />
+        <select value={pushFilter} onChange={(e) => setPushFilter(e.target.value as "tous" | "actif" | "inconnu")} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none"><option value="tous">Push : Tous</option><option value="actif">Push : Active</option><option value="inconnu">Push : Desactive</option></select>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none"><option value="tous">Statut joueur : Tous</option>{statuses.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+        <select value={followUpFilter} onChange={(e) => setFollowUpFilter(e.target.value as FollowUpFilter)} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none"><option value="tous">Suivi : Tous</option><option value="a_faire">A faire</option><option value="relance">Relance</option><option value="sans_reponse">Sans reponse</option><option value="ok">OK</option></select>
+        <select value={cityFilter} onChange={(e) => setCityFilter(e.target.value)} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none"><option value="toutes">Ville : Toutes</option>{cities.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select>
+        <div className="hidden h-6 w-px bg-[#F0F0EC] lg:block" />
+        <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nom, email ou ville..." className="h-[40px] flex-1 rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none placeholder:text-[#999999]" />
+        <div className="text-[12px] text-[#999999]">{pendingPush.length > 0 && pushFilter !== "tous" ? "Verification..." : `${fmt(filtered.length)} joueurs affiches`}</div>
+      </div>
+
+      {error ? <div className="rounded-[12px] border border-[#F2CACA] bg-[#FCEBEB] px-5 py-4 text-[12.5px] text-[#A32D2D]">{error}</div> : null}
+      {feedback ? <div className="rounded-[12px] border border-[#E8E8E4] bg-white px-5 py-4 text-[12.5px] text-[#666666]">{feedback}</div> : null}
+
+      <section className="overflow-hidden rounded-[12px] border border-[#E8E8E4] bg-white">
+        <div className="flex flex-col gap-3 border-b border-[#F0F0EC] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <h2 className="text-[15px] font-medium text-[#1A1A1A]">Liste des joueurs</h2>
+          {selectedIds.length > 0 ? <div className="flex flex-wrap items-center gap-2"><span className="text-[12px] text-[#999999]">{selectedIds.length} selectionnes</span><button type="button" onClick={() => bulkNotify(selectedPlayers)} disabled={bulkLoading} className="rounded-[8px] bg-[#639922] px-3 py-[9px] text-[12px] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#57881D]">Envoyer notif</button><button type="button" onClick={() => exportCsv(selectedPlayers, "proxiplay-joueurs-selection.csv")} className="rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-[9px] text-[12px] text-[#666666] transition hover:bg-[#EFEDE6]">Exporter</button></div> : null}
+        </div>
+
+        {loading ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Chargement des joueurs Firestore...</div> : filtered.length === 0 ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Aucun document users joueur ne correspond a la recherche ou aux filtres selectionnes.</div> : <div className="overflow-x-auto"><table className="min-w-full"><thead><tr className="border-b border-[#F0F0EC]">{["", "Joueur", "Contact", "Performance", "Activite", "Actions"].map((label) => <th key={label} className={thClass}>{label}</th>)}</tr></thead><tbody>{filtered.map((p) => { const action = relaunch(p); const tone = activityColors(p); const platform: "iOS" | "Android" | "Inconnue" = "Inconnue"; return <tr key={p.id} className="border-b border-[#F0F0EC] hover:bg-[#FAFAF8] last:border-b-0"><td className="px-[14px] py-[10px]"><button type="button" onClick={() => setSelection((cur) => { const next = new Set(cur); next.has(p.id) ? next.delete(p.id) : next.add(p.id); return next; })} aria-label={`Selectionner ${label(p)}`} className={`flex h-[14px] w-[14px] items-center justify-center rounded-[3px] border ${selection.has(p.id) ? "border-[#639922] bg-[#EAF3DE]" : "border-[#D3D1C7] bg-white"}`}>{selection.has(p.id) ? <span className="h-[6px] w-[6px] rounded-[1px] bg-[#639922]" /> : null}</button></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-3"><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-medium ${tone.avatar}`}>{initials(p)}</div><div><p className="text-[12.5px] font-medium text-[#1A1A1A]">{label(p)}</p><span className={`mt-1 inline-flex rounded-full px-2 py-[3px] text-[10px] ${platformBadge(platform)}`}>{platform}</span></div></div></td><td className="px-[14px] py-[10px]"><p className="max-w-[220px] truncate text-[11px] text-[#666666]">{p.email}</p><p className="mt-1 text-[11px] text-[#999999]">{p.city}</p></td><td className="px-[14px] py-[10px]"><p className="text-[12px] font-medium text-[#1A1A1A]">{fmt(p.gamesPlayedCount)} parties</p><p className="mt-1 text-[11px] font-medium text-[#639922]">{fmt(p.winsCount)} gains</p></td><td className="px-[14px] py-[10px]"><span className={`inline-flex rounded-full px-3 py-[4px] text-[11px] font-medium ${tone.badge}`}>{p.assiduityLabel}</span><p className="mt-2 text-[11px] text-[#999999]">{p.lastRealActivityLabel}</p></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-2">{(p.assiduityLabel === "A relancer" || p.assiduityLabel === "Inactif" || p.assiduityLabel === "Jamais actif") && !action.disabled && action.href ? <button type="button" disabled={pendingId === p.id} onClick={() => oneNotify(p)} className="rounded-[6px] bg-[#EAF3DE] px-2 py-[6px] text-[11px] font-medium text-[#3B6D11] transition hover:bg-[#DDEAC7] disabled:cursor-not-allowed disabled:opacity-50">{pendingId === p.id ? "Mise a jour..." : "Relancer"}</button> : null}<Link href={`/admin/joueurs/${p.id}`} className="text-[11px] text-[#639922]">Voir →</Link></div></td></tr>; })}</tbody></table></div>}
+      </section>
     </section>
   );
 }
