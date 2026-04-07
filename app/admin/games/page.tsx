@@ -26,7 +26,7 @@ import {
   updateGame,
   updateGameStatus,
 } from "@/lib/firebase/gamesQueries";
-import type { Game, GameMerchantOption } from "@/types/dashboard";
+import type { Game, GameMerchantOption, GameSecondaryPrize } from "@/types/dashboard";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -56,6 +56,17 @@ type FirestoreGameDocument = {
   partiesCount?: number | string;
   participations?: number | string;
   participations_count?: number | string;
+  hasMainPrize?: boolean;
+  main_prize_title?: string;
+  main_prize_description?: string;
+  prize_value?: number | string | null;
+  main_prize_image?: string;
+  secondary_prizes?: Array<{
+    name?: string;
+    description?: string;
+    count?: number | string;
+    image?: string;
+  }> | null;
 };
 
 type FirestoreMerchantDocument = {
@@ -99,8 +110,48 @@ function readNumber(...values: Array<number | string | null | undefined>) {
   return 0;
 }
 
+function readOptionalNumber(...values: Array<number | string | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number.parseFloat(value);
+
+      if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
 function readTimestamp(...values: Array<Timestamp | null | undefined>) {
   return values.find((value) => value instanceof Timestamp) ?? null;
+}
+
+function buildSecondaryPrizeId(index: number) {
+  return `secondary-prize-${index + 1}`;
+}
+
+function mapSecondaryPrize(
+  prize: NonNullable<FirestoreGameDocument["secondary_prizes"]>[number],
+  index: number,
+): GameSecondaryPrize {
+  return {
+    id: buildSecondaryPrizeId(index),
+    name: readText(prize?.name),
+    description: readText(prize?.description),
+    count:
+      prize?.count === undefined || prize.count === null
+        ? ""
+        : typeof prize.count === "number"
+          ? String(Math.trunc(prize.count))
+          : prize.count.trim(),
+    image: readNullableText(prize?.image),
+  };
 }
 
 function readMerchantId(value: FirestoreGameDocument["enseigne_id"], fallback?: string | null) {
@@ -226,6 +277,10 @@ function mapGameDocument(
   const endTimestamp = readTimestamp(game.end_date, game.endDate);
   const imageUrl = readNullableText(game.imageUrl, game.photo, game.coverUrl);
   const status = deriveStatus(game);
+  const mainPrizeValue = readOptionalNumber(game.prize_value);
+  const secondaryPrizes = Array.isArray(game.secondary_prizes)
+    ? game.secondary_prizes.map((prize, index) => mapSecondaryPrize(prize, index))
+    : [];
 
   return {
     id: snapshot.id,
@@ -248,6 +303,12 @@ function mapGameDocument(
     ),
     collectionName,
     imageMissing: !imageUrl,
+    hasMainPrize: game.hasMainPrize === true,
+    mainPrizeTitle: readText(game.main_prize_title),
+    mainPrizeDescription: readText(game.main_prize_description),
+    mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
+    mainPrizeImage: readNullableText(game.main_prize_image),
+    secondaryPrizes,
   };
 }
 
@@ -458,6 +519,14 @@ export default function AdminGamesPage() {
     status: Game["status"];
     imageUrl: string | null;
     imageFile: File | null;
+    hasMainPrize: boolean;
+    mainPrizeTitle: string;
+    mainPrizeDescription: string;
+    mainPrizeValue: string;
+    mainPrizeImage: string | null;
+    mainPrizeImageFile: File | null;
+    secondaryPrizes: GameSecondaryPrize[];
+    secondaryPrizeImageFiles: Array<File | null>;
   }) => {
     if (!selectedGame) {
       return;
@@ -468,7 +537,7 @@ export default function AdminGamesPage() {
     setModalFeedbackTone(null);
 
     try {
-      const finalImageUrl = await updateGame({
+      const result = await updateGame({
         gameId: selectedGame.id,
         collectionName: selectedGame.collectionName,
         merchantCollectionName,
@@ -486,9 +555,15 @@ export default function AdminGamesPage() {
         startDateValue: payload.startDate ? new Date(payload.startDate).getTime() : null,
         endDateValue: payload.endDate ? new Date(payload.endDate).getTime() : null,
         status: payload.status,
-        imageUrl: finalImageUrl,
+        imageUrl: result.imageUrl,
         isPrivate: payload.status === "prive",
-        imageMissing: !finalImageUrl,
+        imageMissing: !result.imageUrl,
+        hasMainPrize: payload.hasMainPrize,
+        mainPrizeTitle: payload.mainPrizeTitle,
+        mainPrizeDescription: payload.mainPrizeDescription,
+        mainPrizeValue: payload.mainPrizeValue,
+        mainPrizeImage: result.mainPrizeImage,
+        secondaryPrizes: result.secondaryPrizes,
       };
 
       setGames((current) =>

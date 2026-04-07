@@ -15,7 +15,12 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import type { Game, GameMerchantOption, GameStatus } from "@/types/dashboard";
+import type {
+  Game,
+  GameMerchantOption,
+  GameSecondaryPrize,
+  GameStatus,
+} from "@/types/dashboard";
 import { db, storage } from "./client-app";
 
 type GameCollectionName = "games" | "jeux";
@@ -47,6 +52,19 @@ type FirestoreGameDocument = {
   partiesCount?: number | string;
   participations?: number | string;
   participations_count?: number | string;
+  hasMainPrize?: boolean;
+  main_prize_title?: string;
+  main_prize_description?: string;
+  prize_value?: number | string | null;
+  main_prize_image?: string;
+  secondary_prizes?: FirestoreSecondaryPrizeDocument[] | null;
+};
+
+type FirestoreSecondaryPrizeDocument = {
+  name?: string;
+  description?: string;
+  count?: number | string;
+  image?: string;
 };
 
 type FirestoreMerchantDocument = {
@@ -81,6 +99,14 @@ export type UpdateGameInput = {
   status: GameStatus;
   imageUrl: string | null;
   imageFile?: File | null;
+  hasMainPrize: boolean;
+  mainPrizeTitle: string;
+  mainPrizeDescription: string;
+  mainPrizeValue: string;
+  mainPrizeImage: string | null;
+  mainPrizeImageFile?: File | null;
+  secondaryPrizes: GameSecondaryPrize[];
+  secondaryPrizeImageFiles?: Array<File | null>;
 };
 
 export type DuplicateGameInput = {
@@ -130,12 +156,69 @@ function readNumber(...values: Array<number | string | null | undefined>) {
   return 0;
 }
 
+function readOptionalNumber(
+  ...values: Array<number | string | null | undefined>
+): number | null {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number.parseFloat(value);
+
+      if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
 function readTimestamp(...values: Array<Timestamp | null | undefined>) {
   return values.find((value) => value instanceof Timestamp) ?? null;
 }
 
 function toDateString(timestamp: Timestamp | null) {
   return timestamp ? timestamp.toDate().toISOString() : null;
+}
+
+function normalizePrizeValue(value: string) {
+  const normalized = value.trim().replace(",", ".");
+
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readBoolean(value: unknown, fallback = false) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function buildSecondaryPrizeId(index: number) {
+  return `secondary-prize-${index + 1}`;
+}
+
+function mapSecondaryPrize(
+  prize: FirestoreSecondaryPrizeDocument,
+  index: number,
+): GameSecondaryPrize {
+  return {
+    id: buildSecondaryPrizeId(index),
+    name: readText(prize.name),
+    description: readText(prize.description),
+    count:
+      prize.count === undefined || prize.count === null
+        ? ""
+        : typeof prize.count === "number"
+          ? String(Math.trunc(prize.count))
+          : prize.count.trim(),
+    image: readNullableText(prize.image),
+  };
 }
 
 function readMerchantId(value: FirestoreGameDocument["enseigne_id"], fallback?: string | null) {
@@ -264,6 +347,11 @@ function mapGameDocument(
   // TODO: verifier champ imageUrl si l app repose encore sur `photo`.
   const imageUrl = readNullableText(game.imageUrl, game.photo, game.coverUrl);
   const status = deriveStatus(game);
+  const hasMainPrize = readBoolean(game.hasMainPrize, false);
+  const mainPrizeValue = readOptionalNumber(game.prize_value);
+  const secondaryPrizes = Array.isArray(game.secondary_prizes)
+    ? game.secondary_prizes.map((prize, index) => mapSecondaryPrize(prize ?? {}, index))
+    : [];
 
   return {
     id: snapshot.id,
@@ -287,6 +375,12 @@ function mapGameDocument(
     ),
     collectionName,
     imageMissing: !imageUrl,
+    hasMainPrize,
+    mainPrizeTitle: readText(game.main_prize_title),
+    mainPrizeDescription: readText(game.main_prize_description),
+    mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
+    mainPrizeImage: readNullableText(game.main_prize_image),
+    secondaryPrizes,
   };
 }
 
@@ -313,6 +407,16 @@ function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
   const startDate = input.startDate ? Timestamp.fromDate(new Date(input.startDate)) : null;
   const endDate = input.endDate ? Timestamp.fromDate(new Date(input.endDate)) : null;
   const merchantRef = getMerchantReference(input.merchantCollectionName, input.merchantId);
+  const hasMainPrize = input.hasMainPrize;
+  const mainPrizeValue = hasMainPrize ? normalizePrizeValue(input.mainPrizeValue) : null;
+  const secondaryPrizes = input.secondaryPrizes
+    .map((prize) => ({
+      name: prize.name.trim(),
+      description: prize.description.trim(),
+      count: readNumber(prize.count, 0),
+      image: prize.image?.trim() || "",
+    }))
+    .filter((prize) => prize.name || prize.description || prize.count > 0 || prize.image);
 
   return {
     title: input.title.trim(),
@@ -331,6 +435,12 @@ function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
     end_date: endDate ?? null,
     imageUrl,
     photo: imageUrl,
+    hasMainPrize,
+    main_prize_title: hasMainPrize ? input.mainPrizeTitle.trim() : "",
+    main_prize_description: hasMainPrize ? input.mainPrizeDescription.trim() : "",
+    prize_value: hasMainPrize ? mainPrizeValue : null,
+    main_prize_image: hasMainPrize ? input.mainPrizeImage?.trim() || "" : "",
+    secondary_prizes: secondaryPrizes,
     ...buildStatusPatch(input.status),
   };
 }
@@ -392,19 +502,65 @@ export async function uploadGameCover(gameId: string, file: File) {
   return getDownloadURL(storageRef);
 }
 
+async function uploadPrizeImage(gameId: string, folderName: string, file: File) {
+  await validateGameCoverFile(file);
+
+  const extension =
+    file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+  const storageRef = ref(storage, `games/${gameId}/${folderName}.${extension}`);
+
+  await uploadBytes(storageRef, file, {
+    contentType: file.type,
+  });
+
+  return getDownloadURL(storageRef);
+}
+
 export async function updateGame(input: UpdateGameInput) {
   let finalImageUrl = input.imageUrl;
+  let finalMainPrizeImage = input.mainPrizeImage;
+  const finalSecondaryPrizes = [...input.secondaryPrizes];
 
   if (input.imageFile) {
     finalImageUrl = await uploadGameCover(input.gameId, input.imageFile);
   }
 
+  if (input.mainPrizeImageFile) {
+    finalMainPrizeImage = await uploadPrizeImage(input.gameId, "main-prize", input.mainPrizeImageFile);
+  }
+
+  if (input.secondaryPrizeImageFiles?.length) {
+    await Promise.all(
+      input.secondaryPrizeImageFiles.map(async (file, index) => {
+        if (!file || !finalSecondaryPrizes[index]) {
+          return;
+        }
+
+        finalSecondaryPrizes[index] = {
+          ...finalSecondaryPrizes[index],
+          image: await uploadPrizeImage(input.gameId, `secondary-prize-${index + 1}`, file),
+        };
+      }),
+    );
+  }
+
   await updateDoc(
     doc(db, input.collectionName, input.gameId),
-    buildGamePatch(input, finalImageUrl),
+    buildGamePatch(
+      {
+        ...input,
+        mainPrizeImage: finalMainPrizeImage,
+        secondaryPrizes: finalSecondaryPrizes,
+      },
+      finalImageUrl,
+    ),
   );
 
-  return finalImageUrl;
+  return {
+    imageUrl: finalImageUrl,
+    mainPrizeImage: finalMainPrizeImage,
+    secondaryPrizes: finalSecondaryPrizes,
+  };
 }
 
 export async function duplicateGameDocument(
@@ -441,6 +597,17 @@ export async function duplicateGameDocument(
     photo: original.imageUrl,
     sessionCount: original.sessionCount,
     partiesCount: original.sessionCount,
+    hasMainPrize: original.hasMainPrize,
+    main_prize_title: original.mainPrizeTitle,
+    main_prize_description: original.mainPrizeDescription,
+    prize_value: normalizePrizeValue(original.mainPrizeValue),
+    main_prize_image: original.mainPrizeImage ?? "",
+    secondary_prizes: original.secondaryPrizes.map((prize) => ({
+      name: prize.name,
+      description: prize.description,
+      count: readNumber(prize.count, 0),
+      image: prize.image ?? "",
+    })),
     ...buildStatusPatch("brouillon"),
   };
 
@@ -463,6 +630,12 @@ export async function duplicateGameDocument(
       sessionCount: original.sessionCount,
       collectionName: input.collectionName,
       imageMissing: !original.imageUrl,
+      hasMainPrize: original.hasMainPrize,
+      mainPrizeTitle: original.mainPrizeTitle,
+      mainPrizeDescription: original.mainPrizeDescription,
+      mainPrizeValue: original.mainPrizeValue,
+      mainPrizeImage: original.mainPrizeImage,
+      secondaryPrizes: original.secondaryPrizes.map((prize) => ({ ...prize })),
     },
   };
 }

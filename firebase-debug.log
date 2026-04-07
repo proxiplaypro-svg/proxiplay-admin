@@ -68,3 +68,450 @@
 [debug] [2026-04-06T00:35:06.708Z] >>> [apiv2][query] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) [none]
 [debug] [2026-04-06T00:35:06.708Z] >>> [apiv2][body] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) {"release":{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore/(default)","rulesetName":"projects/proxi-play-odzp2e/rulesets/07b63c8f-9495-4040-b9bc-18084ead69c5"}}
 [debug] [2026-04-06T00:35:07.529Z] <<< [apiv2][status] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) 200
+[debug] [2026-04-06T15:12:31.846Z] ----------------------------------------------------------------------
+[debug] [2026-04-06T15:12:31.849Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js deploy --only firestore:rules
+[debug] [2026-04-06T15:12:31.849Z] CLI Version:   15.6.0
+[debug] [2026-04-06T15:12:31.849Z] Platform:      win32
+[debug] [2026-04-06T15:12:31.849Z] Node Version:  v20.20.0
+[debug] [2026-04-06T15:12:31.849Z] Time:          Mon Apr 06 2026 17:12:31 GMT+0200 (heure d’été d’Europe centrale)
+[debug] [2026-04-06T15:12:31.849Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-04-06T15:12:33.496Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-06T15:12:33.497Z] > authorizing via signed-in user (proxiplay.pro@gmail.com)
+[debug] [2026-04-06T15:12:33.498Z] [iam] checking project proxi-play-odzp2e for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2026-04-06T15:12:33.500Z] Checked if tokens are valid: false, expires at: 1775439302435
+[debug] [2026-04-06T15:12:33.500Z] Checked if tokens are valid: false, expires at: 1775439302435
+[debug] [2026-04-06T15:12:33.501Z] > refreshing access token with scopes: []
+[debug] [2026-04-06T15:12:33.503Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-04-06T15:12:33.504Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-04-06T15:12:33.648Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-04-06T15:12:33.648Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-04-06T15:12:33.718Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions [none]
+[debug] [2026-04-06T15:12:33.718Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions  x-goog-user-project=proxi-play-odzp2e
+[debug] [2026-04-06T15:12:33.719Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2026-04-06T15:12:34.357Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions 200
+[debug] [2026-04-06T15:12:34.358Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[info] 
+[info] === Deploying to 'proxi-play-odzp2e'...
+[info] 
+[info] i  deploying firestore 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[debug] [2026-04-06T15:12:34.361Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:34.361Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:34.361Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) [none]
+[debug] [2026-04-06T15:12:34.510Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) 200
+[debug] [2026-04-06T15:12:34.510Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) {"name":"projects/proxi-play-odzp2e/databases/(default)","uid":"861e60cd-bdc3-4429-9e7b-ebdd6cd524d4","createTime":"2024-12-05T21:00:57.927316Z","updateTime":"2024-12-05T21:00:57.927316Z","locationId":"eur3","type":"FIRESTORE_NATIVE","concurrencyMode":"PESSIMISTIC","versionRetentionPeriod":"3600s","earliestVersionTime":"2026-04-06T14:12:34.976636Z","appEngineIntegrationMode":"DISABLED","keyPrefix":"e","pointInTimeRecoveryEnablement":"POINT_IN_TIME_RECOVERY_DISABLED","deleteProtectionState":"DELETE_PROTECTION_DISABLED","databaseEdition":"STANDARD","freeTier":true,"realtimeUpdatesMode":"REALTIME_UPDATES_MODE_ENABLED","etag":"IKuEzsXB2ZMDMObHhryI5JID"}
+[info] i  firestore: reading indexes from firestore.indexes.json... 
+[info] i  cloud.firestore: checking firestore.rules for compilation errors... 
+[debug] [2026-04-06T15:12:34.511Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:34.511Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:34.511Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [none]
+[debug] [2026-04-06T15:12:34.511Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [omitted]
+[debug] [2026-04-06T15:12:35.259Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test 200
+[debug] [2026-04-06T15:12:35.259Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test {}
+[info] +  cloud.firestore: rules file firestore.rules compiled successfully 
+[debug] [2026-04-06T15:12:35.260Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:35.261Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:35.262Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases pageSize=10&pageToken=
+[debug] [2026-04-06T15:12:35.921Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases 200
+[debug] [2026-04-06T15:12:35.921Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases {"releases":[{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore","rulesetName":"projects/proxi-play-odzp2e/rulesets/07b63c8f-9495-4040-b9bc-18084ead69c5","createTime":"2024-12-10T16:41:06.791891Z","updateTime":"2026-04-06T00:35:08.378493Z"},{"name":"projects/proxi-play-odzp2e/releases/firebase.storage/proxi-play-odzp2e.firebasestorage.app","rulesetName":"projects/proxi-play-odzp2e/rulesets/d24a39d5-7950-4d27-920d-ba90b029450f","createTime":"2025-02-04T13:51:17.710281Z","updateTime":"2025-02-04T13:52:22.865091Z"}]}
+[debug] [2026-04-06T15:12:35.933Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:35.933Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:35.933Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/07b63c8f-9495-4040-b9bc-18084ead69c5 [none]
+[debug] [2026-04-06T15:12:36.224Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/07b63c8f-9495-4040-b9bc-18084ead69c5 200
+[debug] [2026-04-06T15:12:36.224Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/07b63c8f-9495-4040-b9bc-18084ead69c5 [omitted]
+[info] i  firestore: uploading rules firestore.rules... 
+[debug] [2026-04-06T15:12:36.225Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:36.225Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:36.225Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [none]
+[debug] [2026-04-06T15:12:36.226Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [omitted]
+[debug] [2026-04-06T15:12:36.662Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets 200
+[debug] [2026-04-06T15:12:36.662Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets {"name":"projects/proxi-play-odzp2e/rulesets/b5580a30-c71e-4a21-bb90-d99b6a1c7b7f","source":{"files":[{"content":"rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function isAdmin() {\n      return isSignedIn()\n        && request.auth.token.email != null\n        && request.auth.token.email in [\n          \"proxiplay.pro@gmail.com\"\n        ];\n    }\n\n    function hasAdminClaim() {\n      return isSignedIn()\n        && request.auth.token.admin == true;\n    }\n\n    function isPublicGame() {\n      return resource.data.visible_public == true\n        || resource.data.visiblePublic == true;\n    }\n\n    match /admin_stats/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /enseignes/{document=**} {\n      allow read, write: if hasAdminClaim();\n    }\n\n    match /merchants/{document=**} {\n      allow read, write: if hasAdminClaim();\n    }\n\n    match /games/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin();\n        allow write: if false;\n      }\n    }\n\n    match /jeux/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /users/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /users/{userId}/fcm_tokens/{tokenId} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /prizes/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /ff_push_notifications/{document=**} {\n      allow read: if isAdmin();\n      allow write: if isAdmin();\n    }\n  }\n}\n","name":"firestore.rules"}]},"createTime":"2026-04-06T15:12:37.050191Z","metadata":{"services":["cloud.firestore"]}}
+[debug] [2026-04-06T15:12:36.662Z] [rules] created ruleset projects/proxi-play-odzp2e/rulesets/b5580a30-c71e-4a21-bb90-d99b6a1c7b7f
+[debug] [2026-04-06T15:12:36.663Z] [rules] releasing cloud.firestore/(default) with ruleset projects/proxi-play-odzp2e/rulesets/b5580a30-c71e-4a21-bb90-d99b6a1c7b7f
+[debug] [2026-04-06T15:12:36.663Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:36.663Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:12:36.664Z] >>> [apiv2][query] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) [none]
+[debug] [2026-04-06T15:12:36.664Z] >>> [apiv2][body] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) {"release":{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore/(default)","rulesetName":"projects/proxi-play-odzp2e/rulesets/b5580a30-c71e-4a21-bb90-d99b6a1c7b7f"}}
+[debug] [2026-04-06T15:12:37.491Z] <<< [apiv2][status] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) 200
+[debug] [2026-04-06T15:16:13.166Z] ----------------------------------------------------------------------
+[debug] [2026-04-06T15:16:13.169Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js deploy --only firestore:rules
+[debug] [2026-04-06T15:16:13.170Z] CLI Version:   15.6.0
+[debug] [2026-04-06T15:16:13.170Z] Platform:      win32
+[debug] [2026-04-06T15:16:13.170Z] Node Version:  v20.20.0
+[debug] [2026-04-06T15:16:13.170Z] Time:          Mon Apr 06 2026 17:16:13 GMT+0200 (heure d’été d’Europe centrale)
+[debug] [2026-04-06T15:16:13.171Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-04-06T15:16:15.167Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-06T15:16:15.168Z] > authorizing via signed-in user (proxiplay.pro@gmail.com)
+[debug] [2026-04-06T15:16:15.169Z] [iam] checking project proxi-play-odzp2e for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2026-04-06T15:16:15.170Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:15.170Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:15.171Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions [none]
+[debug] [2026-04-06T15:16:15.172Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions  x-goog-user-project=proxi-play-odzp2e
+[debug] [2026-04-06T15:16:15.172Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2026-04-06T15:16:15.869Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions 200
+[debug] [2026-04-06T15:16:15.870Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[info] 
+[info] === Deploying to 'proxi-play-odzp2e'...
+[info] 
+[info] i  deploying firestore 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[debug] [2026-04-06T15:16:15.874Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:15.874Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:15.875Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) [none]
+[debug] [2026-04-06T15:16:16.045Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) 200
+[debug] [2026-04-06T15:16:16.045Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) {"name":"projects/proxi-play-odzp2e/databases/(default)","uid":"861e60cd-bdc3-4429-9e7b-ebdd6cd524d4","createTime":"2024-12-05T21:00:57.927316Z","updateTime":"2024-12-05T21:00:57.927316Z","locationId":"eur3","type":"FIRESTORE_NATIVE","concurrencyMode":"PESSIMISTIC","versionRetentionPeriod":"3600s","earliestVersionTime":"2026-04-06T14:16:16.507896Z","appEngineIntegrationMode":"DISABLED","keyPrefix":"e","pointInTimeRecoveryEnablement":"POINT_IN_TIME_RECOVERY_DISABLED","deleteProtectionState":"DELETE_PROTECTION_DISABLED","databaseEdition":"STANDARD","freeTier":true,"realtimeUpdatesMode":"REALTIME_UPDATES_MODE_ENABLED","etag":"II2dn6/C2ZMDMObHhryI5JID"}
+[info] i  firestore: reading indexes from firestore.indexes.json... 
+[info] i  cloud.firestore: checking firestore.rules for compilation errors... 
+[debug] [2026-04-06T15:16:16.047Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:16.047Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:16.047Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [none]
+[debug] [2026-04-06T15:16:16.047Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [omitted]
+[debug] [2026-04-06T15:16:16.817Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test 200
+[debug] [2026-04-06T15:16:16.818Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test {}
+[info] +  cloud.firestore: rules file firestore.rules compiled successfully 
+[debug] [2026-04-06T15:16:16.819Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:16.819Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:16.820Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases pageSize=10&pageToken=
+[debug] [2026-04-06T15:16:17.017Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases 200
+[debug] [2026-04-06T15:16:17.017Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases {"releases":[{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore","rulesetName":"projects/proxi-play-odzp2e/rulesets/b5580a30-c71e-4a21-bb90-d99b6a1c7b7f","createTime":"2024-12-10T16:41:06.791891Z","updateTime":"2026-04-06T15:12:37.882524Z"},{"name":"projects/proxi-play-odzp2e/releases/firebase.storage/proxi-play-odzp2e.firebasestorage.app","rulesetName":"projects/proxi-play-odzp2e/rulesets/d24a39d5-7950-4d27-920d-ba90b029450f","createTime":"2025-02-04T13:51:17.710281Z","updateTime":"2025-02-04T13:52:22.865091Z"}]}
+[debug] [2026-04-06T15:16:17.028Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:17.028Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:17.029Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/b5580a30-c71e-4a21-bb90-d99b6a1c7b7f [none]
+[debug] [2026-04-06T15:16:17.214Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/b5580a30-c71e-4a21-bb90-d99b6a1c7b7f 200
+[debug] [2026-04-06T15:16:17.214Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/b5580a30-c71e-4a21-bb90-d99b6a1c7b7f [omitted]
+[info] i  firestore: uploading rules firestore.rules... 
+[debug] [2026-04-06T15:16:17.216Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:17.216Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:17.216Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [none]
+[debug] [2026-04-06T15:16:17.216Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [omitted]
+[debug] [2026-04-06T15:16:18.040Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets 200
+[debug] [2026-04-06T15:16:18.040Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets {"name":"projects/proxi-play-odzp2e/rulesets/0fa6c86c-93f7-416e-8484-cf152f9da14b","source":{"files":[{"content":"rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function isAdmin() {\n      return isSignedIn()\n        && request.auth.token.email != null\n        && request.auth.token.email in [\n          \"proxiplay.pro@gmail.com\"\n        ];\n    }\n\n    function hasAdminClaim() {\n      return isSignedIn()\n        && request.auth.token.admin == true;\n    }\n\n    function isPublicGame() {\n      return resource.data.visible_public == true\n        || resource.data.visiblePublic == true;\n    }\n\n    match /admin_stats/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /enseignes/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /merchants/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /games/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin();\n        allow write: if false;\n      }\n    }\n\n    match /jeux/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /users/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /users/{userId}/fcm_tokens/{tokenId} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /prizes/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /ff_push_notifications/{document=**} {\n      allow read: if isAdmin();\n      allow write: if isAdmin();\n    }\n  }\n}\n","name":"firestore.rules"}]},"createTime":"2026-04-06T15:16:18.419487Z","metadata":{"services":["cloud.firestore"]}}
+[debug] [2026-04-06T15:16:18.040Z] [rules] created ruleset projects/proxi-play-odzp2e/rulesets/0fa6c86c-93f7-416e-8484-cf152f9da14b
+[debug] [2026-04-06T15:16:18.040Z] [rules] releasing cloud.firestore/(default) with ruleset projects/proxi-play-odzp2e/rulesets/0fa6c86c-93f7-416e-8484-cf152f9da14b
+[debug] [2026-04-06T15:16:18.041Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:18.041Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:16:18.041Z] >>> [apiv2][query] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) [none]
+[debug] [2026-04-06T15:16:18.041Z] >>> [apiv2][body] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) {"release":{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore/(default)","rulesetName":"projects/proxi-play-odzp2e/rulesets/0fa6c86c-93f7-416e-8484-cf152f9da14b"}}
+[debug] [2026-04-06T15:16:18.839Z] <<< [apiv2][status] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) 200
+[debug] [2026-04-06T15:17:56.736Z] ----------------------------------------------------------------------
+[debug] [2026-04-06T15:17:56.739Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js deploy --only firestore:rules
+[debug] [2026-04-06T15:17:56.739Z] CLI Version:   15.6.0
+[debug] [2026-04-06T15:17:56.739Z] Platform:      win32
+[debug] [2026-04-06T15:17:56.739Z] Node Version:  v20.20.0
+[debug] [2026-04-06T15:17:56.739Z] Time:          Mon Apr 06 2026 17:17:56 GMT+0200 (heure d’été d’Europe centrale)
+[debug] [2026-04-06T15:17:56.740Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-04-06T15:17:58.685Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-06T15:17:58.686Z] > authorizing via signed-in user (proxiplay.pro@gmail.com)
+[debug] [2026-04-06T15:17:58.687Z] [iam] checking project proxi-play-odzp2e for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2026-04-06T15:17:58.689Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:17:58.689Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:17:58.691Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions [none]
+[debug] [2026-04-06T15:17:58.691Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions  x-goog-user-project=proxi-play-odzp2e
+[debug] [2026-04-06T15:17:58.691Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2026-04-06T15:17:59.416Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions 200
+[debug] [2026-04-06T15:17:59.417Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[info] 
+[info] === Deploying to 'proxi-play-odzp2e'...
+[info] 
+[info] i  deploying firestore 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[debug] [2026-04-06T15:17:59.421Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:17:59.421Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:17:59.421Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) [none]
+[debug] [2026-04-06T15:17:59.571Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) 200
+[debug] [2026-04-06T15:17:59.571Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) {"name":"projects/proxi-play-odzp2e/databases/(default)","uid":"861e60cd-bdc3-4429-9e7b-ebdd6cd524d4","createTime":"2024-12-05T21:00:57.927316Z","updateTime":"2024-12-05T21:00:57.927316Z","locationId":"eur3","type":"FIRESTORE_NATIVE","concurrencyMode":"PESSIMISTIC","versionRetentionPeriod":"3600s","earliestVersionTime":"2026-04-06T14:18:00.031477Z","appEngineIntegrationMode":"DISABLED","keyPrefix":"e","pointInTimeRecoveryEnablement":"POINT_IN_TIME_RECOVERY_DISABLED","deleteProtectionState":"DELETE_PROTECTION_DISABLED","databaseEdition":"STANDARD","freeTier":true,"realtimeUpdatesMode":"REALTIME_UPDATES_MODE_ENABLED","etag":"II/mzeDC2ZMDMObHhryI5JID"}
+[info] i  firestore: reading indexes from firestore.indexes.json... 
+[info] i  cloud.firestore: checking firestore.rules for compilation errors... 
+[debug] [2026-04-06T15:17:59.573Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:17:59.573Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:17:59.574Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [none]
+[debug] [2026-04-06T15:17:59.574Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [omitted]
+[debug] [2026-04-06T15:18:00.289Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test 200
+[debug] [2026-04-06T15:18:00.289Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test {}
+[info] +  cloud.firestore: rules file firestore.rules compiled successfully 
+[debug] [2026-04-06T15:18:00.290Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:18:00.290Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:18:00.291Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases pageSize=10&pageToken=
+[debug] [2026-04-06T15:18:00.467Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases 200
+[debug] [2026-04-06T15:18:00.467Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases {"releases":[{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore","rulesetName":"projects/proxi-play-odzp2e/rulesets/0fa6c86c-93f7-416e-8484-cf152f9da14b","createTime":"2024-12-10T16:41:06.791891Z","updateTime":"2026-04-06T15:16:19.234714Z"},{"name":"projects/proxi-play-odzp2e/releases/firebase.storage/proxi-play-odzp2e.firebasestorage.app","rulesetName":"projects/proxi-play-odzp2e/rulesets/d24a39d5-7950-4d27-920d-ba90b029450f","createTime":"2025-02-04T13:51:17.710281Z","updateTime":"2025-02-04T13:52:22.865091Z"}]}
+[debug] [2026-04-06T15:18:00.478Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:18:00.478Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:18:00.478Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/0fa6c86c-93f7-416e-8484-cf152f9da14b [none]
+[debug] [2026-04-06T15:18:00.752Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/0fa6c86c-93f7-416e-8484-cf152f9da14b 200
+[debug] [2026-04-06T15:18:00.753Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/0fa6c86c-93f7-416e-8484-cf152f9da14b [omitted]
+[info] i  firestore: uploading rules firestore.rules... 
+[debug] [2026-04-06T15:18:00.754Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:18:00.754Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:18:00.754Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [none]
+[debug] [2026-04-06T15:18:00.754Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [omitted]
+[debug] [2026-04-06T15:18:01.153Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets 200
+[debug] [2026-04-06T15:18:01.153Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets {"name":"projects/proxi-play-odzp2e/rulesets/9e7a1539-c101-4235-893f-f5e82c73cf2f","source":{"files":[{"content":"rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function isAdmin() {\n      return isSignedIn()\n        && request.auth.token.email != null\n        && request.auth.token.email in [\n          \"proxiplay.pro@gmail.com\"\n        ];\n    }\n\n    function hasAdminClaim() {\n      return isSignedIn()\n        && request.auth.token.admin == true;\n    }\n\n    function isPublicGame() {\n      return resource.data.visible_public == true\n        || resource.data.visiblePublic == true;\n    }\n\n    match /admin_stats/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /enseignes/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /merchants/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /games/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /jeux/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /users/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /users/{userId}/fcm_tokens/{tokenId} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /prizes/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /ff_push_notifications/{document=**} {\n      allow read: if isAdmin();\n      allow write: if isAdmin();\n    }\n  }\n}\n","name":"firestore.rules"}]},"createTime":"2026-04-06T15:18:01.544735Z","metadata":{"services":["cloud.firestore"]}}
+[debug] [2026-04-06T15:18:01.153Z] [rules] created ruleset projects/proxi-play-odzp2e/rulesets/9e7a1539-c101-4235-893f-f5e82c73cf2f
+[debug] [2026-04-06T15:18:01.154Z] [rules] releasing cloud.firestore/(default) with ruleset projects/proxi-play-odzp2e/rulesets/9e7a1539-c101-4235-893f-f5e82c73cf2f
+[debug] [2026-04-06T15:18:01.154Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:18:01.154Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:18:01.154Z] >>> [apiv2][query] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) [none]
+[debug] [2026-04-06T15:18:01.154Z] >>> [apiv2][body] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) {"release":{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore/(default)","rulesetName":"projects/proxi-play-odzp2e/rulesets/9e7a1539-c101-4235-893f-f5e82c73cf2f"}}
+[debug] [2026-04-06T15:18:01.625Z] <<< [apiv2][status] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) 200
+[debug] [2026-04-06T15:20:30.390Z] ----------------------------------------------------------------------
+[debug] [2026-04-06T15:20:30.394Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js deploy --only firestore:rules
+[debug] [2026-04-06T15:20:30.394Z] CLI Version:   15.6.0
+[debug] [2026-04-06T15:20:30.394Z] Platform:      win32
+[debug] [2026-04-06T15:20:30.394Z] Node Version:  v20.20.0
+[debug] [2026-04-06T15:20:30.394Z] Time:          Mon Apr 06 2026 17:20:30 GMT+0200 (heure d’été d’Europe centrale)
+[debug] [2026-04-06T15:20:30.395Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-04-06T15:20:32.722Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-06T15:20:32.723Z] > authorizing via signed-in user (proxiplay.pro@gmail.com)
+[debug] [2026-04-06T15:20:32.724Z] [iam] checking project proxi-play-odzp2e for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2026-04-06T15:20:32.726Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:32.726Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:32.728Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions [none]
+[debug] [2026-04-06T15:20:32.728Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions  x-goog-user-project=proxi-play-odzp2e
+[debug] [2026-04-06T15:20:32.728Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2026-04-06T15:20:34.214Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions 200
+[debug] [2026-04-06T15:20:34.214Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[info] 
+[info] === Deploying to 'proxi-play-odzp2e'...
+[info] 
+[info] i  deploying firestore 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[debug] [2026-04-06T15:20:34.218Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:34.218Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:34.219Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) [none]
+[debug] [2026-04-06T15:20:34.430Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) 200
+[debug] [2026-04-06T15:20:34.430Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) {"name":"projects/proxi-play-odzp2e/databases/(default)","uid":"861e60cd-bdc3-4429-9e7b-ebdd6cd524d4","createTime":"2024-12-05T21:00:57.927316Z","updateTime":"2024-12-05T21:00:57.927316Z","locationId":"eur3","type":"FIRESTORE_NATIVE","concurrencyMode":"PESSIMISTIC","versionRetentionPeriod":"3600s","earliestVersionTime":"2026-04-06T14:20:34.872517Z","appEngineIntegrationMode":"DISABLED","keyPrefix":"e","pointInTimeRecoveryEnablement":"POINT_IN_TIME_RECOVERY_DISABLED","deleteProtectionState":"DELETE_PROTECTION_DISABLED","databaseEdition":"STANDARD","freeTier":true,"realtimeUpdatesMode":"REALTIME_UPDATES_MODE_ENABLED","etag":"IK/GuKrD2ZMDMObHhryI5JID"}
+[info] i  firestore: reading indexes from firestore.indexes.json... 
+[info] i  cloud.firestore: checking firestore.rules for compilation errors... 
+[debug] [2026-04-06T15:20:34.432Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:34.432Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:34.433Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [none]
+[debug] [2026-04-06T15:20:34.433Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [omitted]
+[debug] [2026-04-06T15:20:35.173Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test 200
+[debug] [2026-04-06T15:20:35.174Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test {}
+[info] +  cloud.firestore: rules file firestore.rules compiled successfully 
+[debug] [2026-04-06T15:20:35.175Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:35.175Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:35.176Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases pageSize=10&pageToken=
+[debug] [2026-04-06T15:20:35.373Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases 200
+[debug] [2026-04-06T15:20:35.373Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases {"releases":[{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore","rulesetName":"projects/proxi-play-odzp2e/rulesets/9e7a1539-c101-4235-893f-f5e82c73cf2f","createTime":"2024-12-10T16:41:06.791891Z","updateTime":"2026-04-06T15:18:02.013128Z"},{"name":"projects/proxi-play-odzp2e/releases/firebase.storage/proxi-play-odzp2e.firebasestorage.app","rulesetName":"projects/proxi-play-odzp2e/rulesets/d24a39d5-7950-4d27-920d-ba90b029450f","createTime":"2025-02-04T13:51:17.710281Z","updateTime":"2025-02-04T13:52:22.865091Z"}]}
+[debug] [2026-04-06T15:20:35.385Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:35.386Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:35.386Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/9e7a1539-c101-4235-893f-f5e82c73cf2f [none]
+[debug] [2026-04-06T15:20:36.022Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/9e7a1539-c101-4235-893f-f5e82c73cf2f 200
+[debug] [2026-04-06T15:20:36.022Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/9e7a1539-c101-4235-893f-f5e82c73cf2f [omitted]
+[info] i  firestore: uploading rules firestore.rules... 
+[debug] [2026-04-06T15:20:36.023Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:36.023Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:36.024Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [none]
+[debug] [2026-04-06T15:20:36.024Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [omitted]
+[debug] [2026-04-06T15:20:36.346Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets 200
+[debug] [2026-04-06T15:20:36.346Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets {"name":"projects/proxi-play-odzp2e/rulesets/c2255ea7-3823-4372-ad17-1635f3b421ba","source":{"files":[{"content":"rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function isAdmin() {\n      return isSignedIn()\n        && request.auth.token.email != null\n        && request.auth.token.email in [\n          \"proxiplay.pro@gmail.com\"\n        ];\n    }\n\n    function hasAdminClaim() {\n      return isSignedIn()\n        && request.auth.token.admin == true;\n    }\n\n    function isCurrentUser(userId) {\n      return isSignedIn()\n        && request.auth.uid == userId;\n    }\n\n    function isPublicGame() {\n      return resource.data.visible_public == true\n        || resource.data.visiblePublic == true;\n    }\n\n    match /admin_stats/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /enseignes/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /merchants/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /games/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /jeux/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /users/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /users/{userId}/fcm_tokens/{tokenId} {\n      allow read: if isAdmin() || isCurrentUser(userId);\n      allow write: if isCurrentUser(userId);\n    }\n\n    match /users/{userId} {\n      allow read: if isAdmin() || isCurrentUser(userId);\n      allow write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /prizes/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /ff_push_notifications/{document=**} {\n      allow read: if isAdmin();\n      allow write: if isAdmin();\n    }\n  }\n}\n","name":"firestore.rules"}]},"createTime":"2026-04-06T15:20:36.722127Z","metadata":{"services":["cloud.firestore"]}}
+[debug] [2026-04-06T15:20:36.346Z] [rules] created ruleset projects/proxi-play-odzp2e/rulesets/c2255ea7-3823-4372-ad17-1635f3b421ba
+[debug] [2026-04-06T15:20:36.347Z] [rules] releasing cloud.firestore/(default) with ruleset projects/proxi-play-odzp2e/rulesets/c2255ea7-3823-4372-ad17-1635f3b421ba
+[debug] [2026-04-06T15:20:36.347Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:36.347Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:20:36.347Z] >>> [apiv2][query] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) [none]
+[debug] [2026-04-06T15:20:36.347Z] >>> [apiv2][body] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) {"release":{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore/(default)","rulesetName":"projects/proxi-play-odzp2e/rulesets/c2255ea7-3823-4372-ad17-1635f3b421ba"}}
+[debug] [2026-04-06T15:20:37.156Z] <<< [apiv2][status] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) 200
+[debug] [2026-04-06T15:23:21.060Z] ----------------------------------------------------------------------
+[debug] [2026-04-06T15:23:21.064Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js deploy --only firestore:rules
+[debug] [2026-04-06T15:23:21.065Z] CLI Version:   15.6.0
+[debug] [2026-04-06T15:23:21.065Z] Platform:      win32
+[debug] [2026-04-06T15:23:21.065Z] Node Version:  v20.20.0
+[debug] [2026-04-06T15:23:21.065Z] Time:          Mon Apr 06 2026 17:23:21 GMT+0200 (heure d’été d’Europe centrale)
+[debug] [2026-04-06T15:23:21.066Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-04-06T15:23:24.313Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-06T15:23:24.316Z] > authorizing via signed-in user (proxiplay.pro@gmail.com)
+[debug] [2026-04-06T15:23:24.316Z] [iam] checking project proxi-play-odzp2e for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2026-04-06T15:23:24.359Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:24.360Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:24.369Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions [none]
+[debug] [2026-04-06T15:23:24.370Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions  x-goog-user-project=proxi-play-odzp2e
+[debug] [2026-04-06T15:23:24.370Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2026-04-06T15:23:26.176Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions 200
+[debug] [2026-04-06T15:23:26.177Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[info] 
+[info] === Deploying to 'proxi-play-odzp2e'...
+[info] 
+[info] i  deploying firestore 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[debug] [2026-04-06T15:23:26.182Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:26.183Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:26.183Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) [none]
+[debug] [2026-04-06T15:23:26.345Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) 200
+[debug] [2026-04-06T15:23:26.345Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) {"name":"projects/proxi-play-odzp2e/databases/(default)","uid":"861e60cd-bdc3-4429-9e7b-ebdd6cd524d4","createTime":"2024-12-05T21:00:57.927316Z","updateTime":"2024-12-05T21:00:57.927316Z","locationId":"eur3","type":"FIRESTORE_NATIVE","concurrencyMode":"PESSIMISTIC","versionRetentionPeriod":"3600s","earliestVersionTime":"2026-04-06T14:23:26.801379Z","appEngineIntegrationMode":"DISABLED","keyPrefix":"e","pointInTimeRecoveryEnablement":"POINT_IN_TIME_RECOVERY_DISABLED","deleteProtectionState":"DELETE_PROTECTION_DISABLED","databaseEdition":"STANDARD","freeTier":true,"realtimeUpdatesMode":"REALTIME_UPDATES_MODE_ENABLED","etag":"IPqetvzD2ZMDMObHhryI5JID"}
+[info] i  firestore: reading indexes from firestore.indexes.json... 
+[info] i  cloud.firestore: checking firestore.rules for compilation errors... 
+[debug] [2026-04-06T15:23:26.348Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:26.348Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:26.348Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [none]
+[debug] [2026-04-06T15:23:26.348Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [omitted]
+[debug] [2026-04-06T15:23:27.099Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test 200
+[debug] [2026-04-06T15:23:27.099Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test {}
+[info] +  cloud.firestore: rules file firestore.rules compiled successfully 
+[debug] [2026-04-06T15:23:27.100Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:27.101Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:27.101Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases pageSize=10&pageToken=
+[debug] [2026-04-06T15:23:27.729Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases 200
+[debug] [2026-04-06T15:23:27.730Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases {"releases":[{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore","rulesetName":"projects/proxi-play-odzp2e/rulesets/c2255ea7-3823-4372-ad17-1635f3b421ba","createTime":"2024-12-10T16:41:06.791891Z","updateTime":"2026-04-06T15:20:37.546278Z"},{"name":"projects/proxi-play-odzp2e/releases/firebase.storage/proxi-play-odzp2e.firebasestorage.app","rulesetName":"projects/proxi-play-odzp2e/rulesets/d24a39d5-7950-4d27-920d-ba90b029450f","createTime":"2025-02-04T13:51:17.710281Z","updateTime":"2025-02-04T13:52:22.865091Z"}]}
+[debug] [2026-04-06T15:23:27.749Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:27.749Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:27.749Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/c2255ea7-3823-4372-ad17-1635f3b421ba [none]
+[debug] [2026-04-06T15:23:28.383Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/c2255ea7-3823-4372-ad17-1635f3b421ba 200
+[debug] [2026-04-06T15:23:28.383Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/c2255ea7-3823-4372-ad17-1635f3b421ba [omitted]
+[info] i  firestore: uploading rules firestore.rules... 
+[debug] [2026-04-06T15:23:28.385Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:28.385Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:28.386Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [none]
+[debug] [2026-04-06T15:23:28.386Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [omitted]
+[debug] [2026-04-06T15:23:29.175Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets 200
+[debug] [2026-04-06T15:23:29.176Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets {"name":"projects/proxi-play-odzp2e/rulesets/96fab3a8-5fe9-4ca5-96b0-60a3644de418","source":{"files":[{"content":"rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function isAdmin() {\n      return isSignedIn()\n        && request.auth.token.email != null\n        && request.auth.token.email in [\n          \"proxiplay.pro@gmail.com\"\n        ];\n    }\n\n    function hasAdminClaim() {\n      return isSignedIn()\n        && request.auth.token.admin == true;\n    }\n\n    function isCurrentUser(userId) {\n      return isSignedIn()\n        && request.auth.uid == userId;\n    }\n\n    function isPublicGame() {\n      return resource.data.visible_public == true\n        || resource.data.visiblePublic == true;\n    }\n\n    match /admin_stats/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /enseignes/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /merchants/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim();\n    }\n\n    match /games/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /jeux/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /users/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /users/{userId}/fcm_tokens/{tokenId} {\n      allow read: if isAdmin() || isCurrentUser(userId);\n      allow write: if isCurrentUser(userId);\n    }\n\n    match /users/{userId}/favorites/{favoriteId} {\n      allow read, write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /users/{userId}/favoris/{favoriteId} {\n      allow read, write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /users/{userId} {\n      allow read: if isAdmin() || isCurrentUser(userId);\n      allow write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /prizes/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /ff_push_notifications/{document=**} {\n      allow read: if isAdmin();\n      allow write: if isAdmin();\n    }\n  }\n}\n","name":"firestore.rules"}]},"createTime":"2026-04-06T15:23:29.548447Z","metadata":{"services":["cloud.firestore"]}}
+[debug] [2026-04-06T15:23:29.176Z] [rules] created ruleset projects/proxi-play-odzp2e/rulesets/96fab3a8-5fe9-4ca5-96b0-60a3644de418
+[debug] [2026-04-06T15:23:29.176Z] [rules] releasing cloud.firestore/(default) with ruleset projects/proxi-play-odzp2e/rulesets/96fab3a8-5fe9-4ca5-96b0-60a3644de418
+[debug] [2026-04-06T15:23:29.177Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:29.177Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:23:29.177Z] >>> [apiv2][query] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) [none]
+[debug] [2026-04-06T15:23:29.177Z] >>> [apiv2][body] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) {"release":{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore/(default)","rulesetName":"projects/proxi-play-odzp2e/rulesets/96fab3a8-5fe9-4ca5-96b0-60a3644de418"}}
+[debug] [2026-04-06T15:23:29.527Z] <<< [apiv2][status] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) 200
+[debug] [2026-04-06T15:25:26.362Z] ----------------------------------------------------------------------
+[debug] [2026-04-06T15:25:26.365Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js deploy --only firestore:rules
+[debug] [2026-04-06T15:25:26.366Z] CLI Version:   15.6.0
+[debug] [2026-04-06T15:25:26.366Z] Platform:      win32
+[debug] [2026-04-06T15:25:26.366Z] Node Version:  v20.20.0
+[debug] [2026-04-06T15:25:26.366Z] Time:          Mon Apr 06 2026 17:25:26 GMT+0200 (heure d’été d’Europe centrale)
+[debug] [2026-04-06T15:25:26.366Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-04-06T15:25:28.351Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-06T15:25:28.352Z] > authorizing via signed-in user (proxiplay.pro@gmail.com)
+[debug] [2026-04-06T15:25:28.353Z] [iam] checking project proxi-play-odzp2e for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2026-04-06T15:25:28.355Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:28.355Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:28.356Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions [none]
+[debug] [2026-04-06T15:25:28.357Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions  x-goog-user-project=proxi-play-odzp2e
+[debug] [2026-04-06T15:25:28.357Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2026-04-06T15:25:29.074Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions 200
+[debug] [2026-04-06T15:25:29.074Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[info] 
+[info] === Deploying to 'proxi-play-odzp2e'...
+[info] 
+[info] i  deploying firestore 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[debug] [2026-04-06T15:25:29.078Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:29.078Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:29.078Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) [none]
+[debug] [2026-04-06T15:25:29.226Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) 200
+[debug] [2026-04-06T15:25:29.226Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) {"name":"projects/proxi-play-odzp2e/databases/(default)","uid":"861e60cd-bdc3-4429-9e7b-ebdd6cd524d4","createTime":"2024-12-05T21:00:57.927316Z","updateTime":"2024-12-05T21:00:57.927316Z","locationId":"eur3","type":"FIRESTORE_NATIVE","concurrencyMode":"PESSIMISTIC","versionRetentionPeriod":"3600s","earliestVersionTime":"2026-04-06T14:25:29.683353Z","appEngineIntegrationMode":"DISABLED","keyPrefix":"e","pointInTimeRecoveryEnablement":"POINT_IN_TIME_RECOVERY_DISABLED","deleteProtectionState":"DELETE_PROTECTION_DISABLED","databaseEdition":"STANDARD","freeTier":true,"realtimeUpdatesMode":"REALTIME_UPDATES_MODE_ENABLED","etag":"INOvgrfE2ZMDMObHhryI5JID"}
+[info] i  firestore: reading indexes from firestore.indexes.json... 
+[info] i  cloud.firestore: checking firestore.rules for compilation errors... 
+[debug] [2026-04-06T15:25:29.228Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:29.228Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:29.228Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [none]
+[debug] [2026-04-06T15:25:29.228Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [omitted]
+[debug] [2026-04-06T15:25:29.949Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test 200
+[debug] [2026-04-06T15:25:29.949Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test {}
+[info] +  cloud.firestore: rules file firestore.rules compiled successfully 
+[debug] [2026-04-06T15:25:29.951Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:29.951Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:29.952Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases pageSize=10&pageToken=
+[debug] [2026-04-06T15:25:30.146Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases 200
+[debug] [2026-04-06T15:25:30.146Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases {"releases":[{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore","rulesetName":"projects/proxi-play-odzp2e/rulesets/96fab3a8-5fe9-4ca5-96b0-60a3644de418","createTime":"2024-12-10T16:41:06.791891Z","updateTime":"2026-04-06T15:23:29.916826Z"},{"name":"projects/proxi-play-odzp2e/releases/firebase.storage/proxi-play-odzp2e.firebasestorage.app","rulesetName":"projects/proxi-play-odzp2e/rulesets/d24a39d5-7950-4d27-920d-ba90b029450f","createTime":"2025-02-04T13:51:17.710281Z","updateTime":"2025-02-04T13:52:22.865091Z"}]}
+[debug] [2026-04-06T15:25:30.157Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:30.157Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:30.158Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/96fab3a8-5fe9-4ca5-96b0-60a3644de418 [none]
+[debug] [2026-04-06T15:25:30.809Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/96fab3a8-5fe9-4ca5-96b0-60a3644de418 200
+[debug] [2026-04-06T15:25:30.809Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/96fab3a8-5fe9-4ca5-96b0-60a3644de418 [omitted]
+[info] i  firestore: uploading rules firestore.rules... 
+[debug] [2026-04-06T15:25:30.811Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:30.811Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:30.811Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [none]
+[debug] [2026-04-06T15:25:30.811Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [omitted]
+[debug] [2026-04-06T15:25:31.205Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets 200
+[debug] [2026-04-06T15:25:31.205Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets {"name":"projects/proxi-play-odzp2e/rulesets/a61519a3-3f0c-407b-8bfb-ca5bba98a213","source":{"files":[{"content":"rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function isAdmin() {\n      return isSignedIn()\n        && request.auth.token.email != null\n        && request.auth.token.email in [\n          \"proxiplay.pro@gmail.com\"\n        ];\n    }\n\n    function hasAdminClaim() {\n      return isSignedIn()\n        && request.auth.token.admin == true;\n    }\n\n    function isCurrentUser(userId) {\n      return isSignedIn()\n        && request.auth.uid == userId;\n    }\n\n    function isPublicGame() {\n      return resource.data.visible_public == true\n        || resource.data.visiblePublic == true;\n    }\n\n    match /admin_stats/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /enseignes/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim() || isSignedIn();\n    }\n\n    match /merchants/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim() || isSignedIn();\n    }\n\n    match /games/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /jeux/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /users/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /users/{userId}/fcm_tokens/{tokenId} {\n      allow read: if isAdmin() || isCurrentUser(userId);\n      allow write: if isCurrentUser(userId);\n    }\n\n    match /users/{userId}/favorites/{favoriteId} {\n      allow read, write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /users/{userId}/favoris/{favoriteId} {\n      allow read, write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /users/{userId}/{document=**} {\n      allow read, write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /users/{userId} {\n      allow read: if isAdmin() || isCurrentUser(userId);\n      allow write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /favorites/{document=**} {\n      allow read, write: if isSignedIn();\n    }\n\n    match /favoris/{document=**} {\n      allow read, write: if isSignedIn();\n    }\n\n    match /prizes/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /ff_push_notifications/{document=**} {\n      allow read: if isAdmin();\n      allow write: if isAdmin();\n    }\n  }\n}\n","name":"firestore.rules"}]},"createTime":"2026-04-06T15:25:31.594159Z","metadata":{"services":["cloud.firestore"]}}
+[debug] [2026-04-06T15:25:31.205Z] [rules] created ruleset projects/proxi-play-odzp2e/rulesets/a61519a3-3f0c-407b-8bfb-ca5bba98a213
+[debug] [2026-04-06T15:25:31.206Z] [rules] releasing cloud.firestore/(default) with ruleset projects/proxi-play-odzp2e/rulesets/a61519a3-3f0c-407b-8bfb-ca5bba98a213
+[debug] [2026-04-06T15:25:31.206Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:31.206Z] Checked if tokens are valid: true, expires at: 1775491952648
+[debug] [2026-04-06T15:25:31.207Z] >>> [apiv2][query] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) [none]
+[debug] [2026-04-06T15:25:31.207Z] >>> [apiv2][body] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) {"release":{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore/(default)","rulesetName":"projects/proxi-play-odzp2e/rulesets/a61519a3-3f0c-407b-8bfb-ca5bba98a213"}}
+[debug] [2026-04-06T15:25:31.523Z] <<< [apiv2][status] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) 200
+[debug] [2026-04-07T08:39:38.287Z] ----------------------------------------------------------------------
+[debug] [2026-04-07T08:39:38.290Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js deploy --only firestore:rules
+[debug] [2026-04-07T08:39:38.290Z] CLI Version:   15.6.0
+[debug] [2026-04-07T08:39:38.290Z] Platform:      win32
+[debug] [2026-04-07T08:39:38.290Z] Node Version:  v20.20.0
+[debug] [2026-04-07T08:39:38.290Z] Time:          Tue Apr 07 2026 10:39:38 GMT+0200 (heure d’été d’Europe centrale)
+[debug] [2026-04-07T08:39:38.291Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-04-07T08:39:38.293Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2026-04-07T08:39:40.798Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-07T08:39:40.798Z] > authorizing via signed-in user (proxiplay.pro@gmail.com)
+[debug] [2026-04-07T08:39:40.799Z] [iam] checking project proxi-play-odzp2e for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2026-04-07T08:39:40.799Z] Checked if tokens are valid: false, expires at: 1775491952648
+[debug] [2026-04-07T08:39:40.799Z] Checked if tokens are valid: false, expires at: 1775491952648
+[debug] [2026-04-07T08:39:40.800Z] > refreshing access token with scopes: []
+[debug] [2026-04-07T08:39:40.801Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-04-07T08:39:40.801Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-04-07T08:39:40.907Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-04-07T08:39:40.907Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-04-07T08:39:40.920Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions [none]
+[debug] [2026-04-07T08:39:40.921Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions  x-goog-user-project=proxi-play-odzp2e
+[debug] [2026-04-07T08:39:40.921Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2026-04-07T08:39:41.065Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2026-04-07T08:39:41.065Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[debug] [2026-04-07T08:39:41.133Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions 200
+[debug] [2026-04-07T08:39:41.133Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/proxi-play-odzp2e:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[info] 
+[info] === Deploying to 'proxi-play-odzp2e'...
+[info] 
+[info] i  deploying firestore 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[debug] [2026-04-07T08:39:41.140Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:41.141Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:41.141Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) [none]
+[debug] [2026-04-07T08:39:41.279Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) 200
+[debug] [2026-04-07T08:39:41.280Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/proxi-play-odzp2e/databases/(default) {"name":"projects/proxi-play-odzp2e/databases/(default)","uid":"861e60cd-bdc3-4429-9e7b-ebdd6cd524d4","createTime":"2024-12-05T21:00:57.927316Z","updateTime":"2024-12-05T21:00:57.927316Z","locationId":"eur3","type":"FIRESTORE_NATIVE","concurrencyMode":"PESSIMISTIC","versionRetentionPeriod":"3600s","earliestVersionTime":"2026-04-07T07:39:41.037559Z","appEngineIntegrationMode":"DISABLED","keyPrefix":"e","pointInTimeRecoveryEnablement":"POINT_IN_TIME_RECOVERY_DISABLED","deleteProtectionState":"DELETE_PROTECTION_DISABLED","databaseEdition":"STANDARD","freeTier":true,"realtimeUpdatesMode":"REALTIME_UPDATES_MODE_ENABLED","etag":"II67tMur25MDMObHhryI5JID"}
+[info] i  firestore: reading indexes from firestore.indexes.json... 
+[info] i  cloud.firestore: checking firestore.rules for compilation errors... 
+[debug] [2026-04-07T08:39:41.281Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:41.281Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:41.281Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [none]
+[debug] [2026-04-07T08:39:41.281Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test [omitted]
+[debug] [2026-04-07T08:39:42.035Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test 200
+[debug] [2026-04-07T08:39:42.036Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e:test {}
+[info] +  cloud.firestore: rules file firestore.rules compiled successfully 
+[debug] [2026-04-07T08:39:42.037Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:42.037Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:42.038Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases pageSize=10&pageToken=
+[debug] [2026-04-07T08:39:42.684Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases 200
+[debug] [2026-04-07T08:39:42.684Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases {"releases":[{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore","rulesetName":"projects/proxi-play-odzp2e/rulesets/a61519a3-3f0c-407b-8bfb-ca5bba98a213","createTime":"2024-12-10T16:41:06.791891Z","updateTime":"2026-04-06T15:25:31.914821Z"},{"name":"projects/proxi-play-odzp2e/releases/firebase.storage/proxi-play-odzp2e.firebasestorage.app","rulesetName":"projects/proxi-play-odzp2e/rulesets/d24a39d5-7950-4d27-920d-ba90b029450f","createTime":"2025-02-04T13:51:17.710281Z","updateTime":"2025-02-04T13:52:22.865091Z"}]}
+[debug] [2026-04-07T08:39:42.694Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:42.694Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:42.694Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/a61519a3-3f0c-407b-8bfb-ca5bba98a213 [none]
+[debug] [2026-04-07T08:39:43.323Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/a61519a3-3f0c-407b-8bfb-ca5bba98a213 200
+[debug] [2026-04-07T08:39:43.323Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets/a61519a3-3f0c-407b-8bfb-ca5bba98a213 [omitted]
+[info] i  firestore: uploading rules firestore.rules... 
+[debug] [2026-04-07T08:39:43.324Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:43.325Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:43.325Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [none]
+[debug] [2026-04-07T08:39:43.325Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets [omitted]
+[debug] [2026-04-07T08:39:43.692Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets 200
+[debug] [2026-04-07T08:39:43.692Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/rulesets {"name":"projects/proxi-play-odzp2e/rulesets/ce752305-4e94-4931-9207-70e0aa58594d","source":{"files":[{"content":"rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    function isSignedIn() {\n      return request.auth != null;\n    }\n\n    function isAdmin() {\n      return isSignedIn()\n        && request.auth.token.email != null\n        && request.auth.token.email in [\n          \"proxiplay.pro@gmail.com\"\n        ];\n    }\n\n    function hasAdminClaim() {\n      return isSignedIn()\n        && request.auth.token.admin == true;\n    }\n\n    function isCurrentUser(userId) {\n      return isSignedIn()\n        && request.auth.uid == userId;\n    }\n\n    function isPublicGame() {\n      return resource.data.visible_public == true\n        || resource.data.visiblePublic == true;\n    }\n\n    function isCurrentUserPrizeWinner() {\n      return isSignedIn()\n        && resource.data.winner_id != null\n        && resource.data.winner_id == /databases/$(database)/documents/users/$(request.auth.uid);\n    }\n\n    match /admin_stats/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /enseignes/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim() || isSignedIn();\n    }\n\n    match /merchants/{document=**} {\n      allow read: if hasAdminClaim() || isSignedIn();\n      allow write: if hasAdminClaim() || isSignedIn();\n    }\n\n    match /games/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /jeux/{gameId} {\n      allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();\n      allow write: if hasAdminClaim();\n\n      match /participants/{participantId} {\n        allow read: if isAdmin() || isSignedIn();\n        allow create: if isSignedIn();\n        allow update, delete: if hasAdminClaim();\n      }\n    }\n\n    match /users/{document=**} {\n      allow read: if isAdmin();\n      allow write: if false;\n    }\n\n    match /users/{userId}/fcm_tokens/{tokenId} {\n      allow read: if isAdmin() || isCurrentUser(userId);\n      allow write: if isCurrentUser(userId);\n    }\n\n    match /users/{userId}/favorites/{favoriteId} {\n      allow read, write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /users/{userId}/favoris/{favoriteId} {\n      allow read, write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /users/{userId}/{document=**} {\n      allow read, write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /users/{userId} {\n      allow read: if isAdmin() || isCurrentUser(userId);\n      allow write: if isAdmin() || isCurrentUser(userId);\n    }\n\n    match /favorites/{document=**} {\n      allow read, write: if isSignedIn();\n    }\n\n    match /favoris/{document=**} {\n      allow read, write: if isSignedIn();\n    }\n\n    match /prizes/{document=**} {\n      allow read: if isAdmin() || isCurrentUserPrizeWinner();\n      allow write: if false;\n    }\n\n    match /ff_push_notifications/{document=**} {\n      allow read: if isAdmin();\n      allow write: if isAdmin();\n    }\n  }\n}\n","name":"firestore.rules"}]},"createTime":"2026-04-07T08:39:43.378895Z","metadata":{"services":["cloud.firestore"]}}
+[debug] [2026-04-07T08:39:43.692Z] [rules] created ruleset projects/proxi-play-odzp2e/rulesets/ce752305-4e94-4931-9207-70e0aa58594d
+[debug] [2026-04-07T08:39:43.693Z] [rules] releasing cloud.firestore/(default) with ruleset projects/proxi-play-odzp2e/rulesets/ce752305-4e94-4931-9207-70e0aa58594d
+[debug] [2026-04-07T08:39:43.693Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:43.693Z] Checked if tokens are valid: true, expires at: 1775554779907
+[debug] [2026-04-07T08:39:43.694Z] >>> [apiv2][query] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) [none]
+[debug] [2026-04-07T08:39:43.694Z] >>> [apiv2][body] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) {"release":{"name":"projects/proxi-play-odzp2e/releases/cloud.firestore/(default)","rulesetName":"projects/proxi-play-odzp2e/rulesets/ce752305-4e94-4931-9207-70e0aa58594d"}}
+[debug] [2026-04-07T08:39:44.541Z] <<< [apiv2][status] PATCH https://firebaserules.googleapis.com/v1/projects/proxi-play-odzp2e/releases/cloud.firestore/(default) 200

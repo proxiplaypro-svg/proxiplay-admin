@@ -97,6 +97,14 @@ export interface DashboardData {
 
 export type GameStatus = "actif" | "expire" | "brouillon" | "prive";
 
+export interface GameSecondaryPrize {
+  id: string;
+  name: string;
+  description: string;
+  count: string;
+  image: string | null;
+}
+
 export interface Game {
   id: string;
   title: string;
@@ -113,10 +121,68 @@ export interface Game {
   sessionCount: number;
   collectionName: "games" | "jeux";
   imageMissing: boolean;
+  hasMainPrize: boolean;
+  mainPrizeTitle: string;
+  mainPrizeDescription: string;
+  mainPrizeValue: string;
+  mainPrizeImage: string | null;
+  secondaryPrizes: GameSecondaryPrize[];
 }
 
 export interface GameMerchantOption {
   id: string;
   name: string;
   collectionName: "enseignes" | "merchants";
+}
+
+export type MerchantPilotageStatus = "actif" | "a_relancer" | "inactif";
+export type MerchantPilotageFilter = "tous" | "a_relancer" | "sans_jeu_actif" | "actifs";
+export type MerchantPilotageSort =
+  | "score_desc"
+  | "last_contact_desc"
+  | "participations_desc"
+  | "name_asc";
+
+export interface MerchantRelanceHistoryItem {
+  id: string;
+  channel: "email" | "whatsapp" | "manual";
+  label: string;
+  note: string;
+  timestampLabel: string;
+  timestampValue: number;
+}
+
+export interface MerchantActiveGameSummary {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  status: "actif" | "expire_bientot" | "brouillon" | "expire";
+  expiryLabel: string;
+  participationsLabel: string;
+  sessionsCount: number;
+  endDateValue: number;
+}
+
+export interface MerchantPilotageItem {
+  id: string;
+  name: string;
+  city: string;
+  email: string;
+  phone: string;
+  merchantCollectionName: "enseignes" | "merchants";
+  gamesCollectionName: "games" | "jeux";
+  commercialStatus: "" | "actif" | "a_relancer" | "inactif";
+  lastContactDate: string | null;
+  lastContactDateLabel: string;
+  lastContactDateValue: number;
+  lastContactChannel: string;
+  gamesActiveCount: number;
+  clicksJ30: number;
+  participationsJ30: number;
+  gainsRemis: number;
+  engagementScore: number;
+  status: MerchantPilotageStatus;
+  initials: string;
+  activeGames: MerchantActiveGameSummary[];
+  relanceHistory: MerchantRelanceHistoryItem[];
 }

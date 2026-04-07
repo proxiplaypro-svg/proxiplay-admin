@@ -1,5 +1,6 @@
 "use client";
 
+import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
 import type { Game } from "@/types/dashboard";
 
 type GameCardProps = {
@@ -36,7 +37,7 @@ function getProgress(game: Game) {
     return {
       progress: 0,
       barClassName: "bg-[#E24B4A]",
-      helper: "0% ecoule · dates a verifier",
+      helper: "0% écoulé · dates à vérifier",
     };
   }
 
@@ -44,16 +45,13 @@ function getProgress(game: Game) {
   const elapsed = Math.min(Math.max(now - game.startDateValue, 0), duration);
   const progress = Math.round((elapsed / duration) * 100);
   const remainingRatio = Math.max((game.endDateValue - now) / duration, 0);
-  const remainingDays = Math.max(
-    0,
-    Math.ceil((game.endDateValue - now) / (1000 * 60 * 60 * 24)),
-  );
+  const remainingDays = Math.max(0, Math.ceil((game.endDateValue - now) / (1000 * 60 * 60 * 24)));
 
   if (now >= game.endDateValue) {
     return {
       progress: 100,
       barClassName: "bg-[#E24B4A]",
-      helper: `100% ecoule · 0j restants`,
+      helper: "100% écoulé · 0j restants",
     };
   }
 
@@ -61,7 +59,7 @@ function getProgress(game: Game) {
     return {
       progress,
       barClassName: "bg-[#E24B4A]",
-      helper: `${progress}% ecoule · ${remainingDays}j restants`,
+      helper: `${progress}% écoulé · ${remainingDays}j restants`,
     };
   }
 
@@ -69,14 +67,14 @@ function getProgress(game: Game) {
     return {
       progress,
       barClassName: "bg-[#EF9F27]",
-      helper: `${progress}% ecoule · ${remainingDays}j restants`,
+      helper: `${progress}% écoulé · ${remainingDays}j restants`,
     };
   }
 
   return {
     progress,
     barClassName: "bg-[#639922]",
-    helper: `${progress}% ecoule · ${remainingDays}j restants`,
+    helper: `${progress}% écoulé · ${remainingDays}j restants`,
   };
 }
 
@@ -117,7 +115,7 @@ function getBadge(game: Game) {
 
     if (remainingDays <= 7) {
       return {
-        label: "expire bientot",
+        label: "expire bientôt",
         className: "bg-[#FAEEDA] text-[#633806]",
       };
     }
@@ -146,6 +144,11 @@ export function GameCard({
 }: GameCardProps) {
   const badge = getBadge(game);
   const progress = getProgress(game);
+  const prizeSummary = buildPrizeSummary(game);
+  const mainPrizeBadgeClassName =
+    prizeSummary.mainPrizeState === "named"
+      ? "border border-[#B6D7F2] bg-[#EAF4FD] text-[#185FA5]"
+      : "border border-[#F0D8A8] bg-[#FFF6E8] text-[#8C6115]";
 
   return (
     <article
@@ -156,14 +159,10 @@ export function GameCard({
       <div className="flex h-12 w-12 items-center justify-center">
         {game.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            className="h-12 w-12 rounded-[8px] object-cover"
-            src={game.imageUrl}
-            alt={game.title}
-          />
+          <img className="h-12 w-12 rounded-[8px] object-cover" src={game.imageUrl} alt={game.title} />
         ) : (
           <div className="flex h-12 w-12 items-center justify-center rounded-[8px] border border-[#F09595] bg-[#FCEBEB] text-[22px] leading-none text-[#E24B4A]">
-            ✕
+            x
           </div>
         )}
       </div>
@@ -184,12 +183,40 @@ export function GameCard({
           ).format(game.sessionCount)} parties`}
         </p>
 
+        <div className="mt-3 flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+          {prizeSummary.hasMainPrize ? (
+            <span className={`rounded-full px-2 py-1 text-[10.5px] font-medium leading-none ${mainPrizeBadgeClassName}`}>
+              {`Lot principal : ${prizeSummary.mainPrizeLabel}`}
+            </span>
+          ) : null}
+
+          {prizeSummary.secondaryCount > 0 ? (
+            <span className="rounded-full border border-[rgba(15,23,42,0.08)] bg-[rgba(15,23,42,0.04)] px-2 py-1 text-[10.5px] font-medium leading-none text-[var(--color-text-secondary,#5b6472)]">
+                {prizeSummary.secondaryCountLabel}
+              </span>
+          ) : null}
+
+          {prizeSummary.isEmpty ? (
+            <span className="rounded-full border border-[#F2D49A] bg-[#FFF5DF] px-2 py-1 text-[10.5px] font-medium leading-none text-[#9A6508]">
+              Aucun lot renseigné
+            </span>
+          ) : null}
+          </div>
+
+          {prizeSummary.secondaryPreview ? (
+            <div
+              className="max-w-[360px] truncate pl-1 text-[10.5px] leading-[1.35] text-[var(--color-text-secondary,#7b7b7b)]"
+              title={prizeSummary.secondaryTooltip ?? undefined}
+            >
+              {`Secondaires : ${prizeSummary.secondaryPreview}`}
+            </div>
+          ) : null}
+        </div>
+
         <div className="mt-2 flex items-center gap-2">
           <div className="h-[3px] w-full max-w-[280px] overflow-hidden rounded-full bg-[rgba(0,0,0,0.08)]">
-            <div
-              className={`h-full rounded-full ${progress.barClassName}`}
-              style={{ width: `${progress.progress}%` }}
-            />
+            <div className={`h-full rounded-full ${progress.barClassName}`} style={{ width: `${progress.progress}%` }} />
           </div>
           <span className="whitespace-nowrap text-[11px] text-[var(--color-text-tertiary,#9a9a9a)]">
             {progress.helper}
