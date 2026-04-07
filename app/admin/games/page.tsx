@@ -235,15 +235,25 @@ async function pickCollectionName<TName extends string>(
   names: readonly TName[],
   preferred: TName,
 ) {
-  const snapshots = await Promise.all(
-    names.map(async (name) => ({
-      name,
-      snapshot: await getDocs(query(collection(db, name), limit(1))),
-    })),
-  );
+  let firstReadable: TName | null = null;
 
-  const withDocs = snapshots.find((entry) => !entry.snapshot.empty);
-  return withDocs?.name ?? preferred;
+  for (const name of names) {
+    try {
+      const snapshot = await getDocs(query(collection(db, name), limit(1)));
+
+      if (!firstReadable) {
+        firstReadable = name;
+      }
+
+      if (!snapshot.empty) {
+        return name;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return firstReadable ?? preferred;
 }
 
 function mapMerchantOption(
