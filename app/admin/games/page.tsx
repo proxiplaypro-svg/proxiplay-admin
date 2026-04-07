@@ -22,6 +22,7 @@ import { GameEditModal } from "@/components/admin/jeux/GameEditModal";
 import { duplicateGame } from "@/lib/firebase/adminActions";
 import { db } from "@/lib/firebase/client-app";
 import {
+  ensureGamesAdminAccess,
   getGamesQueryErrorMessage,
   updateGame,
   updateGameStatus,
@@ -361,6 +362,8 @@ export default function AdminGamesPage() {
       setError(null);
 
       try {
+        await ensureGamesAdminAccess();
+
         const [gameCollection, merchantCollection] = await Promise.all([
           pickCollectionName(["games", "jeux"] as const, "games"),
           pickCollectionName(["enseignes", "merchants"] as const, "enseignes"),

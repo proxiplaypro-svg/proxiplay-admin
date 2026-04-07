@@ -396,6 +396,40 @@ exports.onPrizeCreated = onDocumentCreated("prizes/{prizeId}", async (event) => 
   }
 });
 
+exports.onInstantWinnerCreated = onDocumentCreated(
+  "games/{gameId}/instant_winners/{winnerId}",
+  async (event) => {
+    const snapshot = event.data;
+    const gameId = event.params.gameId;
+
+    if (!snapshot) {
+      logger.warn("onInstantWinnerCreated triggered without snapshot.");
+      return;
+    }
+
+    try {
+      const gameRef = db.doc(`games/${gameId}`);
+      const enseigneRef = await getMerchantRefFromGameRef(gameRef);
+
+      await updateMerchantStats(enseigneRef, {
+        winners_count: FieldValue.increment(1),
+      });
+
+      logger.info("Merchant winners_count incremented from instant winner", {
+        winnerId: snapshot.id,
+        gameId,
+        enseignePath: enseigneRef.path,
+      });
+    } catch (error) {
+      logger.error("Failed to update winners_count on merchant from instant winner", {
+        winnerId: snapshot.id,
+        gameId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
+);
+
 const {
   rebuildAdminStatsCallable,
   rebuildAdminStatsScheduled,
@@ -410,6 +444,7 @@ const {
   onAdminStatsEnseigneDeleted,
   onAdminStatsParticipantCreated,
   onAdminStatsPrizeCreated,
+  onAdminStatsInstantWinnerCreated,
 } = createAdminStatsTriggers();
 
 exports.rebuildAdminStatsCallable = rebuildAdminStatsCallable;
@@ -422,3 +457,4 @@ exports.onAdminStatsEnseigneCreated = onAdminStatsEnseigneCreated;
 exports.onAdminStatsEnseigneDeleted = onAdminStatsEnseigneDeleted;
 exports.onAdminStatsParticipantCreated = onAdminStatsParticipantCreated;
 exports.onAdminStatsPrizeCreated = onAdminStatsPrizeCreated;
+exports.onAdminStatsInstantWinnerCreated = onAdminStatsInstantWinnerCreated;

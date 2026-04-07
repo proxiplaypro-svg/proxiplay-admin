@@ -67,6 +67,11 @@ async function computeMerchantStats(enseigneRef) {
     winnersCount += prizesSnapshot.size;
   }
 
+  for (const gameDoc of gamesSnapshot.docs) {
+    const instantWinnersSnapshot = await gameDoc.ref.collection("instant_winners").get();
+    winnersCount += instantWinnersSnapshot.size;
+  }
+
   return {
     games_count: gamesSnapshot.size,
     participations_count: participationsCount,

@@ -29,10 +29,14 @@ service cloud.firestore {
         || resource.data.visiblePublic == true;
     }
 
-    function isCurrentUserPrizeWinner() {
-      return isSignedIn()
-        && resource.data.winner_id != null
-        && resource.data.winner_id == /databases/$(database)/documents/users/$(request.auth.uid);
+    // Support collectionGroup reads used by the live app for winner-related subcollections.
+    match /{path=**}/instant_winners/{winnerId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /{path=**}/participants/{participantId} {
+      allow read: if true;
     }
 
     match /admin_stats/{document=**} {
@@ -54,8 +58,14 @@ service cloud.firestore {
       allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();
       allow write: if hasAdminClaim();
 
+      match /instant_winners/{winnerId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
       match /participants/{participantId} {
-        allow read: if isAdmin() || isSignedIn();
+        // Public pages still resolve winner display from participant documents.
+        allow read: if true;
         allow create: if isSignedIn();
         allow update, delete: if hasAdminClaim();
       }
@@ -65,8 +75,14 @@ service cloud.firestore {
       allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();
       allow write: if hasAdminClaim();
 
+      match /instant_winners/{winnerId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
       match /participants/{participantId} {
-        allow read: if isAdmin() || isSignedIn();
+        // Public pages still resolve winner display from participant documents.
+        allow read: if true;
         allow create: if isSignedIn();
         allow update, delete: if hasAdminClaim();
       }
@@ -95,7 +111,9 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAdmin() || isCurrentUser(userId);
+      // The live app also renders winners on the public home.
+      // Keep nested user data protected while allowing top-level profile reads.
+      allow read: if isAdmin() || isCurrentUser(userId) || true;
       allow write: if isAdmin() || isCurrentUser(userId);
     }
 
@@ -108,7 +126,8 @@ service cloud.firestore {
     }
 
     match /prizes/{document=**} {
-      allow read: if isAdmin() || isCurrentUserPrizeWinner();
+      // Public winner banners rely on reading prize documents without auth.
+      allow read: if true;
       allow write: if false;
     }
 

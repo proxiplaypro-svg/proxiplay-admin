@@ -20,6 +20,7 @@ async function rebuildAdminStats() {
     merchantsCountSnapshot,
     participationsCountSnapshot,
     winnersCountSnapshot,
+    instantWinnersCountSnapshot,
   ] = await Promise.all([
     db.collection("games").get(),
     db.collection("users").count().get(),
@@ -27,6 +28,7 @@ async function rebuildAdminStats() {
     db.collection("enseignes").count().get(),
     db.collectionGroup("participants").count().get(),
     db.collection("prizes").count().get(),
+    db.collectionGroup("instant_winners").count().get(),
   ]);
 
   const now = new Date();
@@ -41,7 +43,8 @@ async function rebuildAdminStats() {
     playersCount: playersCountSnapshot.data().count,
     merchantsCount: merchantsCountSnapshot.data().count,
     participationsCount: participationsCountSnapshot.data().count,
-    winnersCount: winnersCountSnapshot.data().count,
+    winnersCount:
+      winnersCountSnapshot.data().count + instantWinnersCountSnapshot.data().count,
   };
 
   await writeAdminStatsRebuild(stats);

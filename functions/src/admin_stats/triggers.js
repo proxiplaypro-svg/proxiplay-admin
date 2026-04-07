@@ -194,6 +194,28 @@ function createAdminStatsTriggers() {
     }
   });
 
+  const onAdminStatsInstantWinnerCreated = onDocumentCreated(
+    "games/{gameId}/instant_winners/{winnerId}",
+    async (event) => {
+      const snapshot = event.data;
+
+      if (!snapshot) {
+        return;
+      }
+
+      try {
+        await applyIncrementalAdminStats({
+          [ADMIN_STATS_FIELDS.winnersCount]: FieldValue.increment(1),
+        });
+      } catch (error) {
+        logAdminStatsError("Failed to increment admin stats on instant winner create", {
+          gameId: event.params.gameId,
+          winnerId: snapshot.id,
+        }, error);
+      }
+    },
+  );
+
   return {
     onAdminStatsGameCreated,
     onAdminStatsGameDeleted,
@@ -203,6 +225,7 @@ function createAdminStatsTriggers() {
     onAdminStatsEnseigneDeleted,
     onAdminStatsParticipantCreated,
     onAdminStatsPrizeCreated,
+    onAdminStatsInstantWinnerCreated,
   };
 }
 

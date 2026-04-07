@@ -1,6 +1,7 @@
 "use client";
 
 import { FirebaseError } from "firebase/app";
+import type { User } from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -21,6 +22,7 @@ import type {
   GameSecondaryPrize,
   GameStatus,
 } from "@/types/dashboard";
+import { auth } from "./auth";
 import { db, storage } from "./client-app";
 
 type GameCollectionName = "games" | "jeux";
@@ -120,6 +122,35 @@ export type DuplicateGameResult = {
 
 const VALID_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
+const ADMIN_FALLBACK_EMAIL = "proxiplay.pro@gmail.com";
+
+function isFallbackAdminEmail(email: string | null | undefined) {
+  return email?.trim().toLowerCase() === ADMIN_FALLBACK_EMAIL;
+}
+
+async function hasGamesAdminAccess(user: User | null) {
+  if (!user) {
+    return false;
+  }
+
+  const tokenResult = await user.getIdTokenResult();
+
+  return tokenResult.claims.admin === true || isFallbackAdminEmail(user.email);
+}
+
+export async function ensureGamesAdminAccess() {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error("Connexion requise pour acceder a l administration des jeux.");
+  }
+
+  if (await hasGamesAdminAccess(user)) {
+    return user;
+  }
+
+  throw new Error("Acces admin requis pour lire ou modifier les jeux.");
+}
 
 function readText(...values: Array<string | null | undefined>) {
   for (const value of values) {
@@ -446,6 +477,8 @@ function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
 }
 
 export async function getGamesAdminData(): Promise<GamesAdminData> {
+  await ensureGamesAdminAccess();
+
   const [gameCollection, merchantCollection] = await Promise.all([
     pickCollectionName(["games", "jeux"] as const, "games"),
     pickCollectionName(["enseignes", "merchants"] as const, "enseignes"),
@@ -475,6 +508,7 @@ export async function getGamesAdminData(): Promise<GamesAdminData> {
 }
 
 export async function updateGameStatus(input: UpdateGameStatusInput) {
+  await ensureGamesAdminAccess();
   await updateDoc(doc(db, input.collectionName, input.gameId), buildStatusPatch(input.status));
 }
 
@@ -517,6 +551,8 @@ async function uploadPrizeImage(gameId: string, folderName: string, file: File) 
 }
 
 export async function updateGame(input: UpdateGameInput) {
+  await ensureGamesAdminAccess();
+
   let finalImageUrl = input.imageUrl;
   let finalMainPrizeImage = input.mainPrizeImage;
   const finalSecondaryPrizes = [...input.secondaryPrizes];
@@ -567,6 +603,8 @@ export async function duplicateGameDocument(
   input: DuplicateGameInput,
   merchantCollectionName: MerchantCollectionName = "enseignes",
 ): Promise<DuplicateGameResult> {
+  await ensureGamesAdminAccess();
+
   const adminData = await getGamesAdminData();
   const original = adminData.games.find((game) => game.id === input.gameId);
 
