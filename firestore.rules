@@ -19,6 +19,41 @@ service cloud.firestore {
         && request.auth.token.admin == true;
     }
 
+    function signedInEmail() {
+      return isSignedIn() && request.auth.token.email != null
+        ? request.auth.token.email
+        : null;
+    }
+
+    function ownsEnseigneById(merchantId) {
+      return merchantId != null
+        && signedInEmail() != null
+        && exists(/databases/$(database)/documents/enseignes/$(merchantId))
+        && get(/databases/$(database)/documents/enseignes/$(merchantId)).data.email == signedInEmail();
+    }
+
+    function ownsMerchantById(merchantId) {
+      return merchantId != null
+        && signedInEmail() != null
+        && exists(/databases/$(database)/documents/merchants/$(merchantId))
+        && get(/databases/$(database)/documents/merchants/$(merchantId)).data.email == signedInEmail();
+    }
+
+    function requestedGameMerchantId() {
+      return request.resource.data.merchantId != null
+        ? request.resource.data.merchantId
+        : request.resource.data.merchant_id != null
+          ? request.resource.data.merchant_id
+          : resource.data.merchantId != null
+            ? resource.data.merchantId
+            : resource.data.merchant_id;
+    }
+
+    function canManageRequestedGameAsMerchant() {
+      let merchantId = requestedGameMerchantId();
+      return ownsEnseigneById(merchantId) || ownsMerchantById(merchantId);
+    }
+
     function isCurrentUser(userId) {
       return isSignedIn()
         && request.auth.uid == userId;
@@ -56,7 +91,7 @@ service cloud.firestore {
 
     match /games/{gameId} {
       allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();
-      allow write: if hasAdminClaim();
+      allow write: if hasAdminClaim() || canManageRequestedGameAsMerchant();
 
       match /instant_winners/{winnerId} {
         allow read: if true;
@@ -73,7 +108,7 @@ service cloud.firestore {
 
     match /jeux/{gameId} {
       allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();
-      allow write: if hasAdminClaim();
+      allow write: if hasAdminClaim() || canManageRequestedGameAsMerchant();
 
       match /instant_winners/{winnerId} {
         allow read: if true;

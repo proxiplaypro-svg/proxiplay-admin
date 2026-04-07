@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import type { MerchantActiveGameSummary, MerchantPilotageItem, MerchantRelanceHistoryItem } from "@/types/dashboard";
+import type { ReactNode } from "react";
+import type {
+  MerchantActiveGameSummary,
+  MerchantPilotageItem,
+  MerchantRelanceHistoryItem,
+} from "@/types/dashboard";
 
 type MerchantPanelProps = {
   merchant: MerchantPilotageItem | null;
@@ -13,33 +18,24 @@ type MerchantPanelProps = {
 
 function getScoreTone(score: number) {
   if (score < 30) {
-    return { bar: "#E24B4A", label: "#F7B2B1" };
+    return { bar: "#E24B4A", label: "#A32D2D" };
   }
 
   if (score <= 60) {
-    return { bar: "#EF9F27", label: "#FFD899" };
+    return { bar: "#EF9F27", label: "#633806" };
   }
 
-  return { bar: "#639922", label: "#D6F0B6" };
+  return { bar: "#639922", label: "#3B6D11" };
 }
 
 function getStatusUi(status: MerchantPilotageItem["status"]) {
   switch (status) {
     case "actif":
-      return {
-        label: "actif",
-        className: "border border-[rgba(143,227,168,0.24)] bg-[rgba(143,227,168,0.12)] text-[var(--success)]",
-      };
+      return { label: "actif", className: "border-[#CFE5AF] bg-[#EAF3DE] text-[#3B6D11]" };
     case "a_relancer":
-      return {
-        label: "a relancer",
-        className: "border border-[rgba(255,214,123,0.24)] bg-[rgba(255,214,123,0.12)] text-[var(--warning)]",
-      };
+      return { label: "a relancer", className: "border-[#F3D8A6] bg-[#FAEEDA] text-[#633806]" };
     default:
-      return {
-        label: "inactif",
-        className: "border border-[rgba(255,142,142,0.24)] bg-[rgba(255,142,142,0.12)] text-[var(--danger)]",
-      };
+      return { label: "inactif", className: "border-[#F1D1D1] bg-[#FCEBEB] text-[#A32D2D]" };
   }
 }
 
@@ -50,32 +46,20 @@ function getHistoryDotColor(channel: MerchantRelanceHistoryItem["channel"]) {
     case "whatsapp":
       return "#25D366";
     default:
-      return "rgba(159,177,199,0.8)";
+      return "#B7B5AC";
   }
 }
 
 function getGameBadge(game: MerchantActiveGameSummary) {
   switch (game.status) {
     case "actif":
-      return {
-        label: "actif",
-        className: "border border-[rgba(143,227,168,0.24)] bg-[rgba(143,227,168,0.12)] text-[var(--success)]",
-      };
+      return { label: "actif", className: "border-[#CFE5AF] bg-[#EAF3DE] text-[#3B6D11]" };
     case "expire_bientot":
-      return {
-        label: "expire bientot",
-        className: "border border-[rgba(255,214,123,0.24)] bg-[rgba(255,214,123,0.12)] text-[var(--warning)]",
-      };
+      return { label: "expire bientot", className: "border-[#F3D8A6] bg-[#FAEEDA] text-[#633806]" };
     case "brouillon":
-      return {
-        label: "brouillon",
-        className: "border border-[rgba(159,177,199,0.16)] bg-[rgba(255,255,255,0.04)] text-[var(--muted)]",
-      };
+      return { label: "brouillon", className: "border-[#E8E8E4] bg-[#F7F7F5] text-[#666]" };
     default:
-      return {
-        label: "expire",
-        className: "border border-[rgba(255,142,142,0.24)] bg-[rgba(255,142,142,0.12)] text-[var(--danger)]",
-      };
+      return { label: "expire", className: "border-[#F1D1D1] bg-[#FCEBEB] text-[#A32D2D]" };
   }
 }
 
@@ -88,10 +72,20 @@ function renderGameThumb(game: MerchantActiveGameSummary) {
   }
 
   return (
-    <div className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-[rgba(255,255,255,0.06)] text-[1.1rem]">
-      🎯
+    <div className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-[#F7F7F5] text-[1.1rem]">
+      ◈
     </div>
   );
+}
+
+function PanelSection({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <section className={`rounded-[12px] border border-[#E8E8E4] bg-white p-6 ${className}`}>{children}</section>;
 }
 
 export function MerchantPanel({
@@ -103,11 +97,13 @@ export function MerchantPanel({
 }: MerchantPanelProps) {
   if (!merchant) {
     return (
-      <aside className="sticky top-0 rounded-[28px] border border-[rgba(159,177,199,0.08)] bg-[rgba(255,255,255,0.04)] p-6">
-        <strong className="block text-[1.05rem]">Aucun marchand selectionne</strong>
-        <p className="mt-3 text-[0.95rem] leading-[1.6] text-[var(--muted)]">
-          Selectionne une enseigne dans la liste pour afficher son score, ses jeux actifs et son historique de relance.
-        </p>
+      <aside className="sticky top-0">
+        <PanelSection>
+          <strong className="block text-[1.05rem] text-[#1a1a1a]">Aucun marchand selectionne</strong>
+          <p className="mt-3 text-[0.95rem] leading-[1.6] text-[#666]">
+            Selectionne une enseigne dans la liste pour afficher son score, ses jeux actifs et son historique de relance.
+          </p>
+        </PanelSection>
       </aside>
     );
   }
@@ -115,38 +111,43 @@ export function MerchantPanel({
   const tone = getScoreTone(merchant.engagementScore);
   const statusUi = getStatusUi(merchant.status);
   const displayedGames = merchant.activeGames.slice(0, 3);
+  const lastContactLabel =
+    merchant.lastContactDateValue > 0 ? merchant.lastContactDateLabel : "Non renseigne";
 
   return (
     <aside className="sticky top-0 grid gap-4">
-      <section className="rounded-[28px] border border-[rgba(159,177,199,0.08)] bg-[rgba(255,255,255,0.04)] p-6">
+      <PanelSection>
         <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[rgba(99,153,34,0.14)] text-[1.05rem] font-semibold text-[#D6F0B6]">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#EAF3DE] text-[1.05rem] font-semibold text-[#3B6D11]">
             {merchant.initials}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="m-0 truncate text-[1.45rem] text-[var(--foreground)]">{merchant.name}</h3>
-              <span className={`inline-flex rounded-full px-3 py-1 text-[0.84rem] font-medium ${statusUi.className}`}>
+              <h3 className="m-0 truncate text-[1.45rem] text-[#1a1a1a]">{merchant.name}</h3>
+              <span className={`inline-flex rounded-full border px-3 py-1 text-[0.84rem] font-medium ${statusUi.className}`}>
                 {statusUi.label}
               </span>
             </div>
-            <p className="mt-2 break-words text-[0.95rem] leading-[1.65] text-[var(--muted)]">
+            <p className="mt-2 break-words text-[0.95rem] leading-[1.65] text-[#666]">
               {[merchant.city || "Ville non renseignee", merchant.email || "Email non renseigne", merchant.phone || "Telephone non renseigne"].join(" · ")}
+            </p>
+            <p className="mt-2 text-[12px]" style={{ color: merchant.lastContactDateValue > 0 ? "#666" : "#999" }}>
+              Derniere relance : {lastContactLabel}
             </p>
           </div>
         </div>
 
         <div className="mt-6">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[var(--muted)]">Score d engagement</span>
+            <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[#999]">Score d engagement</span>
             <strong className="text-[1.05rem]" style={{ color: tone.label }}>
               {merchant.engagementScore}/100
             </strong>
           </div>
-          <div className="mt-3 h-[6px] overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
+          <div className="mt-3 h-[6px] overflow-hidden rounded-full bg-[#E8E8E4]">
             <div className="h-full rounded-full" style={{ width: `${merchant.engagementScore}%`, backgroundColor: tone.bar }} />
           </div>
-          <div className="mt-2 flex items-center justify-between text-[0.84rem] text-[var(--muted)]">
+          <div className="mt-2 flex items-center justify-between text-[0.84rem] text-[#999]">
             <span>Inactif</span>
             <span>Excellent</span>
           </div>
@@ -155,14 +156,14 @@ export function MerchantPanel({
         <div className="mt-6 grid grid-cols-2 gap-3">
           <Link
             href={`/admin/games/new?merchantId=${merchant.id}`}
-            className="flex min-h-[54px] items-center justify-center rounded-[18px] border border-[rgba(99,153,34,0.28)] bg-[rgba(99,153,34,0.14)] px-4 text-center text-[1rem] font-medium text-[var(--foreground)] transition hover:bg-[rgba(99,153,34,0.18)]"
+            className="flex min-h-[54px] items-center justify-center rounded-[10px] border border-[#CFE5AF] bg-[#EAF3DE] px-4 text-center text-[1rem] font-medium text-[#3B6D11] transition hover:bg-[#E2F0D0]"
           >
             + Creer un jeu
           </Link>
           <button
             type="button"
             onClick={onEdit}
-            className="flex min-h-[54px] items-center justify-center rounded-[18px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.03)] px-4 text-center text-[1rem] font-medium text-[var(--foreground)] transition hover:border-[rgba(159,177,199,0.18)] hover:bg-[rgba(255,255,255,0.05)]"
+            className="flex min-h-[54px] items-center justify-center rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 text-center text-[1rem] font-medium text-[#1a1a1a] transition hover:border-[#D9D9D4] hover:bg-[#FAFAF8]"
           >
             Modifier fiche
           </button>
@@ -174,7 +175,7 @@ export function MerchantPanel({
               }
             }}
             disabled={!whatsappHref}
-            className="flex min-h-[54px] items-center justify-center rounded-[18px] border px-4 text-center text-[1rem] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-[54px] items-center justify-center rounded-[10px] border px-4 text-center text-[1rem] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: "#25D366", borderColor: "rgba(37,211,102,0.3)" }}
           >
             WhatsApp
@@ -187,15 +188,15 @@ export function MerchantPanel({
               }
             }}
             disabled={!emailHref}
-            className="flex min-h-[54px] items-center justify-center rounded-[18px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.03)] px-4 text-center text-[1rem] font-medium text-[var(--foreground)] transition hover:border-[rgba(159,177,199,0.18)] hover:bg-[rgba(255,255,255,0.05)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-[54px] items-center justify-center rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 text-center text-[1rem] font-medium text-[#1a1a1a] transition hover:border-[#D9D9D4] hover:bg-[#FAFAF8] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Email relance
           </button>
         </div>
-      </section>
+      </PanelSection>
 
-      <section className="rounded-[28px] border border-[rgba(159,177,199,0.08)] bg-[rgba(255,255,255,0.04)] p-6">
-        <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[var(--muted)]">Stats J30</span>
+      <PanelSection>
+        <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[#999]">Stats J30</span>
         <div className="mt-5 grid gap-4">
           {[
             ["Participations", merchant.participationsJ30],
@@ -204,30 +205,30 @@ export function MerchantPanel({
             ["Gains remis", merchant.gainsRemis],
           ].map(([label, value]) => (
             <div key={label} className="flex items-center justify-between gap-4 text-[1rem]">
-              <span className="text-[var(--muted)]">{label}</span>
-              <strong className="text-[var(--foreground)]">{value}</strong>
+              <span className="text-[#666]">{label}</span>
+              <strong className="text-[#1a1a1a]">{value}</strong>
             </div>
           ))}
         </div>
-      </section>
+      </PanelSection>
 
-      <section className="rounded-[28px] border border-[rgba(159,177,199,0.08)] bg-[rgba(255,255,255,0.04)] p-6">
+      <PanelSection>
         <div className="flex items-center justify-between gap-4">
           <div>
-            <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[var(--muted)]">Jeux en cours</span>
-            <p className="mt-2 text-[0.95rem] text-[var(--muted)]">
+            <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[#999]">Jeux en cours</span>
+            <p className="mt-2 text-[0.95rem] text-[#666]">
               {merchant.gamesActiveCount > 0
                 ? `${merchant.gamesActiveCount} jeu${merchant.gamesActiveCount > 1 ? "x" : ""} actif${merchant.gamesActiveCount > 1 ? "s" : ""}`
                 : "Aucun jeu actif pour le moment"}
             </p>
           </div>
-          <Link href={`/admin/commercants/${merchant.id}`} className="text-[0.92rem] font-medium text-[#BFD0FF]">
+          <Link href={`/admin/commercants/${merchant.id}`} className="text-[0.92rem] font-medium text-[#639922]">
             Voir tous →
           </Link>
         </div>
 
         {displayedGames.length === 0 ? (
-          <p className="mt-5 text-[0.95rem] leading-[1.6] text-[var(--muted)]">
+          <p className="mt-5 text-[0.95rem] leading-[1.6] text-[#666]">
             Aucun jeu actif a afficher sur ce marchand.
           </p>
         ) : (
@@ -238,16 +239,16 @@ export function MerchantPanel({
               return (
                 <div
                   key={game.id}
-                  className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-[20px] border border-[rgba(159,177,199,0.08)] bg-[rgba(255,255,255,0.03)] p-3"
+                  className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-[10px] border border-[#E8E8E4] bg-[#FCFCFB] p-3"
                 >
                   {renderGameThumb(game)}
                   <div className="min-w-0">
-                    <strong className="block truncate text-[1rem] text-[var(--foreground)]">{game.name}</strong>
-                    <p className="mt-1 truncate text-[0.9rem] text-[var(--muted)]">
+                    <strong className="block truncate text-[1rem] text-[#1a1a1a]">{game.name}</strong>
+                    <p className="mt-1 truncate text-[0.9rem] text-[#666]">
                       {game.expiryLabel} · {game.participationsLabel}
                     </p>
                   </div>
-                  <span className={`inline-flex rounded-full px-3 py-1 text-[0.82rem] font-medium ${badge.className}`}>
+                  <span className={`inline-flex rounded-full border px-3 py-1 text-[0.82rem] font-medium ${badge.className}`}>
                     {badge.label}
                   </span>
                 </div>
@@ -255,13 +256,13 @@ export function MerchantPanel({
             })}
           </div>
         )}
-      </section>
+      </PanelSection>
 
-      <section className="rounded-[28px] border border-[rgba(159,177,199,0.08)] bg-[rgba(255,255,255,0.04)] p-6">
-        <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[var(--muted)]">Historique des relances</span>
+      <PanelSection>
+        <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[#999]">Historique des relances</span>
 
         {merchant.relanceHistory.length === 0 ? (
-          <p className="mt-5 text-[0.95rem] leading-[1.6] text-[var(--muted)]">
+          <p className="mt-5 text-[0.95rem] leading-[1.6] text-[#666]">
             Historique indisponible pour ce marchand.
             <br />
             TODO: brancher une source relances normalisee si necessaire.
@@ -275,16 +276,16 @@ export function MerchantPanel({
                   style={{ backgroundColor: getHistoryDotColor(entry.channel) }}
                   aria-hidden="true"
                 />
-                <div className="min-w-0 border-b border-[rgba(159,177,199,0.08)] pb-4 last:border-b-0 last:pb-0">
-                  <strong className="block text-[1rem] text-[var(--foreground)]">{entry.label}</strong>
-                  <p className="mt-1 text-[0.9rem] text-[var(--muted)]">{entry.timestampLabel}</p>
-                  {entry.note ? <p className="mt-2 text-[0.9rem] leading-[1.5] text-[var(--muted)]">{entry.note}</p> : null}
+                <div className="min-w-0 border-b border-[#F0F0EC] pb-4 last:border-b-0 last:pb-0">
+                  <strong className="block text-[1rem] text-[#1a1a1a]">{entry.label}</strong>
+                  <p className="mt-1 text-[0.9rem] text-[#999]">{entry.timestampLabel}</p>
+                  {entry.note ? <p className="mt-2 text-[0.9rem] leading-[1.5] text-[#666]">{entry.note}</p> : null}
                 </div>
               </div>
             ))}
           </div>
         )}
-      </section>
+      </PanelSection>
     </aside>
   );
 }

@@ -186,3 +186,22 @@ export interface MerchantPilotageItem {
   activeGames: MerchantActiveGameSummary[];
   relanceHistory: MerchantRelanceHistoryItem[];
 }
+
+export interface PushNotification {
+  id: string;
+  title: string;
+  message: string;
+  imageUrl: string;
+  sound: string;
+  initialPageName: string;
+  parameterData: string;
+  scheduledTimeLabel: string;
+  scheduledTimeValue: number;
+  createdAtLabel: string;
+  createdAtValue: number;
+  status: string;
+  targetAudience: string;
+  targetUserGroup: string;
+  userRefs: string;
+  deliveryCount: number | null;
+}

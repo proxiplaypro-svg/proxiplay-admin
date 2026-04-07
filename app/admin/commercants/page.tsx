@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { MerchantCard } from "@/components/admin/commercants/MerchantCard";
 import { MerchantEditModal } from "@/components/admin/commercants/MerchantEditModal";
@@ -9,7 +10,7 @@ import { MerchantPanel } from "@/components/admin/commercants/MerchantPanel";
 import {
   buildMerchantEmailLink,
   buildWhatsAppLink,
-  ensureMerchantsAdminAccess,
+  ensureMerchantsAuthenticated,
   getMerchantsPilotageData,
   getMerchantsPilotageErrorMessage,
   updateMerchantProfile,
@@ -96,6 +97,7 @@ function downloadCsv(merchants: MerchantPilotageItem[]) {
 }
 
 export default function AdminCommercantsPage() {
+  const router = useRouter();
   const [merchants, setMerchants] = useState<MerchantPilotageItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +117,7 @@ export default function AdminCommercantsPage() {
       setError(null);
 
       try {
-        await ensureMerchantsAdminAccess();
+        await ensureMerchantsAuthenticated();
         const data = await getMerchantsPilotageData();
 
         if (!cancelled) {
@@ -125,6 +127,10 @@ export default function AdminCommercantsPage() {
       } catch (fetchError) {
         if (!cancelled) {
           console.error(fetchError);
+          if (fetchError instanceof Error && fetchError.message.includes("Connexion requise")) {
+            router.replace("/login");
+            return;
+          }
           setError(getMerchantsPilotageErrorMessage(fetchError));
         }
       } finally {
@@ -139,7 +145,7 @@ export default function AdminCommercantsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   const filteredMerchants = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -255,28 +261,29 @@ export default function AdminCommercantsPage() {
   };
 
   return (
-    <section className="content-grid">
-      <div className="panel panel-wide grid gap-6">
+    <section className="min-h-full bg-[#F7F7F5]">
+      <div className="mx-auto grid max-w-[1440px] gap-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
-            <div className="panel-heading">
-              <h2>Commercants</h2>
-              <p>{buildSubtitle(merchants)}</p>
+            <div>
+              <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">
+                Commercants
+              </h1>
+              <p className="mt-2 text-[14px] text-[#666]">{buildSubtitle(merchants)}</p>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              className="secondary-button inline-secondary-button w-auto min-w-[190px]"
+              className="inline-flex min-w-[190px] items-center justify-center rounded-[10px] border border-[#E0E0DA] bg-white px-5 py-3 text-[14px] font-medium text-[#1a1a1a] transition hover:bg-[#FAFAF8]"
               onClick={() => downloadCsv(filteredMerchants)}
             >
               Exporter CSV
             </button>
             <Link
               href="/admin/marchands/nouveau"
-              className="primary-button inline-flex min-w-[220px] items-center justify-center"
-              style={{ background: "linear-gradient(135deg, #639922 0%, #7CB32B 100%)", boxShadow: "0 16px 32px rgba(99,153,34,0.28)" }}
+              className="inline-flex min-w-[220px] items-center justify-center rounded-[10px] bg-[#639922] px-5 py-3 text-[14px] font-medium text-white transition hover:bg-[#5a8b1f]"
             >
               + Nouveau marchand
             </Link>
@@ -316,12 +323,12 @@ export default function AdminCommercantsPage() {
           ].map((card) => (
             <article
               key={card.id}
-              className="rounded-[24px] border border-[rgba(159,177,199,0.08)] bg-[rgba(255,255,255,0.04)] p-5"
-              style={{ boxShadow: `inset 4px 0 0 ${card.borderColor}` }}
+              className="rounded-[12px] border border-[#E8E8E4] bg-white p-5"
+              style={{ boxShadow: `inset 0 3px 0 ${card.borderColor}` }}
             >
-              <span className="text-[0.9rem] text-[var(--muted)]">{card.label}</span>
-              <strong className="mt-3 block text-[2rem] leading-none">{card.value}</strong>
-              <small className="mt-3 block text-[0.92rem] text-[var(--muted)]">{card.helper}</small>
+              <span className="text-[11px] uppercase tracking-[0.05em] text-[#999]">{card.label}</span>
+              <strong className="mt-3 block text-[32px] font-medium leading-none text-[#1a1a1a]">{card.value}</strong>
+              <small className="mt-3 block text-[12px] text-[#666]">{card.helper}</small>
             </article>
           ))}
         </div>
@@ -336,9 +343,9 @@ export default function AdminCommercantsPage() {
         />
 
         {loading ? (
-          <div className="games-loader">
+          <div className="rounded-[12px] border border-[#E8E8E4] bg-white px-5 py-8 text-center text-[#666]">
             <div className="loader" aria-hidden="true" />
-            <p>Chargement des commercants Firestore...</p>
+            <p className="mt-3">Chargement des commercants Firestore...</p>
           </div>
         ) : null}
 
@@ -348,9 +355,11 @@ export default function AdminCommercantsPage() {
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="grid content-start gap-4">
               {filteredMerchants.length === 0 ? (
-                <div className="empty-state">
-                  <strong>Aucun marchand a afficher</strong>
-                  <p>La recherche ou les filtres actuels ne remontent aucune enseigne.</p>
+                <div className="rounded-[12px] border border-[#E8E8E4] bg-white px-5 py-6">
+                  <strong className="block text-[15px] text-[#1a1a1a]">Aucun marchand a afficher</strong>
+                  <p className="mt-2 text-[13px] text-[#666]">
+                    La recherche ou les filtres actuels ne remontent aucune enseigne.
+                  </p>
                 </div>
               ) : (
                 filteredMerchants.map((merchant) => (

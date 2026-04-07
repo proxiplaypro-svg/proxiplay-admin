@@ -26,11 +26,14 @@ export function MerchantFilters({
   onSortChange,
   onSearchChange,
 }: MerchantFiltersProps) {
+  const controlClassName =
+    "min-h-[44px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1a1a1a] outline-none transition placeholder:text-[#999] focus:border-[#C0DD97] focus:bg-white";
+
   return (
-    <div className="rounded-[26px] border border-[rgba(159,177,199,0.08)] bg-[rgba(255,255,255,0.04)] p-4">
+    <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-4">
       <div className="grid gap-4 xl:grid-cols-[auto_auto_minmax(0,1fr)] xl:items-center">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-[0.92rem] font-medium text-[var(--muted)]">Suivi</span>
+          <span className="text-[13px] font-medium text-[#666]">Suivi</span>
           <div className="flex flex-wrap gap-2">
             {FILTER_OPTIONS.map((option) => (
               <button
@@ -39,8 +42,8 @@ export function MerchantFilters({
                 onClick={() => onFilterChange(option.value)}
                 className={`rounded-[16px] border px-4 py-2 text-[0.92rem] transition ${
                   filter === option.value
-                    ? "border-[rgba(99,153,34,0.32)] bg-[rgba(99,153,34,0.14)] text-[var(--foreground)]"
-                    : "border-[rgba(159,177,199,0.1)] bg-[rgba(255,255,255,0.03)] text-[var(--muted)] hover:border-[rgba(159,177,199,0.18)] hover:text-[var(--foreground)]"
+                    ? "border-[#C0DD97] bg-[#EAF3DE] font-medium text-[#3B6D11]"
+                    : "border-[#E8E8E4] bg-[#F7F7F5] text-[#666] hover:border-[#D9D9D4] hover:bg-[#FAFAF8] hover:text-[#1a1a1a]"
                 }`}
               >
                 {option.label}
@@ -50,9 +53,9 @@ export function MerchantFilters({
         </div>
 
         <label className="grid gap-2">
-          <span className="text-[0.92rem] font-medium text-[var(--muted)]">Tri</span>
+          <span className="text-[13px] font-medium text-[#666]">Tri</span>
           <select
-            className="search-input min-w-[220px]"
+            className={`${controlClassName} min-w-[220px]`}
             value={sort}
             onChange={(event) => onSortChange(event.target.value as MerchantPilotageSort)}
           >
@@ -64,9 +67,9 @@ export function MerchantFilters({
         </label>
 
         <label className="grid gap-2">
-          <span className="text-[0.92rem] font-medium text-[var(--muted)]">Recherche</span>
+          <span className="text-[13px] font-medium text-[#666]">Recherche</span>
           <input
-            className="search-input"
+            className={controlClassName}
             type="search"
             placeholder="Rechercher un marchand..."
             value={search}
