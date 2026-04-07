@@ -122,24 +122,7 @@ export type DuplicateGameResult = {
 
 const VALID_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
-const ADMIN_FALLBACK_EMAIL = "proxiplay.pro@gmail.com";
-const ADMIN_ACCESS_ERROR_MESSAGE = "Acces admin requis pour lire ou modifier les jeux.";
-
-function isFallbackAdminEmail(email: string | null | undefined) {
-  return email?.trim().toLowerCase() === ADMIN_FALLBACK_EMAIL;
-}
-
-async function hasGamesAdminAccess(user: User | null) {
-  if (!user) {
-    return false;
-  }
-
-  const tokenResult = await user.getIdTokenResult();
-  const isAuthorized =
-    isFallbackAdminEmail(user.email) || tokenResult.claims.admin === true;
-
-  return isAuthorized;
-}
+const GAMES_AUTH_ERROR_MESSAGE = "Connexion requise pour acceder aux jeux.";
 
 async function waitForAuthenticatedUser() {
   if (auth.currentUser) {
@@ -159,18 +142,14 @@ async function waitForAuthenticatedUser() {
   });
 }
 
-export async function ensureGamesAdminAccess() {
+export async function ensureGamesAuthenticated() {
   const user = await waitForAuthenticatedUser();
 
   if (!user) {
-    throw new Error("Connexion requise pour acceder a l administration des jeux.");
+    throw new Error(GAMES_AUTH_ERROR_MESSAGE);
   }
 
-  if (await hasGamesAdminAccess(user)) {
-    return user;
-  }
-
-  throw new Error(ADMIN_ACCESS_ERROR_MESSAGE);
+  return user;
 }
 
 function readText(...values: Array<string | null | undefined>) {
@@ -498,7 +477,7 @@ function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
 }
 
 export async function getGamesAdminData(): Promise<GamesAdminData> {
-  await ensureGamesAdminAccess();
+  await ensureGamesAuthenticated();
 
   const [gameCollection, merchantCollection] = await Promise.all([
     pickCollectionName(["games", "jeux"] as const, "games"),
@@ -529,7 +508,7 @@ export async function getGamesAdminData(): Promise<GamesAdminData> {
 }
 
 export async function updateGameStatus(input: UpdateGameStatusInput) {
-  await ensureGamesAdminAccess();
+  await ensureGamesAuthenticated();
   await updateDoc(doc(db, input.collectionName, input.gameId), buildStatusPatch(input.status));
 }
 
@@ -572,7 +551,7 @@ async function uploadPrizeImage(gameId: string, folderName: string, file: File) 
 }
 
 export async function updateGame(input: UpdateGameInput) {
-  await ensureGamesAdminAccess();
+  await ensureGamesAuthenticated();
 
   let finalImageUrl = input.imageUrl;
   let finalMainPrizeImage = input.mainPrizeImage;
@@ -624,7 +603,7 @@ export async function duplicateGameDocument(
   input: DuplicateGameInput,
   merchantCollectionName: MerchantCollectionName = "enseignes",
 ): Promise<DuplicateGameResult> {
-  await ensureGamesAdminAccess();
+  await ensureGamesAuthenticated();
 
   const adminData = await getGamesAdminData();
   const original = adminData.games.find((game) => game.id === input.gameId);
@@ -703,7 +682,7 @@ export function getGamesQueryErrorMessage(error: unknown) {
   if (error instanceof FirebaseError) {
     switch (error.code) {
       case "permission-denied":
-        return ADMIN_ACCESS_ERROR_MESSAGE;
+        return "Impossible de lire ou modifier les jeux avec cette session.";
       case "unavailable":
         return "Firestore ou Storage est temporairement indisponible.";
       default:

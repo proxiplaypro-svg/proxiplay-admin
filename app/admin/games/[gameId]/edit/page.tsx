@@ -108,7 +108,7 @@ function getReadErrorMessage(error: unknown) {
   if (error instanceof FirebaseError) {
     switch (error.code) {
       case "permission-denied":
-        return "Acces admin requis pour charger ce jeu.";
+        return "Connexion requise pour charger ce jeu.";
       case "unavailable":
         return "Firestore est temporairement indisponible. Reessaie dans un instant.";
       default:
