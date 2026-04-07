@@ -259,6 +259,35 @@ function mapMerchantOption(
   };
 }
 
+async function tryReadMerchantCollection(collectionName: MerchantCollectionName) {
+  const snapshot = await getDocs(collection(db, collectionName));
+
+  return snapshot.docs
+    .map((entry) => mapMerchantOption(entry, collectionName))
+    .sort((left, right) => left.name.localeCompare(right.name, "fr"));
+}
+
+async function loadMerchantOptions() {
+  const candidates: MerchantCollectionName[] = ["enseignes", "merchants"];
+
+  for (const candidate of candidates) {
+    try {
+      const merchantOptions = await tryReadMerchantCollection(candidate);
+      return {
+        merchantCollectionName: candidate,
+        merchantOptions,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return {
+    merchantCollectionName: "enseignes" as MerchantCollectionName,
+    merchantOptions: [] as GameMerchantOption[],
+  };
+}
+
 function mapGameDocument(
   snapshot: QueryDocumentSnapshot<DocumentData>,
   collectionName: GameCollectionName,
@@ -364,20 +393,10 @@ export default function AdminGamesPage() {
       try {
         await ensureGamesAuthenticated();
 
-        const [gameCollection, merchantCollection] = await Promise.all([
-          pickCollectionName(["games", "jeux"] as const, "games"),
-          pickCollectionName(["enseignes", "merchants"] as const, "enseignes"),
-        ]);
-
-        const [gamesSnapshot, merchantsSnapshot] = await Promise.all([
-          getDocs(collection(db, gameCollection)),
-          getDocs(collection(db, merchantCollection)),
-        ]);
-
-        const merchantOptions = merchantsSnapshot.docs
-          .map((snapshot) => mapMerchantOption(snapshot, merchantCollection))
-          .sort((left, right) => left.name.localeCompare(right.name, "fr"));
-
+        const gameCollection = await pickCollectionName(["games", "jeux"] as const, "games");
+        const gamesSnapshot = await getDocs(collection(db, gameCollection));
+        const { merchantCollectionName: resolvedMerchantCollectionName, merchantOptions } =
+          await loadMerchantOptions();
         const merchantsById = new Map(merchantOptions.map((merchant) => [merchant.id, merchant]));
         const gameItems = gamesSnapshot.docs
           .map((snapshot) => mapGameDocument(snapshot, gameCollection, merchantsById))
@@ -389,7 +408,7 @@ export default function AdminGamesPage() {
 
         setGames(gameItems);
         setMerchants(merchantOptions);
-        setMerchantCollectionName(merchantCollection);
+        setMerchantCollectionName(resolvedMerchantCollectionName);
       } catch (loadError) {
         console.error(loadError);
 
