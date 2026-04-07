@@ -1,7 +1,7 @@
 "use client";
 
 import { FirebaseError } from "firebase/app";
-import type { User } from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -123,6 +123,7 @@ export type DuplicateGameResult = {
 const VALID_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 const ADMIN_FALLBACK_EMAIL = "proxiplay.pro@gmail.com";
+const ADMIN_ACCESS_ERROR_MESSAGE = "Acces admin requis pour lire ou modifier les jeux.";
 
 function isFallbackAdminEmail(email: string | null | undefined) {
   return email?.trim().toLowerCase() === ADMIN_FALLBACK_EMAIL;
@@ -134,12 +135,32 @@ async function hasGamesAdminAccess(user: User | null) {
   }
 
   const tokenResult = await user.getIdTokenResult();
+  const isAuthorized =
+    isFallbackAdminEmail(user.email) || tokenResult.claims.admin === true;
 
-  return tokenResult.claims.admin === true || isFallbackAdminEmail(user.email);
+  return isAuthorized;
+}
+
+async function waitForAuthenticatedUser() {
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+
+  return new Promise<User | null>((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
+      resolve(user);
+    });
+
+    window.setTimeout(() => {
+      unsubscribe();
+      resolve(auth.currentUser);
+    }, 1500);
+  });
 }
 
 export async function ensureGamesAdminAccess() {
-  const user = auth.currentUser;
+  const user = await waitForAuthenticatedUser();
 
   if (!user) {
     throw new Error("Connexion requise pour acceder a l administration des jeux.");
@@ -149,7 +170,7 @@ export async function ensureGamesAdminAccess() {
     return user;
   }
 
-  throw new Error("Acces admin requis pour lire ou modifier les jeux.");
+  throw new Error(ADMIN_ACCESS_ERROR_MESSAGE);
 }
 
 function readText(...values: Array<string | null | undefined>) {
@@ -682,7 +703,7 @@ export function getGamesQueryErrorMessage(error: unknown) {
   if (error instanceof FirebaseError) {
     switch (error.code) {
       case "permission-denied":
-        return "Acces admin requis pour lire ou modifier les jeux.";
+        return ADMIN_ACCESS_ERROR_MESSAGE;
       case "unavailable":
         return "Firestore ou Storage est temporairement indisponible.";
       default:

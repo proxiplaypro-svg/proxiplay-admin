@@ -585,17 +585,17 @@ export default function AdminGamesPage() {
   };
 
   return (
-    <section className="flex flex-col gap-4 bg-[var(--color-background-tertiary,var(--background))] text-[var(--color-text-primary,var(--foreground))]">
-      <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <section className="flex flex-col gap-4 bg-[#F7F7F5] text-[#1A1A1A]">
+      <header className="flex flex-col gap-3 bg-[#F7F7F5] lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-[28px] font-semibold tracking-[-0.03em]">Jeux &amp; campagnes</h1>
-          <p className="mt-1 text-[13px] text-[var(--color-text-secondary,#7b7b7b)]">{summary}</p>
+          <h1 className="text-[28px] font-semibold tracking-[-0.03em] text-[#1A1A1A]">Jeux &amp; campagnes</h1>
+          <p className="mt-1 text-[13px] text-[#666666]">{summary}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-4 py-[10px] text-[12px] font-medium text-[var(--color-text-primary,#171717)] transition hover:bg-[rgba(0,0,0,0.02)]"
+            className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A] transition hover:bg-[#FAFAF8]"
             onClick={handleExportCsv}
           >
             Exporter CSV
@@ -632,12 +632,12 @@ export default function AdminGamesPage() {
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="h-[86px] animate-pulse rounded-[12px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)]"
+              className="h-[86px] animate-pulse rounded-[12px] border border-[#E8E8E4] bg-white"
             />
           ))}
         </div>
       ) : filteredGames.length === 0 ? (
-        <div className="rounded-[12px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-4 py-5 text-[13px] text-[var(--color-text-secondary,#7b7b7b)]">
+        <div className="rounded-[12px] border border-[#E8E8E4] bg-white px-4 py-5 text-[13px] text-[#666666]">
           Aucun jeu à afficher avec les filtres actuels.
         </div>
       ) : (

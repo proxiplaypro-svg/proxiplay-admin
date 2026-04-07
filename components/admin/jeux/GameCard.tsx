@@ -132,7 +132,7 @@ function isSwitchOn(game: Game) {
 }
 
 const actionButtonClassName =
-  "rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-3 py-2 text-[11px] font-medium text-[var(--color-text-primary,#171717)] transition hover:bg-[rgba(0,0,0,0.02)] disabled:cursor-not-allowed disabled:opacity-60";
+  "rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-2 text-[11px] font-medium text-[#1A1A1A] transition hover:bg-[#FAFAF8] disabled:cursor-not-allowed disabled:opacity-60";
 
 export function GameCard({
   game,
@@ -152,7 +152,7 @@ export function GameCard({
 
   return (
     <article
-      className={`grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-[12px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-4 py-3 ${
+      className={`grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-[12px] border border-[#E8E8E4] bg-white px-4 py-3 ${
         game.imageMissing ? "rounded-l-none border-l-2 border-l-[#E24B4A]" : ""
       }`}
     >
@@ -169,7 +169,7 @@ export function GameCard({
 
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="truncate text-[14px] font-medium text-[var(--color-text-primary,#171717)]">
+          <h3 className="truncate text-[14px] font-medium text-[#1A1A1A]">
             {game.title}
           </h3>
           <span className={`rounded-full px-2 py-1 text-[10.5px] font-medium leading-none ${badge.className}`}>
@@ -177,7 +177,7 @@ export function GameCard({
           </span>
         </div>
 
-        <p className="mt-1 truncate text-[11px] text-[var(--color-text-secondary,#7b7b7b)]">
+        <p className="mt-1 truncate text-[11px] text-[#666666]">
           {`${game.merchantName} · ${formatDate(game.startDate)} · ${formatDate(game.endDate)} · ${new Intl.NumberFormat(
             "fr-FR",
           ).format(game.sessionCount)} parties`}
@@ -192,7 +192,7 @@ export function GameCard({
           ) : null}
 
           {prizeSummary.secondaryCount > 0 ? (
-            <span className="rounded-full border border-[rgba(15,23,42,0.08)] bg-[rgba(15,23,42,0.04)] px-2 py-1 text-[10.5px] font-medium leading-none text-[var(--color-text-secondary,#5b6472)]">
+            <span className="rounded-full border border-[#E8E8E4] bg-[#F7F7F5] px-2 py-1 text-[10.5px] font-medium leading-none text-[#666666]">
                 {prizeSummary.secondaryCountLabel}
               </span>
           ) : null}
@@ -206,7 +206,7 @@ export function GameCard({
 
           {prizeSummary.secondaryPreview ? (
             <div
-              className="max-w-[360px] truncate pl-1 text-[10.5px] leading-[1.35] text-[var(--color-text-secondary,#7b7b7b)]"
+              className="max-w-[360px] truncate pl-1 text-[10.5px] leading-[1.35] text-[#666666]"
               title={prizeSummary.secondaryTooltip ?? undefined}
             >
               {`Secondaires : ${prizeSummary.secondaryPreview}`}
@@ -215,10 +215,10 @@ export function GameCard({
         </div>
 
         <div className="mt-2 flex items-center gap-2">
-          <div className="h-[3px] w-full max-w-[280px] overflow-hidden rounded-full bg-[rgba(0,0,0,0.08)]">
+          <div className="h-[3px] w-full max-w-[280px] overflow-hidden rounded-full bg-[#E8E8E4]">
             <div className={`h-full rounded-full ${progress.barClassName}`} style={{ width: `${progress.progress}%` }} />
           </div>
-          <span className="whitespace-nowrap text-[11px] text-[var(--color-text-tertiary,#9a9a9a)]">
+          <span className="whitespace-nowrap text-[11px] text-[#999999]">
             {progress.helper}
           </span>
         </div>
@@ -228,7 +228,7 @@ export function GameCard({
         <button
           type="button"
           className={`relative h-[18px] w-8 rounded-full transition ${
-            isSwitchOn(game) ? "bg-[#639922]" : "bg-[rgba(17,24,39,0.18)]"
+            isSwitchOn(game) ? "bg-[#639922]" : "bg-[#D7D7D1]"
           }`}
           onClick={() => onToggle(game)}
           disabled={isTogglePending}

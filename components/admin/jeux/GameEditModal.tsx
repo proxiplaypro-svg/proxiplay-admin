@@ -61,9 +61,9 @@ type SecondaryPrizeFormItem = GameSecondaryPrize & {
 const VALID_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 2 * 1024 * 1024;
 const inputClassName =
-  "w-full rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-white px-3 py-[10px] text-[13px] text-[var(--color-text-primary,#171717)] outline-none placeholder:text-[var(--color-text-tertiary,#9a9a9a)] disabled:bg-[rgba(15,23,42,0.03)] disabled:text-[var(--color-text-tertiary,#9a9a9a)]";
+  "w-full rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-[10px] text-[13px] text-[#1A1A1A] outline-none placeholder:text-[#999999] disabled:bg-[#F0F0EC] disabled:text-[#999999]";
 const sectionClassName =
-  "rounded-[10px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] p-4";
+  "rounded-[10px] border border-[#E8E8E4] bg-white p-4";
 
 function toInputDate(value: string | null) {
   if (!value) return "";
@@ -158,7 +158,7 @@ function ImageInputCard({ label, previewUrl, emptyLabel, emptyHint, onFileSelect
         <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">{label}</span>
         <button
           type="button"
-          className="rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-white px-3 py-2 text-[11px] font-medium text-[var(--color-text-primary,#171717)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-2 text-[11px] font-medium text-[#1A1A1A] disabled:cursor-not-allowed disabled:opacity-60"
           onClick={() => inputRef.current?.click()}
           disabled={disabled}
         >
@@ -173,15 +173,15 @@ function ImageInputCard({ label, previewUrl, emptyLabel, emptyHint, onFileSelect
         onChange={(event) => onFileSelect(event.target.files?.[0] ?? null)}
       />
       {previewUrl ? (
-        <div className="flex items-center gap-3 rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[var(--color-background-primary,#fff)] px-3 py-3">
+        <div className="flex items-center gap-3 rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="h-[52px] w-[52px] rounded-[8px] object-cover" src={previewUrl} alt={label} />
-          <div className="text-[11px] text-[var(--color-text-secondary,#7b7b7b)]">Image prete. Tu peux la remplacer avant d enregistrer.</div>
+          <div className="text-[11px] text-[#666666]">Image prete. Tu peux la remplacer avant d enregistrer.</div>
         </div>
       ) : (
         <div
           className={`cursor-pointer rounded-[8px] border border-dashed px-4 py-5 text-center ${
-            dragActive ? "border-[#E24B4A] bg-[#FFF4F4]" : "border-[rgba(15,23,42,0.12)] bg-[rgba(15,23,42,0.02)]"
+            dragActive ? "border-[#E24B4A] bg-[#FFF4F4]" : "border-[#E8E8E4] bg-[#F7F7F5]"
           } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           onDragOver={(event) => {
             event.preventDefault();
@@ -205,8 +205,8 @@ function ImageInputCard({ label, previewUrl, emptyLabel, emptyHint, onFileSelect
             }
           }}
         >
-          <strong className="block text-[12px] font-medium text-[var(--color-text-primary,#171717)]">{emptyLabel}</strong>
-          <span className="mt-1 block text-[11px] text-[var(--color-text-secondary,#7b7b7b)]">{emptyHint}</span>
+          <strong className="block text-[12px] font-medium text-[#1A1A1A]">{emptyLabel}</strong>
+          <span className="mt-1 block text-[11px] text-[#666666]">{emptyHint}</span>
         </div>
       )}
     </div>
@@ -357,20 +357,20 @@ export function GameEditModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[rgba(15,23,42,0.48)] p-4" role="presentation" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-[rgba(247,247,245,0.92)] p-4" role="presentation" onClick={onClose}>
       <div
-        className="mx-auto mt-[4vh] max-h-[92vh] w-full max-w-[860px] overflow-hidden rounded-[12px] bg-white shadow-[0_20px_60px_rgba(15,23,42,0.16)]"
+        className="mx-auto mt-[4vh] max-h-[92vh] w-full max-w-[860px] overflow-hidden rounded-[12px] border border-[#E8E8E4] bg-white shadow-[0_20px_60px_rgba(26,26,26,0.08)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="game-edit-modal-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] px-5 py-4">
+        <div className="flex items-center justify-between border-b border-[#F0F0EC] px-5 py-4">
           <div>
-            <h2 id="game-edit-modal-title" className="text-[18px] font-medium text-[var(--color-text-primary,#171717)]">Modifier le jeu</h2>
-            <p className="mt-1 text-[12px] text-[var(--color-text-secondary,#7b7b7b)]">Separe les informations du jeu, le lot principal et les lots secondaires.</p>
+            <h2 id="game-edit-modal-title" className="text-[18px] font-medium text-[#1A1A1A]">Modifier le jeu</h2>
+            <p className="mt-1 text-[12px] text-[#666666]">Separe les informations du jeu, le lot principal et les lots secondaires.</p>
           </div>
-          <button type="button" className="text-[22px] leading-none text-[var(--color-text-tertiary,#9a9a9a)]" onClick={onClose} aria-label="Fermer">x</button>
+          <button type="button" className="text-[22px] leading-none text-[#999999]" onClick={onClose} aria-label="Fermer">x</button>
         </div>
 
         <form className="max-h-[calc(92vh-72px)] overflow-y-auto px-5 py-4" onSubmit={handleSubmit}>
@@ -385,10 +385,10 @@ export function GameEditModal({
             <section className={sectionClassName}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-[15px] font-medium text-[var(--color-text-primary,#171717)]">Informations du jeu</h3>
-                  <p className="mt-1 text-[12px] text-[var(--color-text-secondary,#7b7b7b)]">Champs generaux du document, inchanges dans leur logique actuelle.</p>
+                  <h3 className="text-[15px] font-medium text-[#1A1A1A]">Informations du jeu</h3>
+                  <p className="mt-1 text-[12px] text-[#666666]">Champs generaux du document, inchanges dans leur logique actuelle.</p>
                 </div>
-                <span className="rounded-full bg-[rgba(15,23,42,0.05)] px-2 py-1 text-[10px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Bloc principal</span>
+                <span className="rounded-full bg-[#F7F7F5] px-2 py-1 text-[10px] font-medium text-[#666666]">Bloc principal</span>
               </div>
 
               <div className="flex flex-col gap-4">
@@ -448,16 +448,16 @@ export function GameEditModal({
             <section className={sectionClassName}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-[15px] font-medium text-[var(--color-text-primary,#171717)]">Lot principal</h3>
-                  <p className="mt-1 text-[12px] text-[var(--color-text-secondary,#7b7b7b)]">Bloc dedie et compatible avec les jeux qui n ont pas encore ce contenu.</p>
+                  <h3 className="text-[15px] font-medium text-[#1A1A1A]">Lot principal</h3>
+                  <p className="mt-1 text-[12px] text-[#666666]">Bloc dedie et compatible avec les jeux qui n ont pas encore ce contenu.</p>
                 </div>
                 <span className="rounded-full bg-[#EAF3DE] px-2 py-1 text-[10px] font-medium text-[#3B6D11]">Champs dedies</span>
               </div>
 
               <div className="flex flex-col gap-4">
-                <label className="flex items-center gap-3 rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[rgba(15,23,42,0.02)] px-3 py-3">
+                <label className="flex items-center gap-3 rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-3">
                   <input type="checkbox" checked={mainPrizeForm.hasMainPrize} onChange={(event) => updateMainPrizeForm("hasMainPrize", event.target.checked)} />
-                  <span className="text-[13px] font-medium text-[var(--color-text-primary,#171717)]">Ce jeu comporte un lot principal</span>
+                  <span className="text-[13px] font-medium text-[#1A1A1A]">Ce jeu comporte un lot principal</span>
                 </label>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -490,8 +490,8 @@ export function GameEditModal({
             <section className={sectionClassName}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-[15px] font-medium text-[var(--color-text-primary,#171717)]">Lots secondaires</h3>
-                  <p className="mt-1 text-[12px] text-[var(--color-text-secondary,#7b7b7b)]">Liste dynamique pour modifier, ajouter ou supprimer chaque lot individuellement.</p>
+                  <h3 className="text-[15px] font-medium text-[#1A1A1A]">Lots secondaires</h3>
+                  <p className="mt-1 text-[12px] text-[#666666]">Liste dynamique pour modifier, ajouter ou supprimer chaque lot individuellement.</p>
                 </div>
                 <button
                   type="button"
@@ -505,17 +505,17 @@ export function GameEditModal({
 
               <div className="flex flex-col gap-3">
                 {secondaryPrizes.length === 0 ? (
-                  <div className="rounded-[8px] border border-dashed border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[rgba(15,23,42,0.02)] px-4 py-5 text-[12px] text-[var(--color-text-secondary,#7b7b7b)]">
+                  <div className="rounded-[8px] border border-dashed border-[#E8E8E4] bg-[#F7F7F5] px-4 py-5 text-[12px] text-[#666666]">
                     Aucun lot secondaire pour le moment. Utilise le bouton ci-dessus pour en ajouter.
                   </div>
                 ) : null}
 
                 {secondaryPrizes.map((prize, index) => (
-                  <article key={prize.id} className="rounded-[10px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-[rgba(15,23,42,0.02)] p-4">
+                  <article key={prize.id} className="rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] p-4">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
-                        <h4 className="text-[13px] font-medium text-[var(--color-text-primary,#171717)]">Lot secondaire {index + 1}</h4>
-                        <p className="mt-1 text-[11px] text-[var(--color-text-secondary,#7b7b7b)]">Nom, description, quantite et image optionnelle.</p>
+                        <h4 className="text-[13px] font-medium text-[#1A1A1A]">Lot secondaire {index + 1}</h4>
+                        <p className="mt-1 text-[11px] text-[#666666]">Nom, description, quantite et image optionnelle.</p>
                       </div>
                       <button
                         type="button"
@@ -568,8 +568,8 @@ export function GameEditModal({
             ) : null}
           </div>
 
-          <div className="mt-4 flex items-center justify-end gap-2 border-t border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] pt-4">
-            <button type="button" className="rounded-[8px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-white px-4 py-[10px] text-[12px] font-medium text-[var(--color-text-primary,#171717)]" onClick={onClose} disabled={saving}>
+          <div className="mt-4 flex items-center justify-end gap-2 border-t border-[#F0F0EC] pt-4">
+            <button type="button" className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A]" onClick={onClose} disabled={saving}>
               Annuler
             </button>
             <button type="submit" className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-70" disabled={saving}>

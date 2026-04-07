@@ -18,10 +18,10 @@ type GameFiltersProps = {
 };
 
 const fieldLabelClassName =
-  "text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]";
+  "text-[11px] font-medium text-[#666666]";
 
 const selectClassName =
-  "min-w-[132px] border-0 bg-transparent px-0 py-0 text-[13px] font-medium text-[var(--color-text-primary,#171717)] outline-none";
+  "min-w-[132px] border-0 bg-transparent px-0 py-0 text-[13px] font-medium text-[#1A1A1A] outline-none";
 
 export function GameFilters({
   status,
@@ -36,7 +36,7 @@ export function GameFilters({
 }: GameFiltersProps) {
   return (
     <section
-      className="flex flex-col gap-3 rounded-[12px] border border-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"
+      className="flex flex-col gap-3 rounded-[12px] border border-[#E8E8E4] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"
     >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <label className="flex min-w-0 items-center gap-2 lg:flex-none">
@@ -54,7 +54,7 @@ export function GameFilters({
           </select>
         </label>
 
-        <div className="hidden h-6 w-px bg-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] lg:block" />
+        <div className="hidden h-6 w-px bg-[#F0F0EC] lg:block" />
 
         <label className="flex min-w-0 items-center gap-2 lg:flex-none">
           <span className={fieldLabelClassName}>Marchand</span>
@@ -72,7 +72,7 @@ export function GameFilters({
           </select>
         </label>
 
-        <div className="hidden h-6 w-px bg-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] lg:block" />
+        <div className="hidden h-6 w-px bg-[#F0F0EC] lg:block" />
 
         <label className="flex min-w-0 items-center gap-2 lg:flex-none">
           <span className={fieldLabelClassName}>Tri</span>
@@ -87,11 +87,11 @@ export function GameFilters({
           </select>
         </label>
 
-        <div className="hidden h-6 w-px bg-[color:var(--color-border-tertiary,rgba(0,0,0,0.08))] lg:block" />
+        <div className="hidden h-6 w-px bg-[#F0F0EC] lg:block" />
 
         <label className="min-w-0 flex-1">
           <input
-            className="w-full border-0 bg-transparent px-0 py-0 text-[13px] text-[var(--color-text-primary,#171717)] outline-none placeholder:text-[var(--color-text-tertiary,#9a9a9a)]"
+            className="w-full border-0 bg-transparent px-0 py-0 text-[13px] text-[#1A1A1A] outline-none placeholder:text-[#999999]"
             type="search"
             placeholder="Rechercher un jeu..."
             value={search}
