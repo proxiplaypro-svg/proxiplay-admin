@@ -74,6 +74,7 @@ type FirestoreUserDocument = {
   account_status?: string;
   remaining_part?: number | string;
   games_played_count?: number | string;
+  part_last_update?: Timestamp;
   last_real_activity_at?: Timestamp;
   player_status_cached?: string;
   bonusMode?: string;
@@ -360,6 +361,8 @@ export type AdminPlayerListItem = {
   pushStatus: "actif" | "inconnu" | "non_verifie";
   lastRealActivityLabel: string;
   lastRealActivityValue: number;
+  remainingPart: number | null;
+  partLastUpdateValue: number;
   assiduityLabel: "Tres actif" | "Actif" | "A relancer" | "Inactif" | "Jamais actif";
   playerStatusCached: string;
   activityState: "actif" | "inactif" | "jamais";
@@ -1231,6 +1234,8 @@ export async function getPlayersList(): Promise<AdminPlayerListItem[]> {
         ? formatDateTime(lastRealActivityAt.toDate())
         : "Aucune activite",
       lastRealActivityValue: lastRealActivityAt?.toMillis() ?? 0,
+      remainingPart: readNullableInt(user.remaining_part),
+      partLastUpdateValue: user.part_last_update?.toMillis() ?? 0,
       assiduityLabel: assiduity.assiduityLabel,
       playerStatusCached: readDisplayText(
         user.player_status_cached,

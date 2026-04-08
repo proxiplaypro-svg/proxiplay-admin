@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import Script from "next/script";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getAdminFollowUpErrorMessage,
   markPlayerAsContactedAction,
@@ -17,8 +18,67 @@ import { buildWhatsAppLink } from "@/lib/firebase/merchantsQueries";
 type FollowUpFilter = "tous" | "a_faire" | "relance" | "sans_reponse" | "ok";
 type ActivityFilter = "tous" | "actif" | "inactif";
 type LastContactSort = "recent_first" | "oldest_first" | "never_first";
+type AnalyticsChartPoint = { label: string; value: number };
+type AnalyticsDataset = {
+  data: number[];
+  label?: string;
+  borderColor?: string;
+  backgroundColor?: string | CanvasGradient;
+  fill?: boolean;
+  tension?: number;
+  borderWidth?: number;
+  pointRadius?: number;
+  pointHoverRadius?: number;
+  borderRadius?: number;
+  maxBarThickness?: number;
+};
+type AnalyticsChartConfig = {
+  type: "line" | "bar";
+  data: {
+    labels: string[];
+    datasets: AnalyticsDataset[];
+  };
+  options?: {
+    responsive?: boolean;
+    maintainAspectRatio?: boolean;
+    plugins?: {
+      legend?: { display?: boolean };
+      tooltip?: {
+        displayColors?: boolean;
+        callbacks?: {
+          label?: (context: { parsed: { y: number } }) => string;
+        };
+      };
+    };
+    scales?: {
+      x?: {
+        grid?: { display?: boolean; drawBorder?: boolean };
+        ticks?: { color?: string; font?: { size?: number } };
+      };
+      y?: {
+        beginAtZero?: boolean;
+        ticks?: { precision?: number; color?: string; font?: { size?: number } };
+        grid?: { color?: string; drawBorder?: boolean };
+      };
+    };
+  };
+};
+type AnalyticsChartInstance = { destroy: () => void };
+type AnalyticsChartConstructor = new (
+  item: HTMLCanvasElement | CanvasRenderingContext2D,
+  config: AnalyticsChartConfig,
+) => AnalyticsChartInstance;
+
+declare global {
+  interface Window {
+    Chart?: AnalyticsChartConstructor;
+  }
+}
 
 const thClass = "px-[14px] py-[10px] text-left text-[10.5px] uppercase tracking-[0.05em] text-[#999999]";
+const analyticsCardStyle = { borderWidth: "0.5px", borderColor: "#E8E8E4" } as const;
+const chartHeight = 180;
+const dayInMs = 24 * 60 * 60 * 1000;
 
 function n(v: string) {
   return v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -31,6 +91,9 @@ function formatCount(v: number) {
 }
 function formatPercent(v: number) {
   return `${Math.round(v)}%`;
+}
+function formatAveragePlayed(v: number) {
+  return `${new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v)} / 3`;
 }
 function label(p: AdminPlayerListItem) {
   return p.fullName !== "Non renseigne" ? p.fullName : p.email !== "Non renseigne" ? p.email : "Non renseigne";
@@ -52,6 +115,39 @@ function relaunch(p: AdminPlayerListItem) {
   if (p.email !== "Non renseigne" && p.email.trim()) return { href: `mailto:${encodeURIComponent(p.email)}?subject=${encodeURIComponent(`Relance ProxiPlay - ${label(p)}`)}`, channel: "email" as const, disabled: false };
   return { href: null, channel: "unknown" as const, disabled: true };
 }
+function startOfLocalDay(value: number | Date) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+function formatDayKey(value: number) {
+  return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" }).format(new Date(value));
+}
+function isActiveForUsage(player: AdminPlayerListItem) {
+  const normalizedStatus = n(player.playerStatusCached);
+  return normalizedStatus === "actif" || (normalizedStatus === "non renseigne" && player.activityState === "actif");
+}
+function buildLastThirtyDaysSeries(points: Array<{ timestamp: number; include: boolean }>) {
+  const today = startOfLocalDay(Date.now()).getTime();
+  const start = today - 29 * dayInMs;
+  const counts = new Map<number, number>();
+
+  for (let cursor = start; cursor <= today; cursor += dayInMs) counts.set(cursor, 0);
+
+  points.forEach((point) => {
+    if (!point.include || point.timestamp < start || point.timestamp > today + dayInMs - 1) return;
+    const day = startOfLocalDay(point.timestamp).getTime();
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  });
+
+  return {
+    series: [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([timestamp, value]) => ({ label: formatDayKey(timestamp), value })),
+    populatedDayCount: new Set(points.filter((point) => point.include && point.timestamp >= start && point.timestamp <= today + dayInMs - 1).map((point) => startOfLocalDay(point.timestamp).getTime())).size,
+  };
+}
+function AnalyticsChartFallback({ message }: { message: string }) {
+  return <div className="flex h-full items-center justify-center rounded-[10px] border border-dashed border-[#E8E8E4] bg-[#FAFAF8] px-4 text-center text-[11px] text-[#999999]">{message}</div>;
+}
 
 export default function AdminPlayersPage() {
   const [players, setPlayers] = useState<AdminPlayerListItem[]>([]);
@@ -68,6 +164,15 @@ export default function AdminPlayersPage() {
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [chartJsReady, setChartJsReady] = useState(false);
+  const exhaustedChartCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const signupsChartCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const exhaustedChartRef = useRef<AnalyticsChartInstance | null>(null);
+  const signupsChartRef = useRef<AnalyticsChartInstance | null>(null);
+
+  useEffect(() => {
+    if (window.Chart) setChartJsReady(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +250,102 @@ export default function AdminPlayersPage() {
     return { total, active, relaunchCount, inactive };
   }, [filtered]);
 
+  const usageAnalytics = useMemo(() => {
+    const dayStart = startOfLocalDay(Date.now()).getTime();
+    const playersWithRemainingPart = players.filter((player) => player.remainingPart !== null);
+    const activePlayers = players.filter((player) => isActiveForUsage(player) && player.remainingPart !== null);
+    const exhaustedCount = playersWithRemainingPart.filter((player) => player.remainingPart === 0).length;
+    const playedAtLeastOnceCount = playersWithRemainingPart.filter((player) => (player.remainingPart ?? 3) < 3).length;
+    const notPlayedTodayCount = playersWithRemainingPart.filter((player) => player.remainingPart === 3 && player.lastRealActivityValue < dayStart).length;
+    const averagePlayedToday = activePlayers.length > 0 ? activePlayers.reduce((total, player) => total + Math.max(0, 3 - (player.remainingPart ?? 3)), 0) / activePlayers.length : 0;
+    const exhaustedSeries = buildLastThirtyDaysSeries(players.map((player) => ({ timestamp: player.partLastUpdateValue, include: player.partLastUpdateValue > 0 && player.remainingPart === 0 })));
+    const signupsSeries = buildLastThirtyDaysSeries(players.map((player) => ({ timestamp: player.createdAtValue, include: player.createdAtValue > 0 })));
+
+    return {
+      exhaustedCount,
+      playedAtLeastOnceCount,
+      notPlayedTodayCount,
+      averagePlayedToday,
+      exhaustedSeries: exhaustedSeries.series,
+      exhaustedHasEnoughData: exhaustedSeries.populatedDayCount >= 7,
+      signupsSeries: signupsSeries.series,
+      signupsHasEnoughData: signupsSeries.populatedDayCount >= 7,
+    };
+  }, [players]);
+
+  useEffect(() => () => {
+    exhaustedChartRef.current?.destroy();
+    signupsChartRef.current?.destroy();
+  }, []);
+
+  useEffect(() => {
+    if (!chartJsReady || !window.Chart || !exhaustedChartCanvasRef.current || !usageAnalytics.exhaustedHasEnoughData) {
+      exhaustedChartRef.current?.destroy();
+      exhaustedChartRef.current = null;
+      return;
+    }
+
+    exhaustedChartRef.current?.destroy();
+    const context = exhaustedChartCanvasRef.current.getContext("2d");
+    if (!context) return;
+
+    const gradient = context.createLinearGradient(0, 0, 0, chartHeight);
+    gradient.addColorStop(0, "rgba(234, 243, 222, 0.3)");
+    gradient.addColorStop(1, "rgba(234, 243, 222, 0)");
+
+    exhaustedChartRef.current = new window.Chart(context, {
+      type: "line",
+      data: {
+        labels: usageAnalytics.exhaustedSeries.map((point) => point.label),
+        datasets: [{ data: usageAnalytics.exhaustedSeries.map((point) => point.value), borderColor: "#639922", backgroundColor: gradient, fill: true, tension: 0.28, borderWidth: 2, pointRadius: 2, pointHoverRadius: 3 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { displayColors: false, callbacks: { label: (context) => `${context.parsed.y} joueur${context.parsed.y > 1 ? "s" : ""}` } },
+        },
+        scales: {
+          x: { grid: { display: false, drawBorder: false }, ticks: { color: "#999999", font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { precision: 0, color: "#999999", font: { size: 10 } }, grid: { color: "#F0F0EC", drawBorder: false } },
+        },
+      },
+    });
+  }, [chartJsReady, usageAnalytics.exhaustedHasEnoughData, usageAnalytics.exhaustedSeries]);
+
+  useEffect(() => {
+    if (!chartJsReady || !window.Chart || !signupsChartCanvasRef.current || !usageAnalytics.signupsHasEnoughData) {
+      signupsChartRef.current?.destroy();
+      signupsChartRef.current = null;
+      return;
+    }
+
+    signupsChartRef.current?.destroy();
+    const context = signupsChartCanvasRef.current.getContext("2d");
+    if (!context) return;
+
+    signupsChartRef.current = new window.Chart(context, {
+      type: "bar",
+      data: {
+        labels: usageAnalytics.signupsSeries.map((point) => point.label),
+        datasets: [{ data: usageAnalytics.signupsSeries.map((point) => point.value), backgroundColor: "#378ADD", borderRadius: 6, maxBarThickness: 18 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { displayColors: false, callbacks: { label: (context) => `${context.parsed.y} inscription${context.parsed.y > 1 ? "s" : ""}` } },
+        },
+        scales: {
+          x: { grid: { display: false, drawBorder: false }, ticks: { color: "#999999", font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { precision: 0, color: "#999999", font: { size: 10 } }, grid: { color: "#F0F0EC", drawBorder: false } },
+        },
+      },
+    });
+  }, [chartJsReady, usageAnalytics.signupsHasEnoughData, usageAnalytics.signupsSeries]);
+
   const exportCsv = (rows: AdminPlayerListItem[], filename: string) => {
     const csv = [["Joueur","Email","Ville","Parties","Gains","Activite","Push"], ...rows.map((p) => [label(p), p.email, p.city, String(p.gamesPlayedCount ?? 0), String(p.winsCount ?? 0), p.assiduityLabel, p.pushStatus])].map((r) => r.map((c) => `"${c.replaceAll('"','""')}"`).join(",")).join("\n");
     const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
@@ -206,6 +407,11 @@ export default function AdminPlayersPage() {
 
   return (
     <section className="space-y-4 bg-[#F7F7F5] text-[#1A1A1A]">
+      <Script
+        src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"
+        strategy="afterInteractive"
+        onLoad={() => setChartJsReady(true)}
+      />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1A1A1A]">Joueurs</h1>
@@ -220,6 +426,39 @@ export default function AdminPlayersPage() {
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[{ label: "Joueurs visibles", value: fmt(overview.total), helper: "Total base", helperColor: "#999999", accent: "#E8E8E4", critical: false }, { label: "Actifs", value: fmt(overview.active), helper: `${formatPercent(overview.total ? (overview.active / overview.total) * 100 : 0)} de la base`, helperColor: "#3B6D11", accent: "#639922", critical: false }, { label: "A relancer", value: fmt(overview.relaunchCount), helper: `${formatPercent(overview.total ? (overview.relaunchCount / overview.total) * 100 : 0)} a recontacter`, helperColor: "#633806", accent: "#EF9F27", critical: false }, { label: "Inactifs", value: fmt(overview.inactive), helper: `${formatPercent(overview.total ? (overview.inactive / overview.total) * 100 : 0)} — a reactiver`, helperColor: "#A32D2D", accent: "#E24B4A", critical: true }].map((card) => <article key={card.label} className="overflow-hidden rounded-[10px] border border-[#E8E8E4] bg-white"><div className="h-[3px]" style={{ backgroundColor: card.accent }} /><div className="space-y-2 px-5 py-4"><p className="text-[11px] text-[#999999]">{card.label}</p><strong className="block text-[26px] font-medium leading-none" style={{ color: card.critical ? "#A32D2D" : "#1A1A1A" }}>{card.value}</strong><p className="text-[11px]" style={{ color: card.helperColor }}>{card.helper}</p></div></article>)}
       </div>
+
+      <section className="rounded-[12px] bg-white p-4" style={analyticsCardStyle}>
+        <div className="space-y-1">
+          <h2 className="text-[13px] font-medium text-[#1A1A1A]">Utilisation des parties - aujourd&apos;hui</h2>
+          <p className="text-[11px] text-[#999999]">Calcul temps reel cote client a partir des documents users deja charges en memoire.</p>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {[{ label: "Joueurs ayant utilise les 3 parties", value: fmt(usageAnalytics.exhaustedCount), helper: "remaining_part = 0", accent: "#E24B4A" }, { label: "Joueurs ayant joue au moins 1 fois", value: fmt(usageAnalytics.playedAtLeastOnceCount), helper: "remaining_part < 3", accent: "#639922" }, { label: "Joueurs n'ayant pas encore joue aujourd'hui", value: fmt(usageAnalytics.notPlayedTodayCount), helper: "remaining_part = 3 et activite avant le debut du jour", accent: "#EF9F27" }, { label: "Moyenne parties jouees aujourd'hui", value: formatAveragePlayed(usageAnalytics.averagePlayedToday), helper: "Moyenne sur les joueurs actifs", accent: "#378ADD" }].map((card) => <article key={card.label} className="overflow-hidden rounded-[12px] bg-white" style={analyticsCardStyle}><div className="h-[3px]" style={{ backgroundColor: card.accent }} /><div className="space-y-2 p-4"><p className="text-[11px] text-[#999999]">{card.label}</p><strong className="block text-[24px] font-medium leading-none text-[#1A1A1A]">{card.value}</strong><p className="text-[11px]" style={{ color: card.accent }}>{card.helper}</p></div></article>)}
+        </div>
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          <article className="rounded-[12px] bg-white p-4" style={analyticsCardStyle}>
+            <div className="space-y-1">
+              <h3 className="text-[13px] font-medium text-[#1A1A1A]">Joueurs ayant epuise leurs 3 parties - 30 derniers jours (approximation)</h3>
+              <p className="text-[11px] text-[#999999]">Approximation basee sur part_last_update et l&apos;etat actuel remaining_part, pas sur un historique exhaustif.</p>
+            </div>
+            <div className="mt-4" style={{ height: chartHeight }}>
+              {usageAnalytics.exhaustedHasEnoughData ? <canvas ref={exhaustedChartCanvasRef} aria-label="Evolution des joueurs ayant epuise leurs parties" /> : <AnalyticsChartFallback message="Moins de 7 jours de donnees exploitables pour afficher une tendance fiable." />}
+            </div>
+          </article>
+
+          <article className="rounded-[12px] bg-white p-4" style={analyticsCardStyle}>
+            <div className="space-y-1">
+              <h3 className="text-[13px] font-medium text-[#1A1A1A]">Nouvelles inscriptions - 30 derniers jours</h3>
+              <p className="text-[11px] text-[#999999]">Base sur created_time des utilisateurs deja charges sur la page.</p>
+            </div>
+            <div className="mt-4" style={{ height: chartHeight }}>
+              {usageAnalytics.signupsHasEnoughData ? <canvas ref={signupsChartCanvasRef} aria-label="Nouvelles inscriptions sur 30 jours" /> : <AnalyticsChartFallback message="Moins de 7 jours de donnees exploitables pour afficher l'acquisition recente." />}
+            </div>
+          </article>
+        </div>
+      </section>
 
       <div className="flex flex-col gap-3 rounded-[10px] border border-[#E8E8E4] bg-white p-3 lg:flex-row lg:items-center">
         <div className="flex flex-wrap gap-2">{[{ value: "tous", label: "Tous" }, { value: "actif", label: "Actifs" }, { value: "inactif", label: "Inactifs" }].map((item) => <button key={item.value} type="button" onClick={() => setActivityFilter(item.value as ActivityFilter)} className={`rounded-full px-3 py-[8px] text-[12px] transition ${activityFilter === item.value ? "bg-[#EAF3DE] font-medium text-[#3B6D11]" : "text-[#666666] hover:bg-[#F7F7F5]"}`}>{item.label}</button>)}</div>
