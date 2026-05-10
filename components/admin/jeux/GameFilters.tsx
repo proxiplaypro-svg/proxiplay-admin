@@ -3,7 +3,7 @@
 import type { GameMerchantOption, GameStatus } from "@/types/dashboard";
 
 export type GamesFilterValue = "tous" | GameStatus;
-export type GamesSortValue = "end_asc" | "end_desc" | "sessions_desc";
+export type GamesSortValue = "end_asc" | "end_desc" | "sessions_desc" | "created_desc";
 
 type GameFiltersProps = {
   status: GamesFilterValue;
@@ -81,6 +81,7 @@ export function GameFilters({
             value={sort}
             onChange={(event) => onSortChange(event.target.value as GamesSortValue)}
           >
+            <option value="created_desc">Plus récent</option>
             <option value="end_asc">Expiration proche</option>
             <option value="end_desc">Expiration lointaine</option>
             <option value="sessions_desc">Parties desc</option>

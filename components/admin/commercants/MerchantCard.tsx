@@ -69,10 +69,10 @@ export function MerchantCard({ merchant, selected, onSelect }: MerchantCardProps
     <button
       type="button"
       onClick={() => onSelect(merchant.id)}
-      className={`w-full rounded-[12px] border bg-white p-5 text-left transition ${
+      className={`w-full cursor-pointer rounded-[12px] border bg-white p-5 text-left transition hover:border-[#C0DD97] hover:bg-[#FAFDF6] ${
         selected
           ? "border-[#639922] shadow-[0_0_0_1px_rgba(99,153,34,0.12)]"
-          : "border-[#E8E8E4] hover:border-[#C0DD97] hover:bg-[#FAFAF8]"
+          : "border-[#E8E8E4]"
       }`}
     >
       <div className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-start gap-4">

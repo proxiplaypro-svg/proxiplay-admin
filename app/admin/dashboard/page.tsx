@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -41,12 +41,28 @@ function formatFrenchDate(date: Date) {
 
 function getKpiAccentColor(kpi: DashboardKpi) {
   switch (kpi.id) {
-    case "activePlayers":
+    case "mauReel":
     case "activeMerchants":
     case "dauMau":
+    case "totalPlayers":
+    case "completionRate":
       return "#639922";
+    case "wauReel":
+      return kpi.tone === "danger" ? "#E24B4A" : kpi.tone === "warning" ? "#EF9F27" : "#639922";
     case "iosRetention":
       return "#E24B4A";
+    case "retention7d":
+      return kpi.tone === "danger" ? "#E24B4A" : kpi.tone === "warning" ? "#EF9F27" : "#639922";
+    case "creditsRatio":
+      return "#378ADD";
+    case "partiesToday":
+      return "#639922";
+    case "joueursSansPartie":
+      return kpi.tone === "danger" ? "#E24B4A" : kpi.tone === "warning" ? "#EF9F27" : "#639922";
+    case "joueursTroisParties":
+      return "#639922";
+    case "tauxUtilisation":
+      return kpi.tone === "danger" ? "#E24B4A" : kpi.tone === "warning" ? "#EF9F27" : "#639922";
     default:
       return "#E8E8E4";
   }
@@ -206,19 +222,36 @@ export default function AdminDashboardPage() {
   const [selectedSegment, setSelectedSegment] = useState<NotificationSegment | "Tous">("Tous");
 
   useEffect(() => {
-    const unsubscribe = subscribeDashboardData(
-      (nextData) => {
-        setData(nextData);
-        setLoading(false);
-      },
-      (subscriptionError) => {
-        console.error(subscriptionError);
-        setError("Impossible de synchroniser le dashboard en temps reel.");
-        setLoading(false);
-      },
-    );
+    let active = true;
 
-    return unsubscribe;
+    const load = async () => {
+      try {
+        await subscribeDashboardData(
+          (nextData) => {
+            if (!active) return;
+            setData(nextData);
+            setLoading(false);
+          },
+          (err) => {
+            console.error(err);
+            if (!active) return;
+            setError("Erreur de chargement du dashboard.");
+            setLoading(false);
+          },
+        );
+      } catch (err) {
+        console.error(err);
+        if (!active) return;
+        setError("Erreur de chargement du dashboard.");
+        setLoading(false);
+      }
+    };
+
+    void load();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -274,6 +307,40 @@ export default function AdminDashboardPage() {
   }, [data.notifications, selectedSegment]);
 
   const visibleNotifications = useMemo(() => filteredNotifications.slice(0, 3), [filteredNotifications]);
+
+  const newKpis = useMemo(
+    () =>
+      data.kpis.filter((kpi) =>
+        ["totalPlayers", "completionRate", "retention7d", "creditsRatio"].includes(kpi.id),
+      ),
+    [data.kpis],
+  );
+
+  const todayKpis = useMemo(
+    () =>
+      data.kpis.filter((kpi) =>
+        ["partiesToday", "joueursSansPartie", "joueursTroisParties", "tauxUtilisation"].includes(kpi.id),
+      ),
+    [data.kpis],
+  );
+
+  const legacyKpis = useMemo(
+    () =>
+      data.kpis.filter(
+        (kpi) =>
+          ![
+            "totalPlayers",
+            "completionRate",
+            "retention7d",
+            "creditsRatio",
+            "partiesToday",
+            "joueursSansPartie",
+            "joueursTroisParties",
+            "tauxUtilisation",
+          ].includes(kpi.id),
+      ),
+    [data.kpis],
+  );
 
   const notificationSegments = useMemo(() => {
     const allSegments: NotificationSegment[] = ["Joueurs actifs", "iOS inactifs J7", "Ambassadeurs"];
@@ -348,21 +415,129 @@ export default function AdminDashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-        {loading
-          ? Array.from({ length: 6 }).map((_, index) => (
+      <div className="space-y-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {loading
+            ? Array.from({ length: 6 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-[136px] animate-pulse rounded-[10px] border border-[#E8E8E4] bg-white"
+                />
+              ))
+            : legacyKpis.map((kpi) => (
+                <article
+                  key={kpi.id}
+                  className="overflow-hidden rounded-[10px] border border-[#E8E8E4] bg-white"
+                >
+                  <div className="h-[3px]" style={{ backgroundColor: getKpiAccentColor(kpi) }} />
+                  <div className="space-y-2 px-4 py-4">
+                    <p className="text-[11px] text-[#999999]">{kpi.label}</p>
+                    <strong
+                      className="block text-[22px] font-medium leading-none"
+                      style={{ color: getKpiValueColor(kpi) }}
+                    >
+                      {kpi.value}
+                    </strong>
+                    <p
+                      className="text-[11px] leading-[1.35]"
+                      style={{ color: getKpiHelperColor(kpi) }}
+                    >
+                      {kpi.helper}
+                    </p>
+                    {kpi.id === "mauReel" && (
+                      <div className="mt-2 rounded-[8px] bg-[#F7F7F5] px-3 py-2 text-[11px] leading-[1.5] text-[#666666]">
+                        Joueurs ayant joué au moins une partie sur les 30 derniers jours. Mesure réelle d'activité — remplace le statut admin.
+                      </div>
+                    )}
+                    {kpi.id === "wauReel" && (
+                      <div className="mt-2 rounded-[8px] bg-[#F7F7F5] px-3 py-2 text-[11px] leading-[1.5] text-[#666666]">
+                        Joueurs ayant joué au moins une partie sur les 7 derniers jours. Indicateur d'engagement récent — doit rester au-dessus de 50% des MAU.
+                      </div>
+                    )}
+                    {kpi.id === "dauMau" && (
+                      <div className="mt-2 rounded-[8px] bg-[#F7F7F5] px-3 py-2 text-[11px] leading-[1.5] text-[#666666]">
+                        Joueurs actifs en moyenne chaque jour / joueurs actifs sur le mois. 34% = valeur estimée — brancher analytics_daily pour mesure réelle.
+                      </div>
+                    )}
+                    {kpi.id === "iosRetention" && (
+                      <div className="mt-2 rounded-[8px] bg-[#F7F7F5] px-3 py-2 text-[11px] leading-[1.5] text-[#666666]">
+                        Nouveaux joueurs iOS des 30 derniers jours ayant joué plus d'une session. Objectif minimum : 40%.
+                      </div>
+                    )}
+                  </div>
+                </article>
+              ))}
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {loading
+            ? Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-[136px] animate-pulse rounded-[10px] border border-[#E8E8E4] bg-white"
+                />
+              ))
+            : newKpis.map((kpi) => (
+                <article
+                  key={kpi.id}
+                  className="overflow-hidden rounded-[10px] border border-[#E8E8E4] bg-white"
+                >
+                  <div className="h-[4px]" style={{ backgroundColor: getKpiAccentColor(kpi) }} />
+                  <div className="space-y-3 px-4 py-4">
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-[#999999]">{kpi.label}</p>
+                      <strong
+                        className="block text-[22px] font-medium leading-none"
+                        style={{ color: getKpiValueColor(kpi) }}
+                      >
+                        {kpi.value}
+                      </strong>
+                    </div>
+
+                    <p
+                      className="text-[11px] leading-[1.35]"
+                      style={{ color: getKpiHelperColor(kpi) }}
+                    >
+                      {kpi.helper}
+                    </p>
+
+                    <div className="rounded-[8px] bg-[#F7F7F5] px-3 py-3 text-[11px] leading-[1.45] text-[#666666]">
+                      {kpi.id === "totalPlayers" && (
+                        <>Total des comptes créés depuis le lancement. Les joueurs "actifs" représentent {data.kpis.find((k) => k.id === "mauReel") && data.kpis.find((k) => k.id === "totalPlayers") ? `${Math.round((parseInt(data.kpis.find((k) => k.id === "mauReel")!.value.replace(/\s/g, "")) / parseInt(data.kpis.find((k) => k.id === "totalPlayers")!.value.replace(/\s/g, ""))) * 100)}%` : "—"} des inscrits.</>
+                      )}
+                      {kpi.id === "completionRate" && (
+                        <>Sur 100 joueurs qui ouvrent l'app, combien jouent leurs 3 parties. Si ça baisse → vérifier les jeux actifs.</>
+                      )}
+                      {kpi.id === "retention7d" && (
+                        <>Sur 100 joueurs inscrits il y a 7–14 jours, combien ont eu une participation après leur J1. Cohorte petite = chiffre instable. En dessous de 35% → revoir onboarding et notifs J2–J5.</>
+                      )}
+                      {kpi.id === "creditsRatio" && (
+                        <>Sur 100 parties gagnées, combien de crédits sont rejoués en nouvelles parties. Si ça baisse → les joueurs gardent leurs crédits sans rejouer.</>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))}
+        </div>
+
+        {loading ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={index}
                 className="h-[136px] animate-pulse rounded-[10px] border border-[#E8E8E4] bg-white"
               />
-            ))
-          : data.kpis.map((kpi) => (
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {todayKpis.map((kpi) => (
               <article
                 key={kpi.id}
                 className="overflow-hidden rounded-[10px] border border-[#E8E8E4] bg-white"
               >
                 <div className="h-[3px]" style={{ backgroundColor: getKpiAccentColor(kpi) }} />
-                <div className="space-y-2 px-4 py-4">
+                <div className="space-y-1 px-4 py-4">
                   <p className="text-[11px] text-[#999999]">{kpi.label}</p>
                   <strong
                     className="block text-[22px] font-medium leading-none"
@@ -376,9 +551,30 @@ export default function AdminDashboardPage() {
                   >
                     {kpi.helper}
                   </p>
+                  <div className="mt-3 rounded-[8px] bg-[#F7F7F5] px-3 py-2 text-[11px] leading-[1.5] text-[#666666]">
+                    {kpi.id === "partiesToday" && (
+                      <>Nombre total de parties lancées aujourd'hui, tous marchands confondus.</>
+                    )}
+                    {kpi.id === "joueursSansPartie" && (
+                      <>
+                        {data.kpis.find((k) => k.id === "mauReel")
+                          ? `${Math.round((parseInt((data.kpis.find((k) => k.id === "joueursSansPartie")?.value ?? "0").replace(/\s/g, "")) / parseInt((data.kpis.find((k) => k.id === "mauReel")?.value ?? "1").replace(/\s/g, ""))) * 100)}% des actifs n'ont pas joué aujourd'hui.`
+                          : ""}{" "}
+                        Joueurs actifs qui n'ont lancé aucune partie. Cible : moins de 30% des actifs.
+                      </>
+                    )}
+                    {kpi.id === "joueursTroisParties" && (
+                      <>Joueurs ayant utilisé leurs 3 crédits du jour. Indique l'engagement maximum.</>
+                    )}
+                    {kpi.id === "tauxUtilisation" && (
+                      <>Nombre moyen de parties jouées par joueur actif aujourd'hui. En dessous de 2 → les joueurs ne reviennent pas dans la journée.</>
+                    )}
+                  </div>
                 </div>
               </article>
             ))}
+          </div>
+        )}
       </div>
 
       {activeAlert ? (
@@ -559,7 +755,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between border-b border-[#F0F0EC] px-5 py-4">
             <h2 className="text-[15px] font-medium text-[#1A1A1A]">Marchands a relancer</h2>
             <Link href="/admin/commercants" className="text-[12px] font-medium text-[#639922]">
-              Gerer →
+              Gerer â†’
             </Link>
           </div>
 
@@ -596,7 +792,7 @@ export default function AdminDashboardPage() {
                     href={getMerchantActionHref(merchant)}
                     className="shrink-0 text-[12px] font-medium text-[#639922]"
                   >
-                    {getMerchantActionLabel(merchant)} →
+                    {getMerchantActionLabel(merchant)} â†’
                   </Link>
                 </div>
               ))
@@ -685,3 +881,4 @@ export default function AdminDashboardPage() {
     </section>
   );
 }
+

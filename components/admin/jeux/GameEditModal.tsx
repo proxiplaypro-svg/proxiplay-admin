@@ -32,6 +32,7 @@ type GameEditModalProps = {
   feedbackTone: "success" | "error" | null;
   onClose: () => void;
   onSave: (payload: SavePayload) => Promise<void>;
+  onDelete?: (game: Game) => Promise<void>;
 };
 
 type GeneralFormState = {
@@ -222,11 +223,13 @@ export function GameEditModal({
   feedbackTone,
   onClose,
   onSave,
+  onDelete,
 }: GameEditModalProps) {
   const [generalForm, setGeneralForm] = useState<GeneralFormState>(() => buildInitialGeneralForm(game));
   const [mainPrizeForm, setMainPrizeForm] = useState<MainPrizeFormState>(() => buildInitialMainPrizeForm(game));
   const [secondaryPrizes, setSecondaryPrizes] = useState<SecondaryPrizeFormItem[]>(() => buildInitialSecondaryPrizes(game));
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -234,6 +237,7 @@ export function GameEditModal({
       setMainPrizeForm(buildInitialMainPrizeForm(game));
       setSecondaryPrizes(buildInitialSecondaryPrizes(game));
       setValidationError(null);
+      setDeleteConfirm(false);
     }
   }, [game, open]);
 
@@ -359,21 +363,32 @@ export function GameEditModal({
   return (
     <div className="fixed inset-0 z-50 bg-[rgba(247,247,245,0.92)] p-4" role="presentation" onClick={onClose}>
       <div
-        className="mx-auto mt-[4vh] max-h-[92vh] w-full max-w-[860px] overflow-hidden rounded-[12px] border border-[#E8E8E4] bg-white shadow-[0_20px_60px_rgba(26,26,26,0.08)]"
+        className="mx-auto flex w-full max-w-[860px] flex-col overflow-hidden rounded-[12px] border border-[#E8E8E4] bg-white shadow-[0_20px_60px_rgba(26,26,26,0.08)]"
+        style={{ height: "90vh", marginTop: "4vh" }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="game-edit-modal-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[#F0F0EC] px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-[#F0F0EC] px-5 py-4">
           <div>
             <h2 id="game-edit-modal-title" className="text-[18px] font-medium text-[#1A1A1A]">Modifier le jeu</h2>
             <p className="mt-1 text-[12px] text-[#666666]">Separe les informations du jeu, le lot principal et les lots secondaires.</p>
+            {game && (
+              <a
+                href={`/admin/winners?gameId=${game.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-[#639922] hover:underline"
+              >
+                Voir les gagnants →
+              </a>
+            )}
           </div>
           <button type="button" className="text-[22px] leading-none text-[#999999]" onClick={onClose} aria-label="Fermer">x</button>
         </div>
 
-        <form className="max-h-[calc(92vh-72px)] overflow-y-auto px-5 py-4" onSubmit={handleSubmit}>
+        <form id="game-edit-form" className="flex-1 overflow-y-auto px-5 py-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4">
             {hasMissingImage ? (
               <div className="rounded-[8px] border border-[#F09595] bg-[#FCEBEB] px-3 py-3 text-[12px] text-[#A32D2D]">
@@ -566,17 +581,56 @@ export function GameEditModal({
                 {feedback}
               </div>
             ) : null}
-          </div>
-
-          <div className="mt-4 flex items-center justify-end gap-2 border-t border-[#F0F0EC] pt-4">
-            <button type="button" className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A]" onClick={onClose} disabled={saving}>
-              Annuler
-            </button>
-            <button type="submit" className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-70" disabled={saving}>
-              {saving ? "Enregistrement..." : "Enregistrer"}
-            </button>
-          </div>
+            </div>
         </form>
+
+        <div className="shrink-0 border-t border-[#F0F0EC] bg-white px-5 py-4">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              {onDelete && !deleteConfirm && (
+                <button
+                  type="button"
+                  className="rounded-[8px] border border-[#F09595] bg-white px-4 py-[10px] text-[12px] font-medium text-[#A32D2D] transition hover:bg-[#FCEBEB]"
+                  onClick={() => setDeleteConfirm(true)}
+                  disabled={saving}
+                >
+                  Supprimer
+                </button>
+              )}
+              {onDelete && deleteConfirm && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] text-[#A32D2D]">Confirmer la suppression ?</span>
+                  <button
+                    type="button"
+                    className="rounded-[8px] border border-[#E24B4A] bg-[#E24B4A] px-3 py-[8px] text-[12px] font-medium text-white"
+                    onClick={() => {
+                      void onDelete(game);
+                      setDeleteConfirm(false);
+                    }}
+                    disabled={saving}
+                  >
+                    Oui, supprimer
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-[8px] text-[12px] text-[#666666]"
+                    onClick={() => setDeleteConfirm(false)}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A]" onClick={onClose} disabled={saving}>
+                Annuler
+              </button>
+              <button type="submit" form="game-edit-form" className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-70" disabled={saving}>
+                {saving ? "Enregistrement..." : "Enregistrer"}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

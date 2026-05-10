@@ -32,10 +32,21 @@ type FirestoreMerchantDocument = {
   name?: string;
   title?: string;
   merchantName?: string;
+  description?: string;
+  address?: string;
+  area_code?: string;
   city?: string;
   email?: string;
   phone?: string;
   phone_number?: string;
+  category?: string[];
+  facebook_link?: string;
+  instagram_link?: string;
+  twitter_link?: string;
+  site_web_url?: string;
+  imageUrl?: string;
+  logo?: string;
+  owner?: DocumentReference | string | null;
   commercial_status?: "" | "actif" | "a_relancer" | "inactif";
   last_contact_at?: Timestamp | null;
   last_contact_channel?: string;
@@ -71,11 +82,6 @@ type FirestoreGameDocument = {
   status?: string;
 };
 
-type FirestoreParticipantDocument = {
-  participation_date?: Timestamp;
-  created_time?: Timestamp;
-};
-
 type FirestorePrizeDocument = {
   game_id?: DocumentReference | string | null;
   claimed?: boolean;
@@ -95,6 +101,14 @@ type FirestoreRelanceHistoryDocument = {
   timestamp?: Timestamp;
 };
 
+type FirestoreUserDocument = {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone_number?: string;
+  account_status?: string;
+};
+
 export type MerchantsPilotageData = {
   merchants: MerchantPilotageItem[];
   merchantCollectionName: MerchantCollectionName;
@@ -105,9 +119,18 @@ export type UpdateMerchantProfileInput = {
   merchantId: string;
   merchantCollectionName: MerchantCollectionName;
   name: string;
+  description: string;
+  address: string;
+  areaCode: string;
   city: string;
   email: string;
   phone: string;
+  category: string[];
+  facebookLink: string;
+  instagramLink: string;
+  twitterLink: string;
+  siteWebUrl: string;
+  imageUrl: string;
   commercialStatus: "" | "actif" | "a_relancer" | "inactif";
 };
 
@@ -328,28 +351,42 @@ function isPrizeRemis(prize: FirestorePrizeDocument) {
 function buildEngagementScore(params: {
   activeGamesCount: number;
   participationsJ30: number;
-  lastContactDateValue: number;
-  clicksJ30: number;
-}) {
+  gainsRemis: number;
+  lastActivityDaysAgo: number;
+}): number {
   let score = 0;
 
-  if (params.activeGamesCount > 0) {
+  // Jeux actifs — 0-40 pts
+  if (params.activeGamesCount >= 2) {
     score += 40;
+  } else if (params.activeGamesCount === 1) {
+    score += 25;
   }
 
-  if (params.participationsJ30 > 50) {
+  // Participations J30 — 0-40 pts progressif
+  if (params.participationsJ30 >= 500) {
+    score += 40;
+  } else if (params.participationsJ30 >= 200) {
     score += 30;
-  }
-
-  if (params.lastContactDateValue > 0 && Date.now() - params.lastContactDateValue < SEVEN_DAYS_IN_MS) {
+  } else if (params.participationsJ30 >= 50) {
     score += 20;
-  }
-
-  if (params.clicksJ30 > 100) {
+  } else if (params.participationsJ30 >= 10) {
     score += 10;
   }
 
-  return score;
+  // Gains remis — 0-10 pts
+  if (params.gainsRemis >= 5) {
+    score += 10;
+  } else if (params.gainsRemis >= 1) {
+    score += 5;
+  }
+
+  // Jeu créé ou renouvelé récemment — 0-10 pts
+  if (params.lastActivityDaysAgo <= 30) {
+    score += 10;
+  }
+
+  return Math.min(100, score);
 }
 
 function buildMerchantStatus(params: {
@@ -498,19 +535,41 @@ function mapMerchantDocument(
 ): MerchantPilotageItem {
   const merchant = snapshot.data() as FirestoreMerchantDocument;
   const lastContactDateValue = merchant.last_contact_at?.toMillis() ?? 0;
+  const hasRecentGame = merchantStats.activeGames.some(
+    (game) => game.endDateValue > Date.now() - 30 * 24 * 60 * 60 * 1000,
+  );
   const engagementScore = buildEngagementScore({
     activeGamesCount: merchantStats.activeGamesCount,
     participationsJ30: merchantStats.participationsJ30,
-    lastContactDateValue,
-    clicksJ30: merchantStats.clicksJ30,
+    gainsRemis: merchantStats.gainsRemis,
+    lastActivityDaysAgo: hasRecentGame ? 0 : 999,
   });
 
   return {
     id: snapshot.id,
     name: readText(merchant.name, merchant.title, merchant.merchantName, "Enseigne sans nom"),
+    description: readText(merchant.description),
+    address: readText(merchant.address),
+    areaCode: readText(merchant.area_code),
     city: readText(merchant.city),
     email: readText(merchant.email),
     phone: readText(merchant.phone, merchant.phone_number),
+    category: Array.isArray(merchant.category) ? merchant.category : [],
+    facebookLink: readText(merchant.facebook_link),
+    instagramLink: readText(merchant.instagram_link),
+    twitterLink: readText(merchant.twitter_link),
+    siteWebUrl: readText(merchant.site_web_url),
+    imageUrl: readText(merchant.imageUrl, merchant.logo),
+    ownerRef: merchant.owner
+      ? typeof merchant.owner === "string"
+        ? merchant.owner
+        : merchant.owner.id
+      : null,
+    ownerFirstName: "",
+    ownerLastName: "",
+    ownerEmail: "",
+    ownerPhone: "",
+    ownerStatus: "",
     merchantCollectionName,
     gamesCollectionName,
     commercialStatus: merchant.commercial_status ?? "",
@@ -574,35 +633,17 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
     });
   });
 
-  const participantCounts = await Promise.all(
-    gamesSnapshot.docs.map(async (snapshot) => {
-      try {
-        const participantsSnapshot = await getDocs(collection(snapshot.ref, "participants"));
-        const recentCount = participantsSnapshot.docs.reduce((total, participantSnapshot) => {
-          const participant = participantSnapshot.data() as FirestoreParticipantDocument;
-          const timestamp = readTimestamp(participant.participation_date, participant.created_time);
-
-          if (timestamp && timestamp.toMillis() >= thresholdTimestamp.toMillis()) {
-            return total + 1;
-          }
-
-          return total;
-        }, 0);
-
-        return {
-          gameId: snapshot.id,
-          recentCount,
-        };
-      } catch {
-        return {
-          gameId: snapshot.id,
-          recentCount: 0,
-        };
-      }
-    }),
-  );
-
-  const participantsByGameId = new Map(participantCounts.map((item) => [item.gameId, item.recentCount]));
+  const participantsByGameId = new Map<string, number>();
+  gamesSnapshot.docs.forEach((snapshot) => {
+    const game = snapshot.data() as FirestoreGameDocument;
+    const count = readNumber(
+      game.participations_count,
+      game.participations,
+      game.sessionCount,
+      game.partiesCount,
+    );
+    participantsByGameId.set(snapshot.id, count);
+  });
   const merchantIdByGameId = new Map<string, string>();
 
   gamesSnapshot.docs.forEach((snapshot) => {
@@ -626,7 +667,12 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
     const activityTimestamp = readTimestamp(game.last_activity_at, game.updated_at, game.created_at, game.created_time)?.toMillis() ?? 0;
     const participationsJ30 = participantsByGameId.get(snapshot.id) ?? 0;
     const clicks = readNumber(game.views);
-    const sessionsCount = readNumber(game.sessionCount, game.partiesCount, game.participations, game.participations_count);
+    const sessionsCount = readNumber(
+      game.participations,
+      game.participations_count,
+      game.sessionCount,
+      game.partiesCount,
+    );
 
     if (gameStatus === "actif" || gameStatus === "expire_bientot") {
       merchantStats.activeGamesCount += 1;
@@ -699,6 +745,34 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
     }),
   );
 
+  const ownerIds = merchants
+    .map((merchant) => merchant.ownerRef)
+    .filter((id): id is string => Boolean(id));
+
+  const uniqueOwnerIds = [...new Set(ownerIds)];
+
+  const ownerDocs = await Promise.all(
+    uniqueOwnerIds.map(async (ownerId) => {
+      try {
+        const snap = await getDoc(doc(db, "users", ownerId));
+        return { id: ownerId, data: snap.exists() ? (snap.data() as FirestoreUserDocument) : null };
+      } catch {
+        return { id: ownerId, data: null };
+      }
+    }),
+  );
+
+  const ownerById = new Map(ownerDocs.map((owner) => [owner.id, owner.data]));
+
+  merchants.forEach((merchant) => {
+    const owner = merchant.ownerRef ? ownerById.get(merchant.ownerRef) ?? null : null;
+    merchant.ownerFirstName = readText(owner?.first_name);
+    merchant.ownerLastName = readText(owner?.last_name);
+    merchant.ownerEmail = readText(owner?.email);
+    merchant.ownerPhone = readText(owner?.phone_number);
+    merchant.ownerStatus = readText(owner?.account_status);
+  });
+
   return {
     merchants,
     merchantCollectionName,
@@ -714,10 +788,18 @@ export async function updateMerchantProfile(input: UpdateMerchantProfileInput) {
 
   await updateDoc(merchantRef, {
     name: input.name.trim() || deleteField(),
+    description: input.description.trim() || deleteField(),
+    address: input.address.trim() || deleteField(),
+    area_code: input.areaCode.trim() || deleteField(),
     city: input.city.trim() || deleteField(),
     email: input.email.trim() || deleteField(),
     phone: trimmedPhone || deleteField(),
     phone_number: trimmedPhone || deleteField(),
+    category: input.category.length > 0 ? input.category : deleteField(),
+    facebook_link: input.facebookLink.trim() || deleteField(),
+    instagram_link: input.instagramLink.trim() || deleteField(),
+    twitter_link: input.twitterLink.trim() || deleteField(),
+    site_web_url: input.siteWebUrl.trim() || deleteField(),
     commercial_status: input.commercialStatus || deleteField(),
   });
 }

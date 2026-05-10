@@ -1,23 +1,30 @@
 "use client";
 
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import Script from "next/script";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  getAdminFollowUpErrorMessage,
-  markPlayerAsContactedAction,
-  markPlayersAsContactedAction,
-} from "@/lib/firebase/adminActions";
 import {
   getPlayersList,
   getPlayersPushStatuses,
   type AdminPlayerListItem,
 } from "@/lib/firebase/adminQueries";
-import { buildWhatsAppLink } from "@/lib/firebase/merchantsQueries";
+import { auth } from "@/lib/firebase/auth";
+import { db } from "@/lib/firebase/client-app";
 
 type FollowUpFilter = "tous" | "a_faire" | "relance" | "sans_reponse" | "ok";
 type ActivityFilter = "tous" | "actif" | "inactif";
 type LastContactSort = "recent_first" | "oldest_first" | "never_first";
+type FeedbackState = { tone: "success" | "error"; text: string } | null;
+type PushModalState = {
+  open: boolean;
+  userIds: string[];
+  title: string;
+  message: string;
+  heading: string;
+  description: string;
+};
 type AnalyticsChartPoint = { label: string; value: number };
 type AnalyticsDataset = {
   data: number[];
@@ -110,10 +117,25 @@ function activityColors(p: AdminPlayerListItem) {
         ? { avatar: "bg-[#F7F7F5] text-[#666666]", badge: "bg-[#F1EFE8] text-[#5F5E5A]" }
         : { avatar: "bg-[#FCEBEB] text-[#A32D2D]", badge: "bg-[#FCEBEB] text-[#A32D2D]" };
 }
-function relaunch(p: AdminPlayerListItem) {
-  if (p.phone !== "Non renseigne" && p.phone.trim()) return { href: buildWhatsAppLink(p.phone, label(p)), channel: "phone" as const, disabled: false };
-  if (p.email !== "Non renseigne" && p.email.trim()) return { href: `mailto:${encodeURIComponent(p.email)}?subject=${encodeURIComponent(`Relance ProxiPlay - ${label(p)}`)}`, channel: "email" as const, disabled: false };
-  return { href: null, channel: "unknown" as const, disabled: true };
+function getBulkPushModalState(userIds: string[]): PushModalState {
+  return {
+    open: true,
+    userIds,
+    title: "",
+    message: "",
+    heading: "Envoyer une notif push",
+    description: "La notification sera creee dans ff_push_notifications pour les joueurs selectionnes.",
+  };
+}
+function getSinglePushModalState(playerId: string): PushModalState {
+  return {
+    open: true,
+    userIds: [playerId],
+    title: "On vous a reserve des parties !",
+    message: "Revenez jouer sur ProxiPlay, vos chances vous attendent.",
+    heading: "Relancer le joueur par notification push",
+    description: "Tu peux ajuster le titre et le message avant l envoi.",
+  };
 }
 function startOfLocalDay(value: number | Date) {
   const date = new Date(value);
@@ -150,6 +172,7 @@ function AnalyticsChartFallback({ message }: { message: string }) {
 }
 
 export default function AdminPlayersPage() {
+  const router = useRouter();
   const [players, setPlayers] = useState<AdminPlayerListItem[]>([]);
   const [search, setSearch] = useState("");
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("tous");
@@ -160,11 +183,19 @@ export default function AdminPlayersPage() {
   const [cityFilter, setCityFilter] = useState("toutes");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [pushSubmitting, setPushSubmitting] = useState(false);
+  const [pushModal, setPushModal] = useState<PushModalState>({
+    open: false,
+    userIds: [],
+    title: "",
+    message: "",
+    heading: "",
+    description: "",
+  });
   const [chartJsReady, setChartJsReady] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
   const exhaustedChartCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const signupsChartCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const exhaustedChartRef = useRef<AnalyticsChartInstance | null>(null);
@@ -241,6 +272,10 @@ export default function AdminPlayersPage() {
   const selectedPlayers = useMemo(() => filtered.filter((p) => selection.has(p.id)), [filtered, selection]);
   const allVisibleSelected = visibleIds.length > 0 && selectedIds.length === visibleIds.length;
   useEffect(() => { setSelection((cur) => { const next = new Set([...cur].filter((id) => visibleIds.includes(id))); return next.size === cur.size ? cur : next; }); }, [visibleIds]);
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = selectedIds.length > 0 && !allVisibleSelected;
+  }, [allVisibleSelected, selectedIds.length]);
 
   const overview = useMemo(() => {
     const total = filtered.length;
@@ -361,47 +396,95 @@ export default function AdminPlayersPage() {
         ? "bg-[#EAF3DE] text-[#3B6D11]"
         : "bg-[#F7F7F5] text-[#666666]";
 
-  const bulkNotify = (source: AdminPlayerListItem[] = selectedPlayers) => {
-    void (async () => {
-      const contactable = source.filter((p) => p.email.trim() && p.email !== "Non renseigne");
-      const emails = [...new Set(contactable.map((p) => p.email.trim()))];
-      if (emails.length === 0) { setFeedback("Aucun email exploitable dans la selection visible."); return; }
-      setBulkLoading(true); setFeedback(null);
-      try {
-        await markPlayersAsContactedAction({ userIds: contactable.map((p) => p.id), lastContactChannel: "email" });
-        const now = Date.now();
-        const nowLabel = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(now));
-        setPlayers((cur) => cur.map((p) => contactable.some((c) => c.id === p.id) ? { ...p, followUp: { ...p.followUp, lastContactAtLabel: nowLabel, lastContactAtValue: now, lastContactChannel: "email", followUpStatus: "relance", hasLastContact: true } } : p));
-        const subject = encodeURIComponent("Relance ProxiPlay");
-        const body = encodeURIComponent("Bonjour,\n\nJe reviens vers vous au sujet de votre activite ProxiPlay.\n\nBien a vous,\nL equipe ProxiPlay");
-        window.location.href = `mailto:?bcc=${encodeURIComponent(emails.join(","))}&subject=${subject}&body=${body}`;
-        setFeedback(`${emails.length} adresse(s) email preparee(s) et marquee(s) comme relancees.`);
-      } catch (e) {
-        console.error(e); setFeedback(getAdminFollowUpErrorMessage(e));
-      } finally { setBulkLoading(false); }
-    })();
+  const openBulkPushModal = (userIds: string[]) => {
+    if (userIds.length === 0) {
+      setFeedback({ tone: "error", text: "Selectionne au moins un joueur avant l envoi." });
+      return;
+    }
+
+    setFeedback(null);
+    setPushModal(getBulkPushModalState(userIds));
   };
 
-  const oneNotify = (p: AdminPlayerListItem) => {
-    const action = relaunch(p);
-    if (action.disabled || !action.href) { setFeedback("Aucun canal de relance exploitable pour ce joueur."); return; }
+  const openSinglePushModal = (playerId: string) => {
+    setFeedback(null);
+    setPushModal(getSinglePushModalState(playerId));
+  };
+
+  const closePushModal = () => {
+    if (pushSubmitting) return;
+    setPushModal({
+      open: false,
+      userIds: [],
+      title: "",
+      message: "",
+      heading: "",
+      description: "",
+    });
+  };
+
+  const submitPushNotification = () => {
     void (async () => {
-      setPendingId(p.id); setFeedback(null);
+      const title = pushModal.title.trim();
+      const message = pushModal.message.trim();
+      const user = auth.currentUser;
+      const userIds = [...new Set(pushModal.userIds.map((id) => id.trim()).filter(Boolean))];
+
+      if (!title || !message) {
+        setFeedback({ tone: "error", text: "Titre et message sont obligatoires." });
+        return;
+      }
+
+      if (!user) {
+        setFeedback({ tone: "error", text: "Connexion requise pour envoyer une notification." });
+        return;
+      }
+
+      if (userIds.length === 0) {
+        setFeedback({ tone: "error", text: "Aucun joueur cible pour cette notification." });
+        return;
+      }
+
+      setPushSubmitting(true);
+      setFeedback(null);
+
       try {
-        await markPlayerAsContactedAction({ userId: p.id, lastContactChannel: action.channel });
-        const now = Date.now();
-        const nowLabel = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(now));
-        setPlayers((cur) => cur.map((x) => x.id === p.id ? { ...x, followUp: { ...x.followUp, lastContactAtLabel: nowLabel, lastContactAtValue: now, lastContactChannel: action.channel, followUpStatus: "relance", hasLastContact: true } } : x));
-        const href = action.href;
-        if (!href) {
-          setFeedback("Aucun canal de relance exploitable pour ce joueur.");
-          return;
-        }
-        window.location.href = href;
-        setFeedback(`Relance joueur preparee et suivi mis a jour via ${action.channel === "email" ? "email" : "WhatsApp"}.`);
+        await addDoc(collection(db, "ff_push_notifications"), {
+          created_at: serverTimestamp(),
+          created_by: `/users/${user.uid}`,
+          notification_title: title,
+          notification_text: message,
+          notification_image_url: "",
+          notification_sound: "",
+          initial_page_name: "",
+          parameter_data: "",
+          scheduled_time: serverTimestamp(),
+          status: "pending",
+          target_audience: "specific",
+          target_user_group: "specific",
+          user_refs: userIds.join(","),
+        });
+
+        setFeedback({
+          tone: "success",
+          text: `Notification creee dans ff_push_notifications pour ${userIds.length} joueur${userIds.length > 1 ? "s" : ""}.`,
+        });
+        setPushModal({
+          open: false,
+          userIds: [],
+          title: "",
+          message: "",
+          heading: "",
+          description: "",
+        });
+        setSelection(new Set());
       } catch (e) {
-        console.error(e); setFeedback(getAdminFollowUpErrorMessage(e));
-      } finally { setPendingId(null); }
+        console.error(e);
+        const messageText = e instanceof Error ? e.message : "Impossible de creer la notification push.";
+        setFeedback({ tone: "error", text: messageText });
+      } finally {
+        setPushSubmitting(false);
+      }
     })();
   };
 
@@ -419,7 +502,7 @@ export default function AdminPlayersPage() {
         </div>
         <div className="flex flex-wrap gap-3">
           <button type="button" onClick={() => exportCsv(filtered, "proxiplay-joueurs.csv")} className="rounded-[10px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] text-[#1A1A1A] transition hover:bg-[#FAFAF8]">Exporter CSV</button>
-          <button type="button" onClick={() => bulkNotify(selectedPlayers.length > 0 ? selectedPlayers : filtered)} disabled={bulkLoading} className="rounded-[10px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#57881D]">{bulkLoading ? "Preparation..." : "Envoyer une notif"}</button>
+          <button type="button" onClick={() => openBulkPushModal(selectedPlayers.length > 0 ? selectedPlayers.map((player) => player.id) : filtered.map((player) => player.id))} disabled={pushSubmitting} className="rounded-[10px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#57881D]">{pushSubmitting ? "Envoi..." : "Envoyer une notif"}</button>
         </div>
       </div>
 
@@ -473,16 +556,20 @@ export default function AdminPlayersPage() {
       </div>
 
       {error ? <div className="rounded-[12px] border border-[#F2CACA] bg-[#FCEBEB] px-5 py-4 text-[12.5px] text-[#A32D2D]">{error}</div> : null}
-      {feedback ? <div className="rounded-[12px] border border-[#E8E8E4] bg-white px-5 py-4 text-[12.5px] text-[#666666]">{feedback}</div> : null}
+      {feedback ? <div className={`rounded-[12px] border px-5 py-4 text-[12.5px] ${feedback.tone === "success" ? "border-[#C0DD97] bg-[#EAF3DE] text-[#3B6D11]" : "border-[#F2CACA] bg-[#FCEBEB] text-[#A32D2D]"}`}>{feedback.text}</div> : null}
 
       <section className="overflow-hidden rounded-[12px] border border-[#E8E8E4] bg-white">
         <div className="flex flex-col gap-3 border-b border-[#F0F0EC] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
           <h2 className="text-[15px] font-medium text-[#1A1A1A]">Liste des joueurs</h2>
-          {selectedIds.length > 0 ? <div className="flex flex-wrap items-center gap-2"><span className="text-[12px] text-[#999999]">{selectedIds.length} selectionnes</span><button type="button" onClick={() => bulkNotify(selectedPlayers)} disabled={bulkLoading} className="rounded-[8px] bg-[#639922] px-3 py-[9px] text-[12px] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#57881D]">Envoyer notif</button><button type="button" onClick={() => exportCsv(selectedPlayers, "proxiplay-joueurs-selection.csv")} className="rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-[9px] text-[12px] text-[#666666] transition hover:bg-[#EFEDE6]">Exporter</button></div> : null}
+          
         </div>
 
-        {loading ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Chargement des joueurs Firestore...</div> : filtered.length === 0 ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Aucun document users joueur ne correspond a la recherche ou aux filtres selectionnes.</div> : <div className="overflow-x-auto"><table className="min-w-full"><thead><tr className="border-b border-[#F0F0EC]">{["", "Joueur", "Contact", "Performance", "Activite", "Actions"].map((label) => <th key={label} className={thClass}>{label}</th>)}</tr></thead><tbody>{filtered.map((p) => { const action = relaunch(p); const tone = activityColors(p); const platform: "iOS" | "Android" | "Inconnue" = "Inconnue"; return <tr key={p.id} className="border-b border-[#F0F0EC] hover:bg-[#FAFAF8] last:border-b-0"><td className="px-[14px] py-[10px]"><button type="button" onClick={() => setSelection((cur) => { const next = new Set(cur); next.has(p.id) ? next.delete(p.id) : next.add(p.id); return next; })} aria-label={`Selectionner ${label(p)}`} className={`flex h-[14px] w-[14px] items-center justify-center rounded-[3px] border ${selection.has(p.id) ? "border-[#639922] bg-[#EAF3DE]" : "border-[#D3D1C7] bg-white"}`}>{selection.has(p.id) ? <span className="h-[6px] w-[6px] rounded-[1px] bg-[#639922]" /> : null}</button></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-3"><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-medium ${tone.avatar}`}>{initials(p)}</div><div><p className="text-[12.5px] font-medium text-[#1A1A1A]">{label(p)}</p><span className={`mt-1 inline-flex rounded-full px-2 py-[3px] text-[10px] ${platformBadge(platform)}`}>{platform}</span></div></div></td><td className="px-[14px] py-[10px]"><p className="max-w-[220px] truncate text-[11px] text-[#666666]">{p.email}</p><p className="mt-1 text-[11px] text-[#999999]">{p.city}</p></td><td className="px-[14px] py-[10px]"><p className="text-[12px] font-medium text-[#1A1A1A]">{fmt(p.gamesPlayedCount)} parties</p><p className="mt-1 text-[11px] font-medium text-[#639922]">{fmt(p.winsCount)} gains</p></td><td className="px-[14px] py-[10px]"><span className={`inline-flex rounded-full px-3 py-[4px] text-[11px] font-medium ${tone.badge}`}>{p.assiduityLabel}</span><p className="mt-2 text-[11px] text-[#999999]">{p.lastRealActivityLabel}</p></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-2">{(p.assiduityLabel === "A relancer" || p.assiduityLabel === "Inactif" || p.assiduityLabel === "Jamais actif") && !action.disabled && action.href ? <button type="button" disabled={pendingId === p.id} onClick={() => oneNotify(p)} className="rounded-[6px] bg-[#EAF3DE] px-2 py-[6px] text-[11px] font-medium text-[#3B6D11] transition hover:bg-[#DDEAC7] disabled:cursor-not-allowed disabled:opacity-50">{pendingId === p.id ? "Mise a jour..." : "Relancer"}</button> : null}<Link href={`/admin/joueurs/${p.id}`} className="text-[11px] text-[#639922]">Voir →</Link></div></td></tr>; })}</tbody></table></div>}
+        {selectedIds.length > 0 ? <div className="flex flex-col gap-3 border-b border-[#C0DD97] bg-[#EAF3DE] px-5 py-4 lg:flex-row lg:items-center lg:justify-between"><span className="text-[12.5px] font-medium text-[#3B6D11]">{selectedIds.length} joueurs selectionnes</span><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => openBulkPushModal(selectedIds)} className="rounded-[8px] bg-[#639922] px-3 py-[9px] text-[12px] font-medium text-white transition hover:bg-[#57881D]">Envoyer une notif push</button><button type="button" onClick={() => setSelection(new Set())} className="rounded-[8px] border border-[#C0DD97] bg-white px-3 py-[9px] text-[12px] text-[#3B6D11] transition hover:bg-[#F7F7F5]">Deselectionner</button></div></div> : null}
+
+        {loading ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Chargement des joueurs Firestore...</div> : filtered.length === 0 ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Aucun document users joueur ne correspond a la recherche ou aux filtres selectionnes.</div> : <div className="overflow-x-auto"><table className="min-w-full"><thead><tr className="border-b border-[#F0F0EC]"><th className={thClass}><input ref={selectAllRef} type="checkbox" checked={allVisibleSelected} onChange={() => setSelection((cur) => { const next = new Set(cur); if (allVisibleSelected) { visibleIds.forEach((id) => next.delete(id)); } else { visibleIds.forEach((id) => next.add(id)); } return next; })} aria-label="Tout selectionner" className="h-4 w-4 rounded-[3px] border border-[#D3D1C7]" /></th>{["Joueur", "Contact", "Performance", "Activite", "Actions"].map((headerLabel) => <th key={headerLabel} className={thClass}>{headerLabel}</th>)}</tr></thead><tbody>{filtered.map((p) => { const tone = activityColors(p); const platform: "iOS" | "Android" | "Inconnue" = "Inconnue"; return <tr key={p.id} className="cursor-pointer border-b border-[#F0F0EC] transition hover:bg-[#FAFAF8] last:border-b-0" onClick={() => router.push(`/admin/joueurs/${p.id}`)}><td className="px-[14px] py-[10px]"><button type="button" onClick={(event) => { event.stopPropagation(); setSelection((cur) => { const next = new Set(cur); next.has(p.id) ? next.delete(p.id) : next.add(p.id); return next; }); }} aria-label={`Selectionner ${label(p)}`} className={`flex h-[14px] w-[14px] items-center justify-center rounded-[3px] border ${selection.has(p.id) ? "border-[#639922] bg-[#EAF3DE]" : "border-[#D3D1C7] bg-white"}`}>{selection.has(p.id) ? <span className="h-[6px] w-[6px] rounded-[1px] bg-[#639922]" /> : null}</button></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-3"><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-medium ${tone.avatar}`}>{initials(p)}</div><div><p className="text-[12.5px] font-medium text-[#1A1A1A]">{label(p)}</p><span className={`mt-1 inline-flex rounded-full px-2 py-[3px] text-[10px] ${platformBadge(platform)}`}>{platform}</span></div></div></td><td className="px-[14px] py-[10px]"><p className="max-w-[220px] truncate text-[11px] text-[#666666]">{p.email}</p><p className="mt-1 text-[11px] text-[#999999]">{p.city}</p></td><td className="px-[14px] py-[10px]"><p className="text-[12px] font-medium text-[#1A1A1A]">{fmt(p.gamesPlayedCount)} parties</p><p className="mt-1 text-[11px] font-medium text-[#639922]">{fmt(p.winsCount)} gains</p></td><td className="px-[14px] py-[10px]"><span className={`inline-flex rounded-full px-3 py-[4px] text-[11px] font-medium ${tone.badge}`}>{p.assiduityLabel}</span><p className="mt-2 text-[11px] text-[#999999]">{p.lastRealActivityLabel}</p></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-2">{(p.assiduityLabel === "A relancer" || p.assiduityLabel === "Inactif" || p.assiduityLabel === "Jamais actif") ? <button type="button" onClick={(event) => { event.stopPropagation(); openSinglePushModal(p.id); }} className="rounded-[6px] bg-[#EAF3DE] px-2 py-[6px] text-[11px] font-medium text-[#3B6D11] transition hover:bg-[#DDEAC7]">Relancer</button> : null}</div></td></tr>; })}</tbody></table></div>}
       </section>
+
+      {pushModal.open ? <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(26,26,26,0.28)] px-4"><div className="w-full max-w-[540px] rounded-[14px] border border-[#E8E8E4] bg-white p-5 shadow-[0_24px_80px_rgba(26,26,26,0.16)]"><div className="flex items-start justify-between gap-4"><div><h3 className="text-[16px] font-medium text-[#1A1A1A]">{pushModal.heading}</h3><p className="mt-1 text-[12px] text-[#999999]">{pushModal.description}</p></div><button type="button" onClick={closePushModal} className="text-[12px] text-[#999999] transition hover:text-[#1A1A1A]">Fermer</button></div><div className="mt-4 grid gap-4"><label className="grid gap-2"><div className="flex items-center justify-between text-[12px] text-[#666666]"><span>Titre</span><span className="text-[#999999]">{pushModal.title.length}/50</span></div><input type="text" maxLength={50} value={pushModal.title} onChange={(e) => setPushModal((cur) => ({ ...cur, title: e.target.value }))} className="h-[42px] rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1A1A1A] outline-none" /></label><label className="grid gap-2"><div className="flex items-center justify-between text-[12px] text-[#666666]"><span>Message</span><span className="text-[#999999]">{pushModal.message.length}/150</span></div><textarea maxLength={150} rows={5} value={pushModal.message} onChange={(e) => setPushModal((cur) => ({ ...cur, message: e.target.value }))} className="rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-3 text-[13px] text-[#1A1A1A] outline-none" /></label><p className="text-[12px] text-[#999999]">{pushModal.userIds.length} joueur{pushModal.userIds.length > 1 ? "s" : ""} cible{pushModal.userIds.length > 1 ? "s" : ""}</p><div className="flex items-center justify-end gap-2"><button type="button" onClick={closePushModal} className="rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] text-[#666666] transition hover:bg-[#FAFAF8]">Annuler</button><button type="button" onClick={submitPushNotification} disabled={pushSubmitting} className="rounded-[10px] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881D] disabled:cursor-not-allowed disabled:opacity-50">{pushSubmitting ? "Envoi..." : "Envoyer"}</button></div></div></div></div> : null}
     </section>
   );
 }

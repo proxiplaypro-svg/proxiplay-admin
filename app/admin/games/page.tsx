@@ -1,12 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
+  deleteDoc,
+  doc,
   getDocs,
   limit,
+  orderBy,
   query,
+  startAfter,
   Timestamp,
   type DocumentData,
   type DocumentReference,
@@ -231,31 +236,6 @@ function deriveStatus(game: FirestoreGameDocument, now = Date.now()) {
   return "actif" as const;
 }
 
-async function pickCollectionName<TName extends string>(
-  names: readonly TName[],
-  preferred: TName,
-) {
-  let firstReadable: TName | null = null;
-
-  for (const name of names) {
-    try {
-      const snapshot = await getDocs(query(collection(db, name), limit(1)));
-
-      if (!firstReadable) {
-        firstReadable = name;
-      }
-
-      if (!snapshot.empty) {
-        return name;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return firstReadable ?? preferred;
-}
-
 function mapMerchantOption(
   snapshot: QueryDocumentSnapshot<DocumentData>,
   collectionName: MerchantCollectionName,
@@ -270,7 +250,7 @@ function mapMerchantOption(
 }
 
 async function tryReadMerchantCollection(collectionName: MerchantCollectionName) {
-  const snapshot = await getDocs(collection(db, collectionName));
+  const snapshot = await getDocs(query(collection(db, collectionName), limit(100)));
 
   return snapshot.docs
     .map((entry) => mapMerchantOption(entry, collectionName))
@@ -374,15 +354,16 @@ function buildCsv(games: Game[]) {
   return lines.join("\n");
 }
 
-export default function AdminGamesPage() {
+function AdminGamesPageInner() {
+  const searchParams = useSearchParams();
   const [games, setGames] = useState<Game[]>([]);
   const [merchants, setMerchants] = useState<GameMerchantOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<GamesFilterValue>("tous");
-  const [merchantFilter, setMerchantFilter] = useState("tous");
+  const [merchantFilter, setMerchantFilter] = useState(() => searchParams.get("merchantId") ?? "tous");
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<GamesSortValue>("end_asc");
+  const [sort, setSort] = useState<GamesSortValue>("created_desc");
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [merchantCollectionName, setMerchantCollectionName] = useState<"enseignes" | "merchants">(
     "enseignes",
@@ -392,6 +373,10 @@ export default function AdminGamesPage() {
   const [modalSaving, setModalSaving] = useState(false);
   const [modalFeedback, setModalFeedback] = useState<string | null>(null);
   const [modalFeedbackTone, setModalFeedbackTone] = useState<"success" | "error" | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const gameCollectionRef = useRef<GameCollectionName>("games");
 
   useEffect(() => {
     let active = true;
@@ -403,19 +388,34 @@ export default function AdminGamesPage() {
       try {
         await ensureGamesAuthenticated();
 
-        const gameCollection = await pickCollectionName(["games", "jeux"] as const, "games");
-        const gamesSnapshot = await getDocs(collection(db, gameCollection));
-        const { merchantCollectionName: resolvedMerchantCollectionName, merchantOptions } =
-          await loadMerchantOptions();
+        const fetchGames = async () => {
+          const gamesSnapshot = await getDocs(
+            query(collection(db, "games"), orderBy("end_date", "desc"), limit(30)),
+          );
+          const gameCollection: GameCollectionName = gamesSnapshot.empty ? "jeux" : "games";
+          const finalSnapshot = gamesSnapshot.empty
+            ? await getDocs(query(collection(db, "jeux"), orderBy("end_date", "desc"), limit(30)))
+            : gamesSnapshot;
+
+          return { gameCollection, finalSnapshot };
+        };
+
+        const [
+          { gameCollection, finalSnapshot },
+          { merchantCollectionName: resolvedMerchantCollectionName, merchantOptions },
+        ] = await Promise.all([fetchGames(), loadMerchantOptions()]);
         const merchantsById = new Map(merchantOptions.map((merchant) => [merchant.id, merchant]));
-        const gameItems = gamesSnapshot.docs
+        const gameItems = finalSnapshot.docs
           .map((snapshot) => mapGameDocument(snapshot, gameCollection, merchantsById))
-          .sort((left, right) => (left.endDateValue ?? 0) - (right.endDateValue ?? 0));
+          .sort((left, right) => (right.startDateValue ?? 0) - (left.startDateValue ?? 0));
 
         if (!active) {
           return;
         }
 
+        gameCollectionRef.current = gameCollection;
+        lastDocRef.current = finalSnapshot.docs[finalSnapshot.docs.length - 1] ?? null;
+        setHasMore(finalSnapshot.docs.length === 30);
         setGames(gameItems);
         setMerchants(merchantOptions);
         setMerchantCollectionName(resolvedMerchantCollectionName);
@@ -423,6 +423,7 @@ export default function AdminGamesPage() {
         console.error(loadError);
 
         if (active) {
+          setHasMore(false);
           setError(getGamesQueryErrorMessage(loadError));
         }
       } finally {
@@ -453,6 +454,10 @@ export default function AdminGamesPage() {
     return result.sort((left, right) => {
       if (sort === "sessions_desc") {
         return right.sessionCount - left.sessionCount;
+      }
+
+      if (sort === "created_desc") {
+        return (right.startDateValue ?? 0) - (left.startDateValue ?? 0);
       }
 
       const leftEnd = left.endDateValue ?? 0;
@@ -613,6 +618,44 @@ export default function AdminGamesPage() {
     }
   };
 
+  const handleDelete = async (game: Game) => {
+    try {
+      await deleteDoc(doc(db, game.collectionName, game.id));
+      setGames((current) => current.filter((item) => item.id !== game.id));
+      setSelectedGame(null);
+    } catch (deleteError) {
+      console.error(deleteError);
+      setError(getGamesQueryErrorMessage(deleteError));
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (!lastDocRef.current || loadingMore) return;
+
+    setLoadingMore(true);
+
+    try {
+      const moreQuery = query(
+        collection(db, gameCollectionRef.current),
+        orderBy("end_date", "desc"),
+        startAfter(lastDocRef.current),
+        limit(30),
+      );
+      const moreSnapshot = await getDocs(moreQuery);
+      lastDocRef.current = moreSnapshot.docs[moreSnapshot.docs.length - 1] ?? null;
+      setHasMore(moreSnapshot.docs.length === 30);
+      const merchantsById = new Map(merchants.map((merchant) => [merchant.id, merchant]));
+      const moreGames = moreSnapshot.docs.map((snapshot) =>
+        mapGameDocument(snapshot, gameCollectionRef.current, merchantsById),
+      );
+      setGames((current) => [...current, ...moreGames]);
+    } catch (loadMoreError) {
+      console.error(loadMoreError);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   return (
     <section className="flex flex-col gap-4 bg-[#F7F7F5] text-[#1A1A1A]">
       <header className="flex flex-col gap-3 bg-[#F7F7F5] lg:flex-row lg:items-start lg:justify-between">
@@ -672,20 +715,49 @@ export default function AdminGamesPage() {
       ) : (
         <div className="flex flex-col gap-2">
           {filteredGames.map((game) => (
-            <GameCard
+            <div
               key={game.id}
-              game={game}
-              isTogglePending={togglePendingId === game.id}
-              isDuplicatePending={duplicatePendingId === game.id}
-              onToggle={handleToggle}
-              onEdit={(item) => {
-                setSelectedGame(item);
+              className="cursor-pointer"
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setSelectedGame(game);
                 setModalFeedback(null);
                 setModalFeedbackTone(null);
               }}
-              onDuplicate={handleDuplicate}
-            />
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedGame(game);
+                  setModalFeedback(null);
+                  setModalFeedbackTone(null);
+                }
+              }}
+            >
+              <GameCard
+                game={game}
+                isTogglePending={togglePendingId === game.id}
+                isDuplicatePending={duplicatePendingId === game.id}
+                onToggle={handleToggle}
+                onEdit={(item) => {
+                  setSelectedGame(item);
+                  setModalFeedback(null);
+                  setModalFeedbackTone(null);
+                }}
+                onDuplicate={handleDuplicate}
+              />
+            </div>
           ))}
+          {hasMore && (
+            <button
+              type="button"
+              onClick={() => void handleLoadMore()}
+              disabled={loadingMore}
+              className="w-full rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-3 text-[12px] text-[#666666] transition hover:bg-[#F7F7F5] disabled:opacity-50"
+            >
+              {loadingMore ? "Chargement..." : "Charger plus de jeux"}
+            </button>
+          )}
         </div>
       )}
 
@@ -704,7 +776,16 @@ export default function AdminGamesPage() {
           }
         }}
         onSave={handleSave}
+        onDelete={handleDelete}
       />
     </section>
+  );
+}
+
+export default function AdminGamesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-[13px] text-[#666]">Chargement...</div>}>
+      <AdminGamesPageInner />
+    </Suspense>
   );
 }

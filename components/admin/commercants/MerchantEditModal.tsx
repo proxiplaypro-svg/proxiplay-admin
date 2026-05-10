@@ -11,7 +11,17 @@ type MerchantEditModalProps = {
   onClose: () => void;
   onSave: (payload: {
     name: string;
+    description: string;
+    address: string;
+    areaCode: string;
     city: string;
+    category: string[];
+    facebookLink: string;
+    instagramLink: string;
+    twitterLink: string;
+    siteWebUrl: string;
+    imageFile: File | null;
+    imageUrl: string;
     email: string;
     phone: string;
     commercialStatus: "" | "actif" | "a_relancer" | "inactif";
@@ -20,7 +30,17 @@ type MerchantEditModalProps = {
 
 type FormState = {
   name: string;
+  description: string;
+  address: string;
+  areaCode: string;
   city: string;
+  category: string;
+  facebookLink: string;
+  instagramLink: string;
+  twitterLink: string;
+  siteWebUrl: string;
+  imageFile: File | null;
+  imageUrl: string;
   email: string;
   phone: string;
   commercialStatus: "" | "actif" | "a_relancer" | "inactif";
@@ -29,7 +49,17 @@ type FormState = {
 function buildInitialForm(merchant: MerchantPilotageItem | null): FormState {
   return {
     name: merchant?.name ?? "",
+    description: merchant?.description ?? "",
+    address: merchant?.address ?? "",
+    areaCode: merchant?.areaCode ?? "",
     city: merchant?.city ?? "",
+    category: merchant?.category?.join(", ") ?? "",
+    facebookLink: merchant?.facebookLink ?? "",
+    instagramLink: merchant?.instagramLink ?? "",
+    twitterLink: merchant?.twitterLink ?? "",
+    siteWebUrl: merchant?.siteWebUrl ?? "",
+    imageFile: null,
+    imageUrl: merchant?.imageUrl ?? "",
     email: merchant?.email ?? "",
     phone: merchant?.phone ?? "",
     commercialStatus: merchant?.commercialStatus ?? "",
@@ -70,7 +100,23 @@ export function MerchantEditModal({
     }
 
     setValidationError(null);
-    await onSave(form);
+    await onSave({
+      name: form.name.trim(),
+      description: form.description.trim(),
+      address: form.address.trim(),
+      areaCode: form.areaCode.trim(),
+      city: form.city.trim(),
+      category: form.category.split(",").map((category) => category.trim()).filter(Boolean),
+      facebookLink: form.facebookLink.trim(),
+      instagramLink: form.instagramLink.trim(),
+      twitterLink: form.twitterLink.trim(),
+      siteWebUrl: form.siteWebUrl.trim(),
+      imageFile: form.imageFile,
+      imageUrl: form.imageUrl,
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+      commercialStatus: form.commercialStatus,
+    });
   };
 
   return (
@@ -97,97 +143,149 @@ export function MerchantEditModal({
             onClick={onClose}
             aria-label="Fermer la modale"
           >
-            ×
+            x
           </button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="game-edit-modal-body grid gap-5">
-            <div className="grid gap-2">
-              <label className="text-[0.9rem] font-medium text-[var(--muted)]" htmlFor="merchant-name">
-                Nom
-              </label>
-              <input
-                id="merchant-name"
-                className={inputClassName}
-                value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <div className="grid gap-2">
-                <label className="text-[0.9rem] font-medium text-[var(--muted)]" htmlFor="merchant-city">
-                  Ville
-                </label>
-                <input
-                  id="merchant-city"
-                  className={inputClassName}
-                  value={form.city}
-                  onChange={(event) => setForm((current) => ({ ...current, city: event.target.value }))}
-                />
+          <div className="game-edit-modal-body grid gap-6">
+            <section className="rounded-[10px] border border-[rgba(159,177,199,0.12)] p-4">
+              <h3 className="mb-4 text-[0.95rem] font-medium text-[var(--foreground)]">Informations de la boutique</h3>
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <label className="text-[0.9rem] font-medium text-[var(--muted)]">Nom</label>
+                  <input className={inputClassName} value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-[0.9rem] font-medium text-[var(--muted)]">Description</label>
+                  <textarea className={`${inputClassName} min-h-[80px] resize-none`} value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Adresse</label>
+                    <input className={inputClassName} value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Code postal</label>
+                    <input className={inputClassName} value={form.areaCode} onChange={(event) => setForm((current) => ({ ...current, areaCode: event.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Ville</label>
+                    <input className={inputClassName} value={form.city} onChange={(event) => setForm((current) => ({ ...current, city: event.target.value }))} />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Categorie</label>
+                    <input className={inputClassName} placeholder="ex: Alimentation, Restauration" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Site web</label>
+                    <input className={inputClassName} type="url" placeholder="https://..." value={form.siteWebUrl} onChange={(event) => setForm((current) => ({ ...current, siteWebUrl: event.target.value }))} />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Facebook</label>
+                    <input className={inputClassName} placeholder="nom-page" value={form.facebookLink} onChange={(event) => setForm((current) => ({ ...current, facebookLink: event.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Instagram</label>
+                    <input className={inputClassName} placeholder="@handle" value={form.instagramLink} onChange={(event) => setForm((current) => ({ ...current, instagramLink: event.target.value }))} />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Autre reseau social</label>
+                    <input className={inputClassName} placeholder="url ou handle" value={form.twitterLink} onChange={(event) => setForm((current) => ({ ...current, twitterLink: event.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-[0.9rem] font-medium text-[var(--muted)]">Photo de la boutique</label>
+                  {form.imageUrl || form.imageFile ? (
+                    <div className="flex items-center gap-3 rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={form.imageFile ? URL.createObjectURL(form.imageFile) : form.imageUrl} alt="Photo boutique" className="h-12 w-12 rounded-[8px] object-cover" />
+                      <span className="flex-1 text-[0.9rem] text-[var(--muted)]">{form.imageFile ? form.imageFile.name : "Image actuelle"}</span>
+                      <button type="button" className="text-[0.85rem] text-[#A32D2D]" onClick={() => setForm((current) => ({ ...current, imageFile: null, imageUrl: "" }))}>Supprimer</button>
+                    </div>
+                  ) : (
+                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-[14px] border border-dashed border-[rgba(159,177,199,0.2)] bg-[rgba(255,255,255,0.02)] px-4 py-5 text-center transition hover:border-[rgba(99,153,34,0.32)]">
+                      <span className="text-[0.9rem] text-[var(--muted)]">Cliquer pour ajouter une photo</span>
+                      <span className="mt-1 text-[0.8rem] text-[var(--muted)] opacity-60">JPG, PNG ou WEBP · max 2 Mo</span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) {
+                          setValidationError("Image trop lourde : 2 Mo maximum.");
+                          return;
+                        }
+                        setValidationError(null);
+                        setForm((current) => ({ ...current, imageFile: file }));
+                      }} />
+                    </label>
+                  )}
+                </div>
               </div>
+            </section>
 
-              <div className="grid gap-2">
-                <label className="text-[0.9rem] font-medium text-[var(--muted)]" htmlFor="merchant-status">
-                  Statut
-                </label>
-                <select
-                  id="merchant-status"
-                  className={inputClassName}
-                  value={form.commercialStatus}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      commercialStatus: event.target.value as FormState["commercialStatus"],
-                    }))
-                  }
-                >
-                  <option value="">Non renseigne</option>
-                  <option value="actif">Actif</option>
-                  <option value="a_relancer">A relancer</option>
-                  <option value="inactif">Inactif</option>
-                </select>
+            <section className="rounded-[10px] border border-[rgba(159,177,199,0.12)] p-4">
+              <h3 className="mb-4 text-[0.95rem] font-medium text-[var(--foreground)]">Contact commercial</h3>
+              <div className="grid gap-4">
+                {(merchant.ownerFirstName || merchant.ownerLastName) && (
+                  <div className="rounded-[10px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
+                    <p className="text-[0.85rem] font-medium text-[var(--muted)]">Compte gerant (non modifiable ici)</p>
+                    <p className="mt-1 text-[0.95rem] text-[var(--foreground)]">
+                      {[merchant.ownerFirstName, merchant.ownerLastName].filter(Boolean).join(" ")}
+                    </p>
+                    <p className="mt-1 text-[0.85rem] text-[var(--muted)]">
+                      {merchant.ownerEmail} · {merchant.ownerPhone}
+                    </p>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Email</label>
+                    <input className={inputClassName} type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Telephone</label>
+                    <input className={inputClassName} value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-[0.9rem] font-medium text-[var(--muted)]">Statut commercial</label>
+                  <div className="flex gap-2">
+                    {([
+                      { value: "", label: "Non renseigne" },
+                      { value: "actif", label: "Actif" },
+                      { value: "a_relancer", label: "A relancer" },
+                      { value: "inactif", label: "Inactif" },
+                    ] as const).map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setForm((current) => ({ ...current, commercialStatus: option.value }))}
+                        className={`flex-1 rounded-[8px] border px-3 py-2 text-[0.85rem] font-medium transition ${
+                          form.commercialStatus === option.value
+                            ? "border-[#639922] bg-[#639922] text-white"
+                            : "border-[rgba(159,177,199,0.2)] bg-[rgba(255,255,255,0.04)] text-[var(--muted)]"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <div className="grid gap-2">
-                <label className="text-[0.9rem] font-medium text-[var(--muted)]" htmlFor="merchant-email">
-                  Email
-                </label>
-                <input
-                  id="merchant-email"
-                  className={inputClassName}
-                  type="email"
-                  value={form.email}
-                  onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <label className="text-[0.9rem] font-medium text-[var(--muted)]" htmlFor="merchant-phone">
-                  Telephone
-                </label>
-                <input
-                  id="merchant-phone"
-                  className={inputClassName}
-                  value={form.phone}
-                  onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-                />
-              </div>
-            </div>
+            </section>
 
             {validationError ? <p className="feedback error m-0">{validationError}</p> : null}
             {feedback ? <p className="feedback m-0">{feedback}</p> : null}
           </div>
 
           <div className="game-edit-modal-footer border-t border-[rgba(159,177,199,0.1)]">
-            <button
-              type="button"
-              className="secondary-button inline-secondary-button w-auto min-w-[140px]"
-              onClick={onClose}
-            >
+            <button type="button" className="secondary-button inline-secondary-button w-auto min-w-[140px]" onClick={onClose}>
               Annuler
             </button>
             <button

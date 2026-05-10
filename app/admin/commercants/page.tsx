@@ -1,5 +1,6 @@
 "use client";
 
+import { collectionGroup, getCountFromServer } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -7,6 +8,7 @@ import { MerchantCard } from "@/components/admin/commercants/MerchantCard";
 import { MerchantEditModal } from "@/components/admin/commercants/MerchantEditModal";
 import { MerchantFilters } from "@/components/admin/commercants/MerchantFilters";
 import { MerchantPanel } from "@/components/admin/commercants/MerchantPanel";
+import { db } from "@/lib/firebase/client-app";
 import {
   buildMerchantEmailLink,
   buildWhatsAppLink,
@@ -108,6 +110,8 @@ export default function AdminCommercantsPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editFeedback, setEditFeedback] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [totalParticipations, setTotalParticipations] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +122,20 @@ export default function AdminCommercantsPage() {
 
       try {
         await ensureMerchantsAuthenticated();
-        const data = await getMerchantsPilotageData();
+        const [data] = await Promise.all([
+          getMerchantsPilotageData(),
+          getCountFromServer(collectionGroup(db, "participants"))
+            .then((snap) => {
+              if (!cancelled) {
+                setTotalParticipations(snap.data().count);
+              }
+            })
+            .catch(() => {
+              if (!cancelled) {
+                setTotalParticipations(null);
+              }
+            }),
+        ]);
 
         if (!cancelled) {
           setMerchants(data.merchants);
@@ -214,9 +231,36 @@ export default function AdminCommercantsPage() {
     window.location.href = href;
   };
 
+  const handleDeleteMerchant = async () => {
+    if (!selectedMerchant) return;
+
+    try {
+      const { doc, deleteDoc } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase/client-app");
+      await deleteDoc(doc(db, selectedMerchant.merchantCollectionName, selectedMerchant.id));
+      setMerchants((current) => current.filter((m) => m.id !== selectedMerchant.id));
+      setSelectedMerchantId(null);
+      setDeleteConfirm(false);
+    } catch (err) {
+      console.error(err);
+      setError("Impossible de supprimer ce marchand.");
+      setDeleteConfirm(false);
+    }
+  };
+
   const handleEditSave = async (payload: {
     name: string;
+    description: string;
+    address: string;
+    areaCode: string;
     city: string;
+    category: string[];
+    facebookLink: string;
+    instagramLink: string;
+    twitterLink: string;
+    siteWebUrl: string;
+    imageFile: File | null;
+    imageUrl: string;
     email: string;
     phone: string;
     commercialStatus: "" | "actif" | "a_relancer" | "inactif";
@@ -229,10 +273,25 @@ export default function AdminCommercantsPage() {
     setEditFeedback(null);
 
     try {
+      console.log("image à uploader:", payload.imageFile);
+
       await updateMerchantProfile({
         merchantId: selectedMerchant.id,
         merchantCollectionName: selectedMerchant.merchantCollectionName,
-        ...payload,
+        name: payload.name,
+        description: payload.description,
+        address: payload.address,
+        areaCode: payload.areaCode,
+        city: payload.city,
+        email: payload.email,
+        phone: payload.phone,
+        category: payload.category,
+        facebookLink: payload.facebookLink,
+        instagramLink: payload.instagramLink,
+        twitterLink: payload.twitterLink,
+        siteWebUrl: payload.siteWebUrl,
+        imageUrl: payload.imageUrl,
+        commercialStatus: payload.commercialStatus,
       });
 
       setMerchants((current) =>
@@ -241,10 +300,20 @@ export default function AdminCommercantsPage() {
             ? {
                 ...merchant,
                 name: payload.name.trim() || merchant.name,
+                description: payload.description.trim(),
+                address: payload.address.trim(),
+                areaCode: payload.areaCode.trim(),
                 city: payload.city.trim(),
                 email: payload.email.trim(),
                 phone: payload.phone.trim(),
+                category: payload.category,
+                facebookLink: payload.facebookLink.trim(),
+                instagramLink: payload.instagramLink.trim(),
+                twitterLink: payload.twitterLink.trim(),
+                siteWebUrl: payload.siteWebUrl.trim(),
                 commercialStatus: payload.commercialStatus,
+                imageUrl: payload.imageFile ? merchant.imageUrl : payload.imageUrl,
+                ownerRef: merchant.ownerRef,
               }
             : merchant,
         ),
@@ -316,8 +385,11 @@ export default function AdminCommercantsPage() {
             {
               id: "participations",
               label: "Participations J30",
-              value: formatCount(stats.participations),
-              helper: "Tous marchands",
+              value: formatCount(totalParticipations ?? stats.participations),
+              helper:
+                totalParticipations !== null
+                  ? "Total parties jouees · source Firestore"
+                  : "Total parties jouees · tous jeux",
               borderColor: "#4F7CFF",
             },
           ].map((card) => (
@@ -377,6 +449,7 @@ export default function AdminCommercantsPage() {
               merchant={selectedMerchant}
               whatsappHref={whatsappHref}
               emailHref={emailHref}
+              onDelete={() => setDeleteConfirm(true)}
               onEdit={() => {
                 setEditFeedback(null);
                 setEditOpen(true);
@@ -398,6 +471,31 @@ export default function AdminCommercantsPage() {
         }}
         onSave={handleEditSave}
       />
+
+      {deleteConfirm && selectedMerchant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-full max-w-sm rounded-[12px] border border-[#E8E8E4] bg-white p-6 shadow-lg">
+            <h3 className="text-[16px] font-medium text-[#1a1a1a]">Supprimer {selectedMerchant.name} ?</h3>
+            <p className="mt-2 text-[13px] text-[#666]">Cette action est irréversible. Le marchand et sa fiche seront définitivement supprimés.</p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(false)}
+                className="flex-1 rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-2 text-[13px] text-[#666]"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteMerchant()}
+                className="flex-1 rounded-[8px] bg-[#E24B4A] px-4 py-2 text-[13px] font-medium text-white"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

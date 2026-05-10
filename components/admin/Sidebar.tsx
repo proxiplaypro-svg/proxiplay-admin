@@ -151,12 +151,13 @@ export function Sidebar({ user }: SidebarProps) {
   const [unclaimedPrizes, setUnclaimedPrizes] = useState(0);
 
   useEffect(() => {
+    let active = true;
     const unsubs: Unsubscribe[] = [];
 
-    const dashboardUnsubscribe = subscribeDashboardData((nextData) => {
+    void subscribeDashboardData((nextData) => {
+      if (!active) return;
       setDashboardData(nextData);
     });
-    unsubs.push(dashboardUnsubscribe);
 
     const prizesUnsubscribe = onSnapshot(
       collection(db, "prizes"),
@@ -175,6 +176,7 @@ export function Sidebar({ user }: SidebarProps) {
     unsubs.push(prizesUnsubscribe);
 
     return () => {
+      active = false;
       unsubs.forEach((unsubscribe) => unsubscribe());
     };
   }, []);

@@ -28,6 +28,15 @@ type FollowUpFormState = {
   lastContactAt: string;
 };
 
+type EditFormState = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  city: string;
+  accountStatus: string;
+};
+
 function getPlayerDetailsErrorMessage(error: unknown) {
   if (error instanceof FirebaseError) {
     switch (error.code) {
@@ -206,6 +215,18 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
   const [saving, setSaving] = useState(false);
   const [marking, setMarking] = useState(false);
   const [relaunching, setRelaunching] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<EditFormState>({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    city: "",
+    accountStatus: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -231,6 +252,14 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
 
         setPlayer(details);
         setFollowUpForm(buildFollowUpFormState(details));
+        setEditForm({
+          firstName: details.fullName.split(" ")[0] ?? "",
+          lastName: details.fullName.split(" ").slice(1).join(" ") ?? "",
+          email: details.email === "Non renseigne" ? "" : details.email,
+          phone: details.phone === "Non renseigne" ? "" : details.phone,
+          city: details.city === "Non renseignee" ? "" : details.city,
+          accountStatus: details.accountStatus === "Non renseigne" ? "" : details.accountStatus,
+        });
       } catch (loadError) {
         console.error(loadError);
         if (!isCancelled) {
@@ -257,6 +286,61 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
     value: FollowUpFormState[K],
   ) => {
     setFollowUpForm((current) => (current ? { ...current, [key]: value } : current));
+  };
+
+  const handleDelete = async () => {
+    if (!player) return;
+    setDeleting(true);
+    try {
+      const { doc, deleteDoc } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase/client-app");
+      await deleteDoc(doc(db, "users", player.id));
+      window.location.href = "/admin/joueurs";
+    } catch (err) {
+      console.error(err);
+      setFeedback("Impossible de supprimer ce joueur.");
+      setDeleting(false);
+      setDeleteConfirm(false);
+    }
+  };
+
+  const handleEditSave = async () => {
+    if (!player) return;
+    setEditSaving(true);
+    try {
+      const { doc, updateDoc } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase/client-app");
+      await updateDoc(doc(db, "users", player.id), {
+        first_name: editForm.firstName.trim() || null,
+        last_name: editForm.lastName.trim() || null,
+        email: editForm.email.trim() || null,
+        phone_number: editForm.phone.trim() || null,
+        city: editForm.city.trim() || null,
+        account_status: editForm.accountStatus.trim() || null,
+      });
+      const nextFullName = [editForm.firstName.trim(), editForm.lastName.trim()]
+        .filter(Boolean)
+        .join(" ");
+      setPlayer((current) =>
+        current
+          ? {
+              ...current,
+              fullName: nextFullName || "Non renseigne",
+              email: editForm.email.trim() || "Non renseigne",
+              phone: editForm.phone.trim() || "Non renseigne",
+              city: editForm.city.trim() || "Non renseignee",
+              accountStatus: editForm.accountStatus.trim() || "Non renseigne",
+            }
+          : current,
+      );
+      setFeedback("Profil joueur mis a jour.");
+      setEditOpen(false);
+    } catch (err) {
+      console.error(err);
+      setFeedback("Impossible de modifier ce joueur.");
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   const handleFollowUpSave = async () => {
@@ -413,223 +497,252 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
   };
 
   return (
-    <section className="content-grid">
-      <div className="panel panel-wide">
-        <div className="panel-heading game-details-header">
+    <>
+      <section className="space-y-4 bg-[#F7F7F5] text-[#1A1A1A]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2>{getPlayerLabel(player)}</h2>
-            <p>Fiche admin joueur pour le suivi de l activite, des gains et des canaux de relance.</p>
+            <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1A1A1A]">{getPlayerLabel(player)}</h1>
+            <p className="mt-1 text-[13px] text-[#666666]">Fiche joueur · suivi, contact et actions support</p>
           </div>
-
-          <div className="game-details-header-actions">
-            <span className={`follow-up-badge ${player.followUp.followUpStatus}`}>
-              {getFollowUpStatusLabel(player.followUp.followUpStatus)}
-            </span>
-            <Link className="row-link-button secondary" href="/admin/joueurs">
-              Retour liste
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/admin/joueurs" className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] text-[#1A1A1A] transition hover:bg-[#FAFAF8]">
+              ← Retour liste
             </Link>
+            <button type="button" onClick={() => { setEditOpen(true); }} className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] text-[#1A1A1A] transition hover:bg-[#FAFAF8]">
+              Modifier
+            </button>
             {!relaunchAction.disabled && relaunchAction.href ? (
-              <button
-                className="row-link-button"
-                type="button"
-                disabled={saving || marking || relaunching}
-                onClick={() => void handlePlayerRelaunch()}
-              >
-                {relaunching ? "Mise a jour..." : "Relancer"}
+              <button type="button" disabled={saving || marking || relaunching} onClick={() => void handlePlayerRelaunch()} className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881D]">
+                {relaunching ? "Mise à jour..." : "Contacter"}
+              </button>
+            ) : null}
+            {!deleteConfirm ? (
+              <button type="button" onClick={() => setDeleteConfirm(true)} className="rounded-[8px] border border-[#F09595] bg-white px-4 py-[10px] text-[12px] font-medium text-[#A32D2D] transition hover:bg-[#FCEBEB]">
+                Supprimer
               </button>
             ) : (
-              <button className="row-link-button secondary" type="button" disabled>
-                {relaunchAction.label}
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-[#A32D2D]">Confirmer ?</span>
+                <button type="button" disabled={deleting} onClick={() => void handleDelete()} className="rounded-[8px] bg-[#E24B4A] px-4 py-[10px] text-[12px] font-medium text-white">
+                  {deleting ? "Suppression..." : "Oui, supprimer"}
+                </button>
+                <button type="button" onClick={() => setDeleteConfirm(false)} className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] text-[#666666]">
+                  Annuler
+                </button>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="game-details-meta-grid">
-          <article className="overview-card">
-            <span>Pseudo</span>
-            <strong>{player.pseudo}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Email</span>
-            <strong>{player.email}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Telephone</span>
-            <strong>{player.phone}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Ville</span>
-            <strong>{player.city}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Push</span>
-            <strong>{getPushStatusLabel(player.pushStatus)}</strong>
-          </article>
-        </div>
-      </div>
+        {feedback ? (
+          <div className="rounded-[10px] border border-[#C0DD97] bg-[#EAF3DE] px-4 py-3 text-[12px] text-[#3B6D11]">{feedback}</div>
+        ) : null}
 
-      <div className="panel panel-wide">
-        <div className="panel-heading">
-          <h2>Suivi de relance</h2>
-          <p>Bloc V1 simple pour suivre la derniere relance et la prochaine action utile.</p>
+        <div className="grid gap-3 rounded-[12px] border border-[#E8E8E4] bg-white p-5 md:grid-cols-2 xl:grid-cols-4">
+          {[
+            { label: "Pseudo", value: player.pseudo },
+            { label: "Email", value: player.email },
+            { label: "Téléphone", value: player.phone },
+            { label: "Ville", value: player.city },
+            { label: "Push", value: player.pushStatus === "actif" ? "✓ Push actif" : "✗ Push inconnu" },
+            { label: "Statut compte", value: player.accountStatus },
+            { label: "Rôle", value: player.userRole },
+            { label: "Créé le", value: player.createdAtLabel },
+            { label: "Dernière activité", value: player.lastRealActivityLabel },
+          ].map((item) => (
+            <article key={item.label} className="rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 py-3">
+              <p className="text-[11px] text-[#999999]">{item.label}</p>
+              <strong className={`mt-1 block text-[13px] font-medium ${item.label === "Push" ? (player.pushStatus === "actif" ? "text-[#3B6D11]" : "text-[#999999]") : "text-[#1A1A1A]"}`}>
+                {item.value}
+              </strong>
+            </article>
+          ))}
         </div>
 
-        <div className="follow-up-summary-grid">
-          <article className="overview-card">
-            <span>Derniere relance</span>
-            <strong>{player.followUp.lastContactAtLabel}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Canal</span>
-            <strong>{getFollowUpChannelLabel(player.followUp.lastContactChannel)}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Statut de suivi</span>
-            <strong>{getFollowUpStatusLabel(player.followUp.followUpStatus)}</strong>
-          </article>
+        <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
+          <h2 className="mb-4 text-[15px] font-medium text-[#1A1A1A]">Performance</h2>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Assiduité", value: player.assiduityLabel, accent: "#639922" },
+              { label: "Parties jouées", value: player.gamesPlayedCount !== null ? String(player.gamesPlayedCount) : "Non renseigné", accent: "#378ADD" },
+              { label: "Gains", value: player.winsCount !== null ? String(player.winsCount) : "Non renseigné", accent: "#639922" },
+            ].map((item) => (
+              <article key={item.label} className="overflow-hidden rounded-[10px] border border-[#E8E8E4] bg-white">
+                <div className="h-[3px]" style={{ backgroundColor: item.accent }} />
+                <div className="px-4 py-3">
+                  <p className="text-[11px] text-[#999999]">{item.label}</p>
+                  <strong className="mt-1 block text-[18px] font-medium text-[#1A1A1A]">{item.value}</strong>
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
 
-        <div className="follow-up-form-grid">
-          <label className="search-field">
-            <span className="search-label">Canal</span>
-            <select
-              className="search-input"
-              value={followUpForm.lastContactChannel}
-              onChange={(event) =>
-                handleFollowUpFormChange(
-                  "lastContactChannel",
-                  event.target.value as AdminFollowUpChannel,
-                )
-              }
-            >
-              <option value="email">Email</option>
-              <option value="phone">Telephone</option>
-              <option value="manual">Manual</option>
-              <option value="unknown">Unknown</option>
-            </select>
+        <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
+          <h2 className="mb-4 text-[15px] font-medium text-[#1A1A1A]">Suivi de contact</h2>
+          <div className="mb-4 grid gap-3 md:grid-cols-3">
+            {[
+              { label: "Dernière relance", value: player.followUp.lastContactAtLabel },
+              { label: "Canal", value: getFollowUpChannelLabel(player.followUp.lastContactChannel) },
+              { label: "Statut", value: getFollowUpStatusLabel(player.followUp.followUpStatus) },
+            ].map((item) => (
+              <article key={item.label} className="rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 py-3">
+                <p className="text-[11px] text-[#999999]">{item.label}</p>
+                <strong className="mt-1 block text-[13px] font-medium text-[#1A1A1A]">{item.value}</strong>
+              </article>
+            ))}
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-[#666666]">Canal</span>
+              <select value={followUpForm.lastContactChannel} onChange={(e) => handleFollowUpFormChange("lastContactChannel", e.target.value as AdminFollowUpChannel)} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none">
+                <option value="email">Email</option>
+                <option value="phone">Téléphone</option>
+                <option value="manual">Manuel</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-[#666666]">Statut</span>
+              <select value={followUpForm.followUpStatus} onChange={(e) => handleFollowUpFormChange("followUpStatus", e.target.value as AdminFollowUpStatus)} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none">
+                <option value="a_faire">À faire</option>
+                <option value="relance">Relancé</option>
+                <option value="sans_reponse">Sans réponse</option>
+                <option value="ok">OK</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-[#666666]">Date de contact</span>
+              <input type="datetime-local" value={followUpForm.lastContactAt} onChange={(e) => handleFollowUpFormChange("lastContactAt", e.target.value)} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none" />
+            </label>
+          </div>
+          <label className="mt-3 flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[#666666]">Note</span>
+            <textarea rows={3} maxLength={280} value={followUpForm.followUpNote} onChange={(e) => handleFollowUpFormChange("followUpNote", e.target.value)} placeholder="Ex: email envoyé, rappel demain, préfère téléphone." className="resize-none rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-2 text-[12.5px] text-[#1A1A1A] outline-none" />
           </label>
-
-          <label className="search-field">
-            <span className="search-label">Statut</span>
-            <select
-              className="search-input"
-              value={followUpForm.followUpStatus}
-              onChange={(event) =>
-                handleFollowUpFormChange("followUpStatus", event.target.value as AdminFollowUpStatus)
-              }
-            >
-              <option value="a_faire">A faire</option>
-              <option value="relance">Relance</option>
-              <option value="sans_reponse">Sans reponse</option>
-              <option value="ok">OK</option>
-            </select>
-          </label>
-
-          <label className="search-field">
-            <span className="search-label">Date de relance</span>
-            <input
-              className="search-input"
-              type="datetime-local"
-              value={followUpForm.lastContactAt}
-              onChange={(event) => handleFollowUpFormChange("lastContactAt", event.target.value)}
-            />
-          </label>
-
-          <label className="search-field follow-up-note-field">
-            <span className="search-label">Note courte</span>
-            <textarea
-              className="follow-up-textarea"
-              rows={3}
-              maxLength={280}
-              value={followUpForm.followUpNote}
-              onChange={(event) => handleFollowUpFormChange("followUpNote", event.target.value)}
-              placeholder="Ex: relance email envoyee, rappel demain, prefere telephone."
-            />
-          </label>
+          <div className="mt-4 flex gap-2">
+            <button type="button" disabled={saving || marking} onClick={() => void handleMarkAsContacted()} className="rounded-[8px] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881D] disabled:opacity-50">
+              {marking ? "Mise à jour..." : "Marquer comme contacté"}
+            </button>
+            <button type="button" disabled={saving || marking} onClick={() => void handleFollowUpSave()} className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] text-[#666666] transition hover:bg-[#FAFAF8] disabled:opacity-50">
+              {saving ? "Enregistrement..." : "Enregistrer"}
+            </button>
+          </div>
         </div>
+      </section>
 
-        <div className="follow-up-actions">
-          <button
-            className="primary-button"
-            type="button"
-            disabled={saving || marking}
-            onClick={() => void handleMarkAsContacted()}
+      {editOpen ? (
+        <div className="game-edit-modal-overlay" role="presentation" onClick={() => !editSaving && setEditOpen(false)}>
+          <div
+            className="game-edit-modal max-w-[640px] bg-[linear-gradient(180deg,rgba(12,21,37,0.98),rgba(9,17,29,0.96))] text-[var(--foreground)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="player-edit-title"
+            onClick={(event) => event.stopPropagation()}
           >
-            {marking ? "Mise a jour..." : "Marquer comme relance"}
-          </button>
-          <button
-            className="secondary-button inline-secondary-button"
-            type="button"
-            disabled={saving || marking}
-            onClick={() => void handleFollowUpSave()}
-          >
-            {saving ? "Enregistrement..." : "Enregistrer le suivi"}
-          </button>
-        </div>
+            <div className="game-edit-modal-header border-b border-[rgba(159,177,199,0.1)]">
+              <div>
+                <h2 id="player-edit-title" className="text-[1.55rem] text-[var(--foreground)]">
+                  Modifier le joueur
+                </h2>
+                <p className="mt-2 text-[0.95rem] text-[var(--muted)]">
+                  Mets a jour les informations de contact et de compte.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="game-edit-modal-close text-[var(--muted)] hover:text-[var(--foreground)]"
+                onClick={() => !editSaving && setEditOpen(false)}
+                aria-label="Fermer la modale"
+              >
+                x
+              </button>
+            </div>
 
-        {feedback ? <p className="feedback">{feedback}</p> : null}
-      </div>
+            <div className="game-edit-modal-body grid gap-6">
+              <section className="rounded-[10px] border border-[rgba(159,177,199,0.12)] p-4">
+                <h3 className="mb-4 text-[0.95rem] font-medium text-[var(--foreground)]">Informations joueur</h3>
+                <div className="grid gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <label className="text-[0.9rem] font-medium text-[var(--muted)]">Prenom</label>
+                      <input
+                        className="w-full rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[0.96rem] text-[var(--foreground)] outline-none transition focus:border-[rgba(99,153,34,0.32)]"
+                        value={editForm.firstName}
+                        onChange={(event) => setEditForm((current) => ({ ...current, firstName: event.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-[0.9rem] font-medium text-[var(--muted)]">Nom</label>
+                      <input
+                        className="w-full rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[0.96rem] text-[var(--foreground)] outline-none transition focus:border-[rgba(99,153,34,0.32)]"
+                        value={editForm.lastName}
+                        onChange={(event) => setEditForm((current) => ({ ...current, lastName: event.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <label className="text-[0.9rem] font-medium text-[var(--muted)]">Email</label>
+                      <input
+                        className="w-full rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[0.96rem] text-[var(--foreground)] outline-none transition focus:border-[rgba(99,153,34,0.32)]"
+                        type="email"
+                        value={editForm.email}
+                        onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-[0.9rem] font-medium text-[var(--muted)]">Telephone</label>
+                      <input
+                        className="w-full rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[0.96rem] text-[var(--foreground)] outline-none transition focus:border-[rgba(99,153,34,0.32)]"
+                        value={editForm.phone}
+                        onChange={(event) => setEditForm((current) => ({ ...current, phone: event.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <label className="text-[0.9rem] font-medium text-[var(--muted)]">Ville</label>
+                      <input
+                        className="w-full rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[0.96rem] text-[var(--foreground)] outline-none transition focus:border-[rgba(99,153,34,0.32)]"
+                        value={editForm.city}
+                        onChange={(event) => setEditForm((current) => ({ ...current, city: event.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-[0.9rem] font-medium text-[var(--muted)]">Statut compte</label>
+                      <input
+                        className="w-full rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[0.96rem] text-[var(--foreground)] outline-none transition focus:border-[rgba(99,153,34,0.32)]"
+                        value={editForm.accountStatus}
+                        onChange={(event) => setEditForm((current) => ({ ...current, accountStatus: event.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
 
-      <div className="panel panel-wide">
-        <div className="panel-heading">
-          <h2>Performance</h2>
-          <p>Lecture rapide des compteurs et de l assiduite deja disponibles sur le profil joueur.</p>
+            <div className="game-edit-modal-footer border-t border-[rgba(159,177,199,0.1)]">
+              <button
+                type="button"
+                className="secondary-button inline-secondary-button w-auto min-w-[140px]"
+                onClick={() => setEditOpen(false)}
+                disabled={editSaving}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="primary-button min-w-[160px]"
+                disabled={editSaving}
+                onClick={() => void handleEditSave()}
+                style={{ background: "linear-gradient(135deg, #639922 0%, #7CB32B 100%)", boxShadow: "0 16px 32px rgba(99,153,34,0.28)" }}
+              >
+                {editSaving ? "Enregistrement..." : "Enregistrer"}
+              </button>
+            </div>
+          </div>
         </div>
-
-        <div className="game-details-performance-grid">
-          <article className="dashboard-kpi-card featured">
-            <span>Assiduite</span>
-            <strong>{player.assiduityLabel}</strong>
-            <small>Derniere activite: {player.lastRealActivityLabel}</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Parties realisees</span>
-            <strong>{formatOptionalCount(player.gamesPlayedCount)}</strong>
-            <small>Source: users.games_played_count</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Gains</span>
-            <strong>{formatOptionalCount(player.winsCount)}</strong>
-            <small>Source: prizes.winner_id</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Derniere fois jouee</span>
-            <strong>{player.lastRealActivityLabel}</strong>
-            <small>Source: users.last_real_activity_at</small>
-          </article>
-        </div>
-      </div>
-
-      <div className="panel panel-wide">
-        <div className="panel-heading">
-          <h2>Profil</h2>
-          <p>Informations secondaires utiles en support admin sans surcharger la liste principale.</p>
-        </div>
-
-        <div className="overview-grid">
-          <article className="overview-card">
-            <span>Prenom / Nom</span>
-            <strong>{player.fullName}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Role</span>
-            <strong>{player.userRole}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Account status</span>
-            <strong>{player.accountStatus}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Statut joueur cache</span>
-            <strong>{player.playerStatusCached}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Creation du compte</span>
-            <strong>{player.createdAtLabel}</strong>
-          </article>
-        </div>
-      </div>
-    </section>
+      ) : null}
+    </>
   );
 }

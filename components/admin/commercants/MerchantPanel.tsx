@@ -13,6 +13,7 @@ type MerchantPanelProps = {
   whatsappHref: string | null;
   emailHref: string | null;
   onEdit: () => void;
+  onDelete: () => void;
   onOpenExternal: (href: string, target?: "_blank" | "_self") => void;
 };
 
@@ -93,6 +94,7 @@ export function MerchantPanel({
   whatsappHref,
   emailHref,
   onEdit,
+  onDelete,
   onOpenExternal,
 }: MerchantPanelProps) {
   if (!merchant) {
@@ -115,7 +117,7 @@ export function MerchantPanel({
     merchant.lastContactDateValue > 0 ? merchant.lastContactDateLabel : "Non renseigne";
 
   return (
-    <aside className="sticky top-0 grid gap-4">
+    <aside className="sticky top-0 grid max-h-screen gap-4 overflow-y-auto pb-6">
       <PanelSection>
         <div className="flex items-start gap-4">
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#EAF3DE] text-[1.05rem] font-semibold text-[#3B6D11]">
@@ -151,14 +153,31 @@ export function MerchantPanel({
             <span>Inactif</span>
             <span>Excellent</span>
           </div>
+          <p className="mt-2 text-[12px] text-[#666]">
+            <strong>Boutique :</strong> {merchant.address || "Adresse non renseignee"} · {merchant.city}
+          </p>
+          {(merchant.ownerFirstName || merchant.ownerLastName) && (
+            <div className="mt-3 rounded-[8px] bg-[#F7F7F5] px-3 py-3">
+              <p className="text-[11px] font-medium uppercase tracking-[0.05em] text-[#999]">Gerant</p>
+              <p className="mt-1 text-[13px] font-medium text-[#1a1a1a]">
+                {[merchant.ownerFirstName, merchant.ownerLastName].filter(Boolean).join(" ")}
+              </p>
+              <p className="mt-1 text-[12px] text-[#666]">
+                {merchant.ownerEmail || "Email non renseigne"} · {merchant.ownerPhone || "Tel non renseigne"}
+              </p>
+              {merchant.ownerStatus && (
+                <p className="mt-1 text-[11px] text-[#999]">Statut compte : {merchant.ownerStatus}</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
           <Link
-            href={`/admin/games/new?merchantId=${merchant.id}`}
+            href={`/admin/games?merchantId=${merchant.id}`}
             className="flex min-h-[54px] items-center justify-center rounded-[10px] border border-[#CFE5AF] bg-[#EAF3DE] px-4 text-center text-[1rem] font-medium text-[#3B6D11] transition hover:bg-[#E2F0D0]"
           >
-            + Creer un jeu
+            Voir les jeux →
           </Link>
           <button
             type="button"
@@ -192,15 +211,22 @@ export function MerchantPanel({
           >
             Email relance
           </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="col-span-2 flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#F09595] bg-white px-4 text-[0.9rem] font-medium text-[#A32D2D] transition hover:bg-[#FCEBEB]"
+          >
+            Supprimer ce marchand
+          </button>
         </div>
       </PanelSection>
 
       <PanelSection>
-        <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[#999]">Stats J30</span>
+        <span className="text-[0.84rem] uppercase tracking-[0.08em] text-[#999]">Statistiques</span>
         <div className="mt-5 grid gap-4">
           {[
-            ["Participations", merchant.participationsJ30],
-            ["Clics sur offres", merchant.clicksJ30],
+            ["Parties jouees", merchant.participationsJ30],
+            ["Vues du jeu", merchant.clicksJ30],
             ["Jeux actifs", merchant.gamesActiveCount],
             ["Gains remis", merchant.gainsRemis],
           ].map(([label, value]) => (
@@ -222,7 +248,7 @@ export function MerchantPanel({
                 : "Aucun jeu actif pour le moment"}
             </p>
           </div>
-          <Link href={`/admin/commercants/${merchant.id}`} className="text-[0.92rem] font-medium text-[#639922]">
+          <Link href={`/admin/games?merchantId=${merchant.id}`} className="text-[0.92rem] font-medium text-[#639922]">
             Voir tous →
           </Link>
         </div>

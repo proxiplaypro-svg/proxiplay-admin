@@ -225,22 +225,30 @@ export function GameCard({
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          className={`relative h-[18px] w-8 rounded-full transition ${
-            isSwitchOn(game) ? "bg-[#639922]" : "bg-[#D7D7D1]"
-          }`}
-          onClick={() => onToggle(game)}
-          disabled={isTogglePending}
-          aria-pressed={isSwitchOn(game)}
-          aria-label={isSwitchOn(game) ? "Desactiver le jeu" : "Activer le jeu"}
-        >
-          <span
-            className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition ${
-              isSwitchOn(game) ? "left-[16px]" : "left-[2px]"
+        <div className="relative group flex items-center">
+          <button
+            type="button"
+            className={`relative h-[18px] w-8 rounded-full transition ${
+              isSwitchOn(game) ? "bg-[#639922]" : "bg-[#D7D7D1]"
             }`}
-          />
-        </button>
+            onClick={() => onToggle(game)}
+            disabled={isTogglePending}
+            title="Activer ou désactiver la visibilité du jeu dans l'app"
+            aria-pressed={isSwitchOn(game)}
+            aria-label="Activer ou désactiver la visibilité du jeu dans l'app"
+          >
+            <span
+              className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition ${
+                isSwitchOn(game) ? "left-[16px]" : "left-[2px]"
+              }`}
+            />
+          </button>
+          <div className="absolute right-full mr-2 top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-[6px] bg-[#1A1A1A] px-2 py-1 text-[11px] text-white pointer-events-none z-10 group-hover:block">
+            {game.status === "actif" || game.status === "prive"
+              ? "Désactiver (passer en brouillon)"
+              : "Activer (rendre visible)"}
+          </div>
+        </div>
 
         <button type="button" className={actionButtonClassName} onClick={() => onEdit(game)}>
           Modifier

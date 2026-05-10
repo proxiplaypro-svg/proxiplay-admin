@@ -13,12 +13,21 @@ export type NotificationSegment =
 
 export interface DashboardKpi {
   id:
-    | "activePlayers"
+    | "mauReel"
+    | "wauReel"
     | "sessions"
     | "activeMerchants"
     | "activeGames"
     | "iosRetention"
-    | "dauMau";
+    | "dauMau"
+    | "totalPlayers"
+    | "completionRate"
+    | "retention7d"
+    | "creditsRatio"
+    | "partiesToday"
+    | "joueursSansPartie"
+    | "joueursTroisParties"
+    | "tauxUtilisation";
   label: string;
   value: string;
   helper: string;
@@ -166,9 +175,24 @@ export interface MerchantActiveGameSummary {
 export interface MerchantPilotageItem {
   id: string;
   name: string;
+  description: string;
+  address: string;
+  areaCode: string;
   city: string;
   email: string;
   phone: string;
+  category: string[];
+  facebookLink: string;
+  instagramLink: string;
+  twitterLink: string;
+  siteWebUrl: string;
+  imageUrl: string;
+  ownerRef: string | null;
+  ownerFirstName: string;
+  ownerLastName: string;
+  ownerEmail: string;
+  ownerPhone: string;
+  ownerStatus: string;
   merchantCollectionName: "enseignes" | "merchants";
   gamesCollectionName: "games" | "jeux";
   commercialStatus: "" | "actif" | "a_relancer" | "inactif";

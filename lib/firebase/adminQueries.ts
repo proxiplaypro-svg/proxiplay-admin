@@ -1268,14 +1268,23 @@ export async function getPlayersPushStatuses(userIds: string[]) {
 
 export async function getPlayerDetails(userId: string): Promise<AdminPlayerDetails | null> {
   const userRef = doc(db, "users", userId);
-  const [userSnapshot, winsSnapshot, tokensSnapshot] = await Promise.all([
+  const [userSnapshot, tokensSnapshot] = await Promise.all([
     getDoc(userRef),
-    getCountFromServer(query(collection(db, "prizes"), where("winner_id", "==", userRef))),
     getDocs(query(collection(userRef, "fcm_tokens"), limit(1))),
   ]);
 
   if (!userSnapshot.exists()) {
     return null;
+  }
+
+  let winsCount = 0;
+  try {
+    const winsSnapshot = await getCountFromServer(
+      query(collection(db, "prizes"), where("winner_id", "==", userRef)),
+    );
+    winsCount = winsSnapshot.data().count;
+  } catch {
+    winsCount = 0;
   }
 
   const user = userSnapshot.data() as FirestoreUserDocument;
@@ -1296,7 +1305,7 @@ export async function getPlayerDetails(userId: string): Promise<AdminPlayerDetai
     userRole: readDisplayText(user.user_role, "Non renseigne"),
     accountStatus: readDisplayText(user.account_status, "Non renseigne"),
     gamesPlayedCount: readNullableInt(user.games_played_count),
-    winsCount: winsSnapshot.data().count,
+    winsCount,
     pushStatus: tokensSnapshot.empty ? "inconnu" : "actif",
     assiduityLabel: assiduity.assiduityLabel,
     activityState: assiduity.activityState,

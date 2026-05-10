@@ -1,13 +1,15 @@
 import {
   collection,
   collectionGroup,
-  onSnapshot,
+  getCountFromServer,
+  getDocs,
+  limit,
   orderBy,
   query,
   Timestamp,
+  where,
   type DocumentData,
   type QueryDocumentSnapshot,
-  type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client-app";
 import type {
@@ -101,6 +103,7 @@ type FirestorePushNotificationDocument = {
 type FirestoreParticipantDocument = {
   participation_date?: Timestamp;
   created_time?: Timestamp;
+  user_id?: { id?: string } | string | null;
 };
 
 type RawSnapshots = {
@@ -109,6 +112,7 @@ type RawSnapshots = {
   merchantsFallback: Array<QueryDocumentSnapshot<DocumentData>>;
   games: Array<QueryDocumentSnapshot<DocumentData>>;
   participants: Array<QueryDocumentSnapshot<DocumentData>>;
+  totalParticipationsCount: number;
   analytics: Array<QueryDocumentSnapshot<DocumentData>>;
   notificationsPrimary: Array<QueryDocumentSnapshot<DocumentData>>;
   notificationsFallback: Array<QueryDocumentSnapshot<DocumentData>>;
@@ -219,6 +223,14 @@ function readBoolean(source: Record<string, unknown>, keys: string[]) {
 
 function readDate(source: Record<string, unknown>, keys: string[]) {
   return readTimestamp(source, keys)?.toDate() ?? null;
+}
+
+function readParticipantUserId(data: FirestoreParticipantDocument): string | null {
+  const raw = data.user_id;
+  if (!raw) return null;
+  if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  if (typeof raw === "object" && "id" in raw && typeof raw.id === "string") return raw.id;
+  return null;
 }
 
 function normalizeStatus(value: string) {
@@ -487,7 +499,26 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
     gamesByMerchantId.set(merchantId, current);
   });
 
-  const activePlayers = users.filter((user) => isUserActive(user.data));
+  const usersWithParticipation30d = new Set<string>();
+  const usersWithParticipation7d = new Set<string>();
+
+  raw.participants.forEach((doc) => {
+    const data = doc.data() as FirestoreParticipantDocument;
+    const date = data.participation_date?.toDate() ?? data.created_time?.toDate() ?? null;
+    if (!date) return;
+    const userId = readParticipantUserId(data);
+    if (!userId) return;
+    if (date.getTime() >= Date.now() - 30 * MILLIS_IN_DAY) {
+      usersWithParticipation30d.add(userId);
+    }
+    if (date.getTime() >= Date.now() - 7 * MILLIS_IN_DAY) {
+      usersWithParticipation7d.add(userId);
+    }
+  });
+
+  const mau = usersWithParticipation30d.size;
+  const wau = usersWithParticipation7d.size;
+  const activePlayers = users.filter((user) => usersWithParticipation30d.has(user.id));
   const activePlayersExport: ActivePlayerExportRow[] = activePlayers.map((user) => ({
     id: user.id,
     displayName: getUserDisplayName(user.id, user.data),
@@ -548,24 +579,99 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
   })[0];
 
   const dau = latestAnalytics ? readNumber(latestAnalytics, ["dau", "active_users"]) : 0;
-  const mau = latestAnalytics ? readNumber(latestAnalytics, ["mau", "monthly_active_users"]) : 0;
-  const dauMau = dau > 0 && mau > 0 ? (dau / mau) * 100 : MOCK_DAU_MAU_PERCENT;
-  const sessionsCount = raw.gameSessions.length > 0 ? raw.gameSessions.length : raw.participants.length;
+  const analyticsMau = latestAnalytics ? readNumber(latestAnalytics, ["mau", "monthly_active_users"]) : 0;
+  const dauMau = dau > 0 && analyticsMau > 0 ? (dau / analyticsMau) * 100 : MOCK_DAU_MAU_PERCENT;
+  const newUsersThisWeek = users.filter((user) => {
+    const createdAt = readDate(user.data, ["created_time", "created_at"]);
+    return Boolean(createdAt && createdAt.getTime() >= Date.now() - 7 * MILLIS_IN_DAY);
+  }).length;
+  const sevenDaysAgo = Date.now() - 7 * MILLIS_IN_DAY;
+
+  const participationsByUserLast7d = new Map<string, number>();
+  raw.participants.forEach((doc) => {
+    const data = doc.data() as FirestoreParticipantDocument;
+    const date = data.participation_date?.toDate() ?? data.created_time?.toDate() ?? null;
+    if (!date || date.getTime() < sevenDaysAgo) return;
+    const userId = readParticipantUserId(data);
+    if (!userId) return;
+    participationsByUserLast7d.set(userId, (participationsByUserLast7d.get(userId) ?? 0) + 1);
+  });
+
+  const usersActiveLast7d = participationsByUserLast7d.size;
+  const usersCompletedLast7d = [...participationsByUserLast7d.values()].filter((count) => count >= 3).length;
+  const completionRate = usersActiveLast7d > 0 ? (usersCompletedLast7d / usersActiveLast7d) * 100 : 0;
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const todayMs = todayMidnight.getTime();
+
+  const participationsToday = new Map<string, number>();
+  raw.participants.forEach((doc) => {
+    const data = doc.data() as FirestoreParticipantDocument;
+    const date = data.participation_date?.toDate() ?? data.created_time?.toDate() ?? null;
+    if (!date || date.getTime() < todayMs) return;
+    const userId = readParticipantUserId(data);
+    if (!userId) return;
+    participationsToday.set(userId, (participationsToday.get(userId) ?? 0) + 1);
+  });
+
+  const partiesToday = [...participationsToday.values()].reduce((a, b) => a + b, 0);
+  const joueurActifsAujourdhui = participationsToday.size;
+  const joueursTroisParties = [...participationsToday.values()].filter((n) => n >= 3).length;
+  const joueursSansPartie = Math.max(0, activePlayers.length - joueurActifsAujourdhui);
+  const moyennePartiesParJoueur =
+    joueurActifsAujourdhui > 0 ? Math.round((partiesToday / joueurActifsAujourdhui) * 10) / 10 : 0;
+
+  const retentionCohort = users.filter((user) => {
+    const createdAt = readDate(user.data, ["created_time", "created_at"]);
+    return Boolean(
+      createdAt &&
+        createdAt.getTime() >= Date.now() - 14 * MILLIS_IN_DAY &&
+        createdAt.getTime() < Date.now() - 7 * MILLIS_IN_DAY,
+    );
+  });
+
+  const cohortUserIds = new Set(retentionCohort.map((user) => user.id));
+
+  const retainedUserIds = new Set<string>();
+  raw.participants.forEach((doc) => {
+    const data = doc.data() as FirestoreParticipantDocument;
+    const date = data.participation_date?.toDate() ?? data.created_time?.toDate() ?? null;
+    if (!date) return;
+    const userId = readParticipantUserId(data);
+    if (!userId || !cohortUserIds.has(userId)) return;
+    const userCreatedAt = readDate(retentionCohort.find((user) => user.id === userId)?.data ?? {}, [
+      "created_time",
+      "created_at",
+    ]);
+    if (userCreatedAt && date.getTime() > userCreatedAt.getTime() + MILLIS_IN_DAY) {
+      retainedUserIds.add(userId);
+    }
+  });
+
+  const retention7d = retentionCohort.length > 0 ? (retainedUserIds.size / retentionCohort.length) * 100 : 24;
 
   const kpis: DashboardKpi[] = [
     {
-      id: "activePlayers",
-      label: "Joueurs actifs",
-      value: formatCount(activePlayers.length),
-      helper: `+${formatCount(activePlayers.filter((user) => getUserSessionCount(user.data) > 0).length)} cette semaine`,
+      id: "mauReel",
+      label: "Joueurs actifs — 30 jours",
+      value: formatCount(mau),
+      helper: `${Math.round((mau / Math.max(1, users.length)) * 100)}% des inscrits`,
       tone: "success",
       accentBorder: true,
     },
     {
+      id: "wauReel",
+      label: "Joueurs actifs — 7 jours",
+      value: formatCount(wau),
+      helper: `${Math.round((wau / Math.max(1, mau)) * 100)}% des actifs 30j`,
+      tone: wau / Math.max(1, mau) >= 0.5 ? "success" : wau / Math.max(1, mau) >= 0.3 ? "warning" : "danger",
+      accentBorder: false,
+    },
+    {
       id: "sessions",
-      label: "Parties jouees",
-      value: formatCount(sessionsCount),
-      helper: "Total cumule",
+      label: "Parties jouees - total",
+      value: formatCount(raw.totalParticipationsCount),
+      helper: "Toutes participations depuis le lancement",
       tone: "neutral",
     },
     {
@@ -597,6 +703,79 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
       value: formatPercent(dauMau),
       helper: analyticsDocs.length > 0 ? "Engagement mesure" : "Engagement fort",
       tone: dauMau >= 30 ? "success" : "warning",
+    },
+    {
+      id: "totalPlayers",
+      label: "Joueurs inscrits",
+      value: formatCount(users.length),
+      helper: `+${formatCount(newUsersThisWeek)} cette semaine`,
+      tone: "success",
+      accentBorder: false,
+    },
+    {
+      id: "completionRate",
+      label: "Taux de completion",
+      value: formatPercent(completionRate),
+      helper: `Joueurs avec ≥ 3 parties sur 7 jours / joueurs actifs`,
+      tone: completionRate >= 60 ? "success" : completionRate >= 40 ? "warning" : "danger",
+      accentBorder: false,
+    },
+    {
+      id: "retention7d",
+      label: "Retention J7",
+      value: formatPercent(retention7d),
+      helper: retention7d < 35 ? "⚠ Objectif 35%" : "Dans la cible",
+      tone: retention7d >= 35 ? "success" : retention7d >= 20 ? "warning" : "danger",
+      accentBorder: true,
+    },
+    {
+      id: "creditsRatio",
+      label: "Crédits utilisés vs gagnés",
+      value: "68%",
+      helper: "Des crédits gagnés rejoués (mock)",
+      tone: "warning",
+      accentBorder: false,
+    },
+    {
+      id: "partiesToday",
+      label: "Parties jouées aujourd'hui",
+      value: formatCount(partiesToday),
+      helper: `Par ${formatCount(joueurActifsAujourdhui)} joueurs actifs`,
+      tone: partiesToday > 0 ? "success" : "neutral",
+      accentBorder: false,
+    },
+    {
+      id: "joueursSansPartie",
+      label: "Joueurs sans partie aujourd'hui",
+      value: formatCount(joueursSansPartie),
+      helper: `Sur ${formatCount(activePlayers.length)} joueurs actifs`,
+      tone:
+        joueursSansPartie > activePlayers.length * 0.5
+          ? "danger"
+          : joueursSansPartie > activePlayers.length * 0.3
+            ? "warning"
+            : "success",
+      accentBorder: false,
+    },
+    {
+      id: "joueursTroisParties",
+      label: "Joueurs ayant joué 3 parties",
+      value: formatCount(joueursTroisParties),
+      helper:
+        joueurActifsAujourdhui > 0
+          ? `${Math.round((joueursTroisParties / joueurActifsAujourdhui) * 100)}% des joueurs actifs`
+          : "Aucun joueur actif",
+      tone: joueursTroisParties > 0 ? "success" : "neutral",
+      accentBorder: false,
+    },
+    {
+      id: "tauxUtilisation",
+      label: "Parties / joueur actif aujourd'hui",
+      value: moyennePartiesParJoueur.toFixed(1),
+      helper: `Moyenne sur ${formatCount(joueurActifsAujourdhui)} joueurs actifs`,
+      tone:
+        moyennePartiesParJoueur >= 3 ? "success" : moyennePartiesParJoueur >= 1.5 ? "warning" : "danger",
+      accentBorder: false,
     },
   ];
 
@@ -798,16 +977,17 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
   };
 }
 
-export function subscribeDashboardData(
+export async function subscribeDashboardData(
   onData: (data: DashboardData) => void,
   onError?: (error: unknown) => void,
-): Unsubscribe {
+): Promise<void> {
   const raw: RawSnapshots = {
     users: [],
     merchantsPrimary: [],
     merchantsFallback: [],
     games: [],
     participants: [],
+    totalParticipationsCount: 0,
     analytics: [],
     notificationsPrimary: [],
     notificationsFallback: [],
@@ -818,61 +998,89 @@ export function subscribeDashboardData(
     onData(buildDashboardData(raw));
   };
 
-  const unsubs: Unsubscribe[] = [
-    onSnapshot(collection(db, "users"), (snapshot) => {
-      raw.users = snapshot.docs;
-      emit();
-    }, onError),
-    onSnapshot(collection(db, "merchants"), (snapshot) => {
-      raw.merchantsPrimary = snapshot.docs;
-      emit();
-    }, () => {
-      raw.merchantsPrimary = [];
-      emit();
-    }),
-    onSnapshot(collection(db, "enseignes"), (snapshot) => {
-      raw.merchantsFallback = snapshot.docs;
-      emit();
-    }, onError),
-    onSnapshot(query(collection(db, "games"), orderBy("end_date", "asc")), (snapshot) => {
-      raw.games = snapshot.docs;
-      emit();
-    }, onError),
-    onSnapshot(collectionGroup(db, "participants"), (snapshot) => {
-      raw.participants = snapshot.docs;
-      emit();
-    }, onError),
-    onSnapshot(query(collection(db, "analytics_daily"), orderBy("date", "desc")), (snapshot) => {
-      raw.analytics = snapshot.docs;
-      emit();
-    }, () => {
-      raw.analytics = [];
-      emit();
-    }),
-    onSnapshot(collection(db, "push_notifications"), (snapshot) => {
-      raw.notificationsPrimary = snapshot.docs;
-      emit();
-    }, () => {
-      raw.notificationsPrimary = [];
-      emit();
-    }),
-    onSnapshot(collection(db, "ff_push_notifications"), (snapshot) => {
-      raw.notificationsFallback = snapshot.docs;
-      emit();
-    }, () => {
-      raw.notificationsFallback = [];
-      emit();
-    }),
-    onSnapshot(collection(db, "game_sessions"), (snapshot) => {
-      raw.gameSessions = snapshot.docs;
-      emit();
-    }, () => {
-      raw.gameSessions = [];
-      emit();
-    }),
-  ];
+  const thirtyDaysAgo = Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  await Promise.all([
+    getDocs(query(collection(db, "users"), limit(1000)))
+      .then((snapshot) => {
+        raw.users = snapshot.docs;
+      })
+      .catch((error) => {
+        raw.users = [];
+        onError?.(error);
+      }),
+    getDocs(
+      query(
+        collectionGroup(db, "participants"),
+        orderBy("participation_date", "desc"),
+        where("participation_date", ">=", thirtyDaysAgo),
+        // 5000 participations recentes suffisent pour les calculs MAU/WAU/today
+        limit(5000),
+      ),
+    )
+      .then((snapshot) => {
+        raw.participants = snapshot.docs;
+      })
+      .catch((error) => {
+        raw.participants = [];
+        onError?.(error);
+      }),
+    getCountFromServer(collectionGroup(db, "participants"))
+      .then((snapshot) => {
+        raw.totalParticipationsCount = snapshot.data().count;
+      })
+      .catch(() => {
+        raw.totalParticipationsCount = 0;
+      }),
+    getDocs(query(collection(db, "merchants")))
+      .then((snapshot) => {
+        raw.merchantsPrimary = snapshot.docs;
+      })
+      .catch(() => {
+        raw.merchantsPrimary = [];
+      }),
+    getDocs(query(collection(db, "enseignes")))
+      .then((snapshot) => {
+        raw.merchantsFallback = snapshot.docs;
+      })
+      .catch(() => {
+        raw.merchantsFallback = [];
+      }),
+    getDocs(query(collection(db, "games"), orderBy("end_date", "desc"), limit(100)))
+      .then((snapshot) => {
+        raw.games = snapshot.docs;
+      })
+      .catch(() => {
+        raw.games = [];
+      }),
+    getDocs(query(collection(db, "analytics_daily"), orderBy("date", "desc"), limit(30)))
+      .then((snapshot) => {
+        raw.analytics = snapshot.docs;
+      })
+      .catch(() => {
+        raw.analytics = [];
+      }),
+    getDocs(query(collection(db, "push_notifications"), limit(20)))
+      .then((snapshot) => {
+        raw.notificationsPrimary = snapshot.docs;
+      })
+      .catch(() => {
+        raw.notificationsPrimary = [];
+      }),
+    getDocs(query(collection(db, "ff_push_notifications"), limit(20)))
+      .then((snapshot) => {
+        raw.notificationsFallback = snapshot.docs;
+      })
+      .catch(() => {
+        raw.notificationsFallback = [];
+      }),
+    getDocs(query(collection(db, "game_sessions"), limit(500)))
+      .then((snapshot) => {
+        raw.gameSessions = snapshot.docs;
+      })
+      .catch(() => {
+        raw.gameSessions = [];
+      }),
+  ]);
 
-  return () => {
-    unsubs.forEach((unsubscribe) => unsubscribe());
-  };
+  emit();
 }
