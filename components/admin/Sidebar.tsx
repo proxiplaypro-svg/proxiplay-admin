@@ -117,12 +117,6 @@ function buildSections(counts: {
               : undefined,
         },
         { href: "/admin/activite", label: "Activite", icon: "◌" },
-        { href: "/admin/games-technique", label: "Jeux Tech", icon: "◍" },
-        {
-          href: "/admin/commercants-technique",
-          label: "Commercants Tech",
-          icon: "◬",
-        },
       ],
     },
     {

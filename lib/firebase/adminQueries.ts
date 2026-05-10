@@ -48,6 +48,8 @@ type FirestoreEnseigneDocument = {
   email?: string;
   phone?: string;
   phone_number?: string;
+  imageUrl?: string;
+  logo?: string;
   owner?: string | DocumentReference | { id?: string; path?: string } | null;
   owner_id?: DocumentReference;
   games_count?: number;
@@ -328,6 +330,7 @@ export type AdminMerchantDetails = {
   city: string;
   email: string;
   phone: string;
+  imageUrl: string | null;
   ownerUserId: string | null;
   ownerUserFullName: string;
   hasOwnerUserRef: boolean;
@@ -1409,6 +1412,7 @@ export async function getMerchantDetails(merchantId: string) {
     city: enseigne.city ?? "",
     email: ownerUserEmail || (enseigne.email ?? ""),
     phone: ownerUserPhone || (enseigne.phone ?? enseigne.phone_number ?? ""),
+    imageUrl: enseigne.imageUrl ?? enseigne.logo ?? null,
     ownerUserId,
     ownerUserFullName: ownerUserFullName || "Non renseigne",
     hasOwnerUserRef: Boolean(ownerUserRef),

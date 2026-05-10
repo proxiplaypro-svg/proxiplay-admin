@@ -16,6 +16,7 @@ import {
   type DocumentReference,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import type {
   MerchantActiveGameSummary,
   MerchantPilotageItem,
@@ -23,7 +24,7 @@ import type {
   MerchantRelanceHistoryItem,
 } from "@/types/dashboard";
 import { auth } from "./auth";
-import { db } from "./client-app";
+import { db, storage } from "./client-app";
 
 type MerchantCollectionName = "enseignes" | "merchants";
 type GameCollectionName = "games" | "jeux";
@@ -131,6 +132,7 @@ export type UpdateMerchantProfileInput = {
   twitterLink: string;
   siteWebUrl: string;
   imageUrl: string;
+  imageFile?: File | null;
   commercialStatus: "" | "actif" | "a_relancer" | "inactif";
 };
 
@@ -204,6 +206,14 @@ function readNumber(...values: Array<number | string | null | undefined>) {
 
 function readTimestamp(...values: Array<Timestamp | null | undefined>) {
   return values.find((value) => value instanceof Timestamp) ?? null;
+}
+
+async function uploadMerchantPhoto(merchantId: string, file: File): Promise<string> {
+  const extension =
+    file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+  const storageRef = ref(storage, `enseignes/${merchantId}/cover.${extension}`);
+  await uploadBytes(storageRef, file, { contentType: file.type });
+  return getDownloadURL(storageRef);
 }
 
 function formatCount(value: number) {
@@ -785,6 +795,11 @@ export async function updateMerchantProfile(input: UpdateMerchantProfileInput) {
 
   const merchantRef = doc(db, input.merchantCollectionName, input.merchantId);
   const trimmedPhone = input.phone.trim();
+  let finalImageUrl = input.imageUrl.trim() || null;
+
+  if (input.imageFile) {
+    finalImageUrl = await uploadMerchantPhoto(input.merchantId, input.imageFile);
+  }
 
   await updateDoc(merchantRef, {
     name: input.name.trim() || deleteField(),
@@ -800,8 +815,13 @@ export async function updateMerchantProfile(input: UpdateMerchantProfileInput) {
     instagram_link: input.instagramLink.trim() || deleteField(),
     twitter_link: input.twitterLink.trim() || deleteField(),
     site_web_url: input.siteWebUrl.trim() || deleteField(),
+    imageUrl: finalImageUrl || deleteField(),
     commercial_status: input.commercialStatus || deleteField(),
   });
+
+  return {
+    imageUrl: finalImageUrl,
+  };
 }
 
 export function getMerchantsPilotageErrorMessage(error: unknown) {

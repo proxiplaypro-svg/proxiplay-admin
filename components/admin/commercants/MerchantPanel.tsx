@@ -120,9 +120,18 @@ export function MerchantPanel({
     <aside className="sticky top-0 grid max-h-screen gap-4 overflow-y-auto pb-6">
       <PanelSection>
         <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#EAF3DE] text-[1.05rem] font-semibold text-[#3B6D11]">
-            {merchant.initials}
-          </div>
+          {merchant.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={merchant.imageUrl}
+              alt={merchant.name}
+              className="h-16 w-16 rounded-[10px] border border-[#E8E8E4] object-cover"
+            />
+          ) : (
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#EAF3DE] text-[1.05rem] font-semibold text-[#3B6D11]">
+              {merchant.initials}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="m-0 truncate text-[1.45rem] text-[#1a1a1a]">{merchant.name}</h3>
@@ -211,6 +220,12 @@ export function MerchantPanel({
           >
             Email relance
           </button>
+          <Link
+            href={`/admin/commercants/${merchant.id}`}
+            className="col-span-2 flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 text-[0.9rem] font-medium text-[#1a1a1a] transition hover:border-[#C0DD97] hover:bg-[#EAF3DE] hover:text-[#3B6D11]"
+          >
+            Voir la fiche complète →
+          </Link>
           <button
             type="button"
             onClick={onDelete}

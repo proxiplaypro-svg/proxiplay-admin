@@ -273,9 +273,7 @@ export default function AdminCommercantsPage() {
     setEditFeedback(null);
 
     try {
-      console.log("image à uploader:", payload.imageFile);
-
-      await updateMerchantProfile({
+      const result = await updateMerchantProfile({
         merchantId: selectedMerchant.id,
         merchantCollectionName: selectedMerchant.merchantCollectionName,
         name: payload.name,
@@ -291,6 +289,7 @@ export default function AdminCommercantsPage() {
         twitterLink: payload.twitterLink,
         siteWebUrl: payload.siteWebUrl,
         imageUrl: payload.imageUrl,
+        imageFile: payload.imageFile,
         commercialStatus: payload.commercialStatus,
       });
 
@@ -312,7 +311,7 @@ export default function AdminCommercantsPage() {
                 twitterLink: payload.twitterLink.trim(),
                 siteWebUrl: payload.siteWebUrl.trim(),
                 commercialStatus: payload.commercialStatus,
-                imageUrl: payload.imageFile ? merchant.imageUrl : payload.imageUrl,
+                imageUrl: result.imageUrl ?? "",
                 ownerRef: merchant.ownerRef,
               }
             : merchant,
@@ -499,3 +498,4 @@ export default function AdminCommercantsPage() {
     </section>
   );
 }
+

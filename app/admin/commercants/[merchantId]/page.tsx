@@ -380,250 +380,125 @@ export default function MerchantDetailsPage({ params }: MerchantDetailsPageProps
   }
 
   return (
-    <section className="content-grid">
-      <div className="panel panel-wide merchant-commercial-panel">
-        <div className="panel-heading merchant-commercial-heading">
+    <section className="space-y-4 bg-[#F7F7F5] text-[#1A1A1A]">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-center gap-4">
+          {merchant.imageUrl ? (
+            <img
+              src={merchant.imageUrl}
+              alt={merchant.name}
+              className="h-16 w-16 rounded-[10px] border border-[#E8E8E4] object-cover"
+            />
+          ) : null}
           <div>
-            <h2>{merchant.name}</h2>
-            <p>Fiche de suivi commercial de l enseigne et de ses relances prioritaires.</p>
-          </div>
-          <div className="merchant-crm-status">
-            <span className={`merchant-badge ${merchant.status}`}>{getStatusLabel(merchant.status)}</span>
-            <span className={`follow-up-badge ${merchant.followUp.followUpStatus}`}>
-              {getFollowUpStatusLabel(merchant.followUp.followUpStatus)}
-            </span>
-            <span className="status-pill neutral">{merchant.city || "Ville non renseignee"}</span>
+            <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1A1A1A]">{merchant.name}</h1>
+            <p className="mt-1 text-[13px] text-[#666666]">Fiche commercant · {merchant.city}</p>
           </div>
         </div>
-
-        <div className="merchant-details-grid merchant-commercial-summary-grid">
-          <article className="overview-card">
-            <span>Ville</span>
-            <strong>{merchant.city || "Non renseignee"}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Prenom / Nom</span>
-            <strong>{merchant.hasOwnerUserRef ? merchant.ownerUserFullName : "Aucun user rattache"}</strong>
-          </article>
-          <article className="overview-card merchant-contact-summary-card merchant-contact-summary-card-wide">
-            <span>Email prioritaire</span>
-            <strong>{merchant.email || "Aucun email"}</strong>
-          </article>
-          <article className="overview-card merchant-contact-summary-card">
-            <span>Telephone</span>
-            <strong>{merchant.phone || "Aucun telephone"}</strong>
-          </article>
-          <article className="overview-card">
-            <span>User correspondant</span>
-            <strong>{merchant.ownerUserId ?? "Aucun user rattache"}</strong>
-          </article>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/admin/commercants" className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] text-[#1A1A1A] transition hover:bg-[#FAFAF8]">
+            ← Retour liste
+          </Link>
+          {relaunchLink ? (
+            <button type="button" disabled={relaunching} onClick={() => void handleMerchantRelaunch()} className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881D]">
+              {relaunching ? "Mise à jour..." : "Contacter"}
+            </button>
+          ) : null}
         </div>
       </div>
 
-      <div className="panel panel-wide merchant-commercial-panel">
-        <div className="panel-heading">
-          <h2>Suivi de relance</h2>
-          <p>V1 minimaliste du suivi commercial, sans historique ni CRM lourd.</p>
-        </div>
+      {feedback ? (
+        <div className="rounded-[10px] border border-[#C0DD97] bg-[#EAF3DE] px-4 py-3 text-[12px] text-[#3B6D11]">{feedback}</div>
+      ) : null}
 
-        <div className="follow-up-summary-grid">
-          <article className="overview-card">
-            <span>Derniere relance</span>
-            <strong>{merchant.followUp.lastContactAtLabel}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Canal</span>
-            <strong>{getFollowUpChannelLabel(merchant.followUp.lastContactChannel)}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Statut de suivi</span>
-            <strong>{getFollowUpStatusLabel(merchant.followUp.followUpStatus)}</strong>
-          </article>
+      <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
+        <h2 className="mb-4 text-[15px] font-medium text-[#1A1A1A]">Informations boutique</h2>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {[
+            { label: "Ville", value: merchant.city || "Non renseignée" },
+            { label: "Email", value: merchant.email || "Non renseigné" },
+            { label: "Téléphone", value: merchant.phone || "Non renseigné" },
+            { label: "Gérant", value: merchant.ownerUserFullName || "Non renseigné" },
+            { label: "Jeux créés", value: String(merchant.gamesCount) },
+            { label: "Participations", value: formatCount(merchant.participationsCount) },
+            { label: "Followers", value: formatCount(merchant.followersCount) },
+            { label: "Statut", value: getStatusLabel(merchant.status) },
+          ].map((item) => (
+            <article key={item.label} className="rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 py-3">
+              <p className="text-[11px] text-[#999999]">{item.label}</p>
+              <strong className="mt-1 block text-[13px] font-medium text-[#1A1A1A]">{item.value}</strong>
+            </article>
+          ))}
         </div>
+      </div>
 
-        <div className="follow-up-form-grid">
-          <label className="search-field">
-            <span className="search-label">Canal</span>
-            <select
-              className="search-input"
-              value={followUpForm.lastContactChannel}
-              onChange={(event) =>
-                handleFollowUpFormChange(
-                  "lastContactChannel",
-                  event.target.value as AdminFollowUpChannel,
-                )
-              }
-            >
+      {merchant.games.length > 0 && (
+        <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
+          <h2 className="mb-4 text-[15px] font-medium text-[#1A1A1A]">Jeux liés</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            {merchant.games.map((game) => (
+              <Link key={game.id} href={`/admin/games/${game.id}`} className="flex items-center justify-between rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 py-3 transition hover:border-[#C0DD97] hover:bg-[#EAF3DE]">
+                <div>
+                  <p className="text-[13px] font-medium text-[#1A1A1A]">{game.name}</p>
+                  <p className="mt-1 text-[11px] text-[#999999]">Fin : {game.endDateLabel} · {formatCount(game.participationsCount)} participations</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-[11px] font-medium ${game.status === "actif" ? "bg-[#EAF3DE] text-[#3B6D11]" : "bg-[#F7F7F5] text-[#666666]"}`}>
+                  {game.status === "actif" ? "Actif" : game.status === "termine" ? "Terminé" : "À venir"}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
+        <h2 className="mb-4 text-[15px] font-medium text-[#1A1A1A]">Suivi de contact</h2>
+        <div className="mb-4 grid gap-3 md:grid-cols-3">
+          {[
+            { label: "Dernière relance", value: merchant.followUp.lastContactAtLabel },
+            { label: "Canal", value: getFollowUpChannelLabel(merchant.followUp.lastContactChannel) },
+            { label: "Statut", value: getFollowUpStatusLabel(merchant.followUp.followUpStatus) },
+          ].map((item) => (
+            <article key={item.label} className="rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 py-3">
+              <p className="text-[11px] text-[#999999]">{item.label}</p>
+              <strong className="mt-1 block text-[13px] font-medium text-[#1A1A1A]">{item.value}</strong>
+            </article>
+          ))}
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[#666666]">Canal</span>
+            <select value={followUpForm.lastContactChannel} onChange={(e) => handleFollowUpFormChange("lastContactChannel", e.target.value as AdminFollowUpChannel)} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none">
               <option value="email">Email</option>
-              <option value="phone">Telephone</option>
-              <option value="manual">Manual</option>
-              <option value="unknown">Unknown</option>
+              <option value="phone">Téléphone</option>
+              <option value="manual">Manuel</option>
             </select>
           </label>
-
-          <label className="search-field">
-            <span className="search-label">Statut</span>
-            <select
-              className="search-input"
-              value={followUpForm.followUpStatus}
-              onChange={(event) =>
-                handleFollowUpFormChange("followUpStatus", event.target.value as AdminFollowUpStatus)
-              }
-            >
-              <option value="a_faire">A faire</option>
-              <option value="relance">Relance</option>
-              <option value="sans_reponse">Sans reponse</option>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[#666666]">Statut</span>
+            <select value={followUpForm.followUpStatus} onChange={(e) => handleFollowUpFormChange("followUpStatus", e.target.value as AdminFollowUpStatus)} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none">
+              <option value="a_faire">À faire</option>
+              <option value="relance">Relancé</option>
+              <option value="sans_reponse">Sans réponse</option>
               <option value="ok">OK</option>
             </select>
           </label>
-
-          <label className="search-field">
-            <span className="search-label">Date de relance</span>
-            <input
-              className="search-input"
-              type="datetime-local"
-              value={followUpForm.lastContactAt}
-              onChange={(event) => handleFollowUpFormChange("lastContactAt", event.target.value)}
-            />
-          </label>
-
-          <label className="search-field follow-up-note-field">
-            <span className="search-label">Note courte</span>
-            <textarea
-              className="follow-up-textarea"
-              rows={3}
-              maxLength={280}
-              value={followUpForm.followUpNote}
-              onChange={(event) => handleFollowUpFormChange("followUpNote", event.target.value)}
-              placeholder="Ex: relance envoyee, rappel lundi, prefere email."
-            />
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[#666666]">Date de contact</span>
+            <input type="datetime-local" value={followUpForm.lastContactAt} onChange={(e) => handleFollowUpFormChange("lastContactAt", e.target.value)} className="h-[40px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none" />
           </label>
         </div>
-
-        <div className="follow-up-actions">
-          <button
-            className="primary-button"
-            type="button"
-            disabled={saving || marking}
-            onClick={() => void handleMarkAsContacted()}
-          >
-            {marking ? "Mise a jour..." : "Marquer comme relance"}
+        <label className="mt-3 flex flex-col gap-1">
+          <span className="text-[11px] font-medium text-[#666666]">Note</span>
+          <textarea rows={3} maxLength={280} value={followUpForm.followUpNote} onChange={(e) => handleFollowUpFormChange("followUpNote", e.target.value)} placeholder="Ex: email envoyé, rappel lundi, préfère email." className="resize-none rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-2 text-[12.5px] text-[#1A1A1A] outline-none" />
+        </label>
+        <div className="mt-4 flex gap-2">
+          <button type="button" disabled={saving || marking} onClick={() => void handleMarkAsContacted()} className="rounded-[8px] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881D] disabled:opacity-50">
+            {marking ? "Mise à jour..." : "Marquer comme contacté"}
           </button>
-          <button
-            className="secondary-button inline-secondary-button"
-            type="button"
-            disabled={saving || marking}
-            onClick={() => void handleFollowUpSave()}
-          >
-            {saving ? "Enregistrement..." : "Enregistrer le suivi"}
+          <button type="button" disabled={saving || marking} onClick={() => void handleFollowUpSave()} className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] text-[#666666] transition hover:bg-[#FAFAF8] disabled:opacity-50">
+            {saving ? "Enregistrement..." : "Enregistrer"}
           </button>
-        </div>
-
-        {feedback ? <p className="feedback">{feedback}</p> : null}
-      </div>
-
-      <div className="panel panel-wide merchant-commercial-panel">
-        <div className="panel-heading">
-          <h2>Performance</h2>
-          <p>Lecture commerciale simple des indicateurs deja visibles dans la liste commercants.</p>
-        </div>
-
-        <div className="dashboard-kpi-grid merchant-commercial-kpis">
-          <article className="dashboard-kpi-card featured">
-            <span>Clics</span>
-            <strong>{formatCount(merchant.clicksCount)}</strong>
-            <small>Interet mesure sur les jeux lies</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Participations</span>
-            <strong>{formatCount(merchant.participationsCount)}</strong>
-            <small>Volume actuel des interactions</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Followers</span>
-            <strong>{formatCount(merchant.followersCount)}</strong>
-            <small>Audience disponible</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Jeux lies</span>
-            <strong>{formatCount(merchant.gamesCount)}</strong>
-            <small>{merchant.lastGameLabel}</small>
-          </article>
-        </div>
-      </div>
-
-      <div className="panel panel-wide merchant-commercial-panel">
-        <div className="panel-heading">
-          <h2>Actions</h2>
-          <p>Actions commerciales rapides et navigation utile sans basculer vers une vue technique.</p>
-        </div>
-
-        <div className="merchant-commercial-actions-shell">
-          <div className="merchant-actions merchant-commercial-actions">
-            {relaunchLink ? (
-              <button
-                className="primary-button"
-                type="button"
-                disabled={saving || marking || relaunching}
-                onClick={() => void handleMerchantRelaunch()}
-              >
-                {relaunching ? "Mise a jour..." : "Relancer"}
-              </button>
-            ) : (
-              <button className="primary-button" type="button" disabled>
-                Relancer
-              </button>
-            )}
-            {merchant.games.length > 0 ? (
-              <a className="secondary-button inline-secondary-button" href="#merchant-games">
-                Voir les jeux lies
-              </a>
-            ) : (
-              <button className="secondary-button inline-secondary-button" type="button" disabled>
-                Aucun jeu lie
-              </button>
-            )}
-            <Link className="row-link-button secondary" href="/admin/commercants">
-              Retour a la liste
-            </Link>
-          </div>
-        </div>
-
-        <div className="merchant-commercial-games-block" id="merchant-games">
-          <div className="merchant-commercial-games-header">
-            <div>
-              <h3>Jeux lies</h3>
-              <p>Jeux rattaches a l enseigne avec date de fin et indicateurs utiles.</p>
-            </div>
-          </div>
-
-          {merchant.games.length > 0 ? (
-            <div className="merchant-commercial-games-preview">
-              {merchant.games.slice(0, 4).map((game) => (
-                <Link
-                  key={game.id}
-                  className="action-item merchant-commercial-game-link"
-                  href={`/admin/games/${game.id}`}
-                >
-                  <div className="merchant-commercial-game-copy">
-                    <strong>{game.name}</strong>
-                    <p>Fin : {game.endDateLabel}</p>
-                    <small>
-                      {formatCount(game.clicksCount)} clics | {formatCount(game.participationsCount)} participations
-                    </small>
-                  </div>
-                  <span className={`game-badge ${game.status}`}>
-                    {game.status === "actif" ? "Actif" : game.status === "termine" ? "Termine" : "A venir"}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state compact-empty-state">
-              <strong>Aucun jeu lie</strong>
-              <p>Cette enseigne n a pas encore de jeu rattache a afficher.</p>
-            </div>
-          )}
         </div>
       </div>
     </section>

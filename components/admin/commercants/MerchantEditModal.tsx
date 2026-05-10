@@ -69,6 +69,20 @@ function buildInitialForm(merchant: MerchantPilotageItem | null): FormState {
 const inputClassName =
   "w-full rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[0.96rem] text-[var(--foreground)] outline-none transition focus:border-[rgba(99,153,34,0.32)]";
 
+function normalizeSiteUrl(url: string) {
+  const trimmed = url.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  return `https://${trimmed}`;
+}
+
 export function MerchantEditModal({
   merchant,
   open,
@@ -79,11 +93,15 @@ export function MerchantEditModal({
 }: MerchantEditModalProps) {
   const [form, setForm] = useState<FormState>(() => buildInitialForm(merchant));
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [localSaving, setLocalSaving] = useState(false);
+  const [localFeedback, setLocalFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setForm(buildInitialForm(merchant));
       setValidationError(null);
+      setLocalSaving(false);
+      setLocalFeedback(null);
     }
   }, [merchant, open]);
 
@@ -100,23 +118,33 @@ export function MerchantEditModal({
     }
 
     setValidationError(null);
-    await onSave({
-      name: form.name.trim(),
-      description: form.description.trim(),
-      address: form.address.trim(),
-      areaCode: form.areaCode.trim(),
-      city: form.city.trim(),
-      category: form.category.split(",").map((category) => category.trim()).filter(Boolean),
-      facebookLink: form.facebookLink.trim(),
-      instagramLink: form.instagramLink.trim(),
-      twitterLink: form.twitterLink.trim(),
-      siteWebUrl: form.siteWebUrl.trim(),
-      imageFile: form.imageFile,
-      imageUrl: form.imageUrl,
-      email: form.email.trim(),
-      phone: form.phone.trim(),
-      commercialStatus: form.commercialStatus,
-    });
+    setLocalSaving(true);
+    setLocalFeedback("Enregistrement en cours...");
+
+    try {
+      await onSave({
+        name: form.name.trim(),
+        description: form.description.trim(),
+        address: form.address.trim(),
+        areaCode: form.areaCode.trim(),
+        city: form.city.trim(),
+        category: form.category.split(",").map((category) => category.trim()).filter(Boolean),
+        facebookLink: form.facebookLink.trim(),
+        instagramLink: form.instagramLink.trim(),
+        twitterLink: form.twitterLink.trim(),
+        siteWebUrl: normalizeSiteUrl(form.siteWebUrl),
+        imageFile: form.imageFile,
+        imageUrl: form.imageUrl,
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        commercialStatus: form.commercialStatus,
+      });
+      setLocalFeedback("Enregistré avec succès ✓");
+    } catch {
+      setLocalFeedback("Erreur lors de l'enregistrement.");
+    } finally {
+      setLocalSaving(false);
+    }
   };
 
   return (
@@ -147,7 +175,7 @@ export function MerchantEditModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           <div className="game-edit-modal-body grid gap-6">
             <section className="rounded-[10px] border border-[rgba(159,177,199,0.12)] p-4">
               <h3 className="mb-4 text-[0.95rem] font-medium text-[var(--foreground)]">Informations de la boutique</h3>
@@ -183,7 +211,7 @@ export function MerchantEditModal({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <label className="text-[0.9rem] font-medium text-[var(--muted)]">Site web</label>
-                    <input className={inputClassName} type="url" placeholder="https://..." value={form.siteWebUrl} onChange={(event) => setForm((current) => ({ ...current, siteWebUrl: event.target.value }))} />
+                    <input className={inputClassName} type="text" placeholder="https://..." value={form.siteWebUrl} onChange={(event) => setForm((current) => ({ ...current, siteWebUrl: event.target.value }))} />
                   </div>
                   <div className="grid gap-2">
                     <label className="text-[0.9rem] font-medium text-[var(--muted)]">Facebook</label>
@@ -210,20 +238,25 @@ export function MerchantEditModal({
                       <button type="button" className="text-[0.85rem] text-[#A32D2D]" onClick={() => setForm((current) => ({ ...current, imageFile: null, imageUrl: "" }))}>Supprimer</button>
                     </div>
                   ) : (
-                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-[14px] border border-dashed border-[rgba(159,177,199,0.2)] bg-[rgba(255,255,255,0.02)] px-4 py-5 text-center transition hover:border-[rgba(99,153,34,0.32)]">
-                      <span className="text-[0.9rem] text-[var(--muted)]">Cliquer pour ajouter une photo</span>
-                      <span className="mt-1 text-[0.8rem] text-[var(--muted)] opacity-60">JPG, PNG ou WEBP · max 2 Mo</span>
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => {
-                        const file = event.target.files?.[0] ?? null;
-                        if (!file) return;
-                        if (file.size > 2 * 1024 * 1024) {
-                          setValidationError("Image trop lourde : 2 Mo maximum.");
-                          return;
-                        }
-                        setValidationError(null);
-                        setForm((current) => ({ ...current, imageFile: file }));
-                      }} />
-                    </label>
+                    <div className="flex flex-col gap-2">
+                      <label className="flex cursor-pointer items-center gap-3 rounded-[14px] border border-dashed border-[rgba(159,177,199,0.2)] bg-[rgba(255,255,255,0.02)] px-4 py-4 transition hover:border-[rgba(99,153,34,0.32)]">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-[rgba(99,153,34,0.1)] text-[18px]">📷</div>
+                        <div>
+                          <p className="text-[0.9rem] font-medium text-[var(--foreground)]">Choisir une photo</p>
+                          <p className="text-[0.8rem] text-[var(--muted)] opacity-60">JPG, PNG ou WEBP · max 2 Mo</p>
+                        </div>
+                        <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null;
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) {
+                            setValidationError("Image trop lourde : 2 Mo maximum.");
+                            return;
+                          }
+                          setValidationError(null);
+                          setForm((current) => ({ ...current, imageFile: file }));
+                        }} />
+                      </label>
+                    </div>
                   )}
                 </div>
               </div>
@@ -285,16 +318,32 @@ export function MerchantEditModal({
           </div>
 
           <div className="game-edit-modal-footer border-t border-[rgba(159,177,199,0.1)]">
+            {localFeedback ? (
+              <div className={`rounded-[10px] px-4 py-3 text-[13px] font-medium ${
+                localFeedback.includes("Erreur")
+                  ? "border border-[#F09595] bg-[#FCEBEB] text-[#A32D2D]"
+                  : localFeedback.includes("cours")
+                    ? "border border-[#C0DD97] bg-[#EAF3DE] text-[#3B6D11]"
+                    : "border border-[#C0DD97] bg-[#EAF3DE] text-[#3B6D11]"
+              }`}>
+                {localFeedback}
+              </div>
+            ) : null}
             <button type="button" className="secondary-button inline-secondary-button w-auto min-w-[140px]" onClick={onClose}>
               Annuler
             </button>
             <button
               type="submit"
-              className="primary-button min-w-[160px]"
-              disabled={saving}
-              style={{ background: "linear-gradient(135deg, #639922 0%, #7CB32B 100%)", boxShadow: "0 16px 32px rgba(99,153,34,0.28)" }}
+              className="primary-button relative min-w-[160px]"
+              disabled={saving || localSaving}
+              style={{ background: "linear-gradient(135deg, #639922 0%, #7CB32B 100%)" }}
             >
-              {saving ? "Enregistrement..." : "Enregistrer"}
+              {localSaving ? (
+                <span className="flex items-center gap-2">
+                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Enregistrement...
+                </span>
+              ) : "Enregistrer"}
             </button>
           </div>
         </form>

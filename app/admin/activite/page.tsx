@@ -1,16 +1,79 @@
 "use client";
 
+import { collectionGroup, getDocs, limit, orderBy, query, Timestamp, where, type DocumentReference } from "firebase/firestore";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import Script from "next/script";
+import { useRef } from "react";
 import {
   getMerchantsList,
   getPlayersList,
   type AdminMerchantListItem,
   type AdminPlayerListItem,
 } from "@/lib/firebase/adminQueries";
+import { db } from "@/lib/firebase/client-app";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 type ActivityTab = "kpi" | "players" | "merchants" | "segments";
+type AnalyticsDataset = {
+  data: number[];
+  label?: string;
+  borderColor?: string;
+  backgroundColor?: string | CanvasGradient;
+  fill?: boolean;
+  tension?: number;
+  borderWidth?: number;
+  pointRadius?: number;
+  pointHoverRadius?: number;
+  borderRadius?: number;
+  maxBarThickness?: number;
+};
+type AnalyticsChartConfig = {
+  type: "line" | "bar";
+  data: {
+    labels: string[];
+    datasets: AnalyticsDataset[];
+  };
+  options?: {
+    responsive?: boolean;
+    maintainAspectRatio?: boolean;
+    plugins?: {
+      legend?: { display?: boolean };
+      tooltip?: {
+        displayColors?: boolean;
+        callbacks?: {
+          label?: (context: { parsed: { y: number } }) => string;
+        };
+      };
+    };
+    scales?: {
+      x?: {
+        grid?: { display?: boolean; drawBorder?: boolean };
+        ticks?: { color?: string; font?: { size?: number } };
+      };
+      y?: {
+        beginAtZero?: boolean;
+        ticks?: { precision?: number; color?: string; font?: { size?: number } };
+        grid?: { color?: string; drawBorder?: boolean };
+      };
+    };
+  };
+};
+type AnalyticsChartInstance = { destroy: () => void };
+type AnalyticsChartConstructor = new (
+  item: HTMLCanvasElement | CanvasRenderingContext2D,
+  config: AnalyticsChartConfig,
+) => AnalyticsChartInstance;
+type FirestoreParticipantDocument = {
+  participation_date?: Timestamp;
+  user_id?: DocumentReference | string | null;
+};
+
+declare global {
+  interface Window {
+    Chart?: AnalyticsChartConstructor;
+  }
+}
 
 function formatCount(value: number) {
   return new Intl.NumberFormat("fr-FR").format(value);
@@ -115,6 +178,12 @@ export default function AdminActivityPage() {
   const [merchants, setMerchants] = useState<AdminMerchantListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chartJsReady, setChartJsReady] = useState(false);
+  const [participants, setParticipants] = useState<FirestoreParticipantDocument[]>([]);
+  const signupsCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const uniqueDauCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const signupsChartRef = useRef<AnalyticsChartInstance | null>(null);
+  const uniqueDauChartRef = useRef<AnalyticsChartInstance | null>(null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -129,9 +198,25 @@ export default function AdminActivityPage() {
           getMerchantsList(),
         ]);
 
+        let participantsSnap = { docs: [] as Array<{ data: () => unknown }> };
+        try {
+          const thirtyDaysAgo = Timestamp.fromMillis(Date.now() - 30 * DAY_IN_MS);
+          participantsSnap = await getDocs(
+            query(
+              collectionGroup(db, "participants"),
+              orderBy("participation_date", "desc"),
+              where("participation_date", ">=", thirtyDaysAgo),
+              limit(5000),
+            ),
+          );
+        } catch (participantsError) {
+          console.warn("Participants non charges:", participantsError);
+        }
+
         if (!isCancelled) {
           setPlayers(playerItems);
           setMerchants(merchantItems);
+          setParticipants(participantsSnap.docs.map((doc) => doc.data() as FirestoreParticipantDocument));
         }
       } catch (loadError) {
         console.error(loadError);
@@ -151,6 +236,12 @@ export default function AdminActivityPage() {
     return () => {
       isCancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    if (window.Chart) {
+      setChartJsReady(true);
+    }
   }, []);
 
   const playerMetrics = useMemo(() => {
@@ -278,6 +369,202 @@ export default function AdminActivityPage() {
     };
   }, [merchantMetrics.registered, merchantMetrics.withGames, merchantMetrics.withParticipation, playerMetrics.active30Days, playerMetrics.active7Days, playerMetrics.inactive, players]);
 
+  const chartSeries = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const thirtyDaysStart = new Date();
+    thirtyDaysStart.setHours(0, 0, 0, 0);
+    thirtyDaysStart.setDate(thirtyDaysStart.getDate() - 29);
+
+    const signups = new Map<number, number>();
+
+    for (let day = thirtyDaysStart.getTime(); day <= today.getTime(); day += DAY_IN_MS) {
+      signups.set(day, 0);
+    }
+
+    players.forEach((player) => {
+      if (player.createdAtValue > 0) {
+        const signupDay = new Date(player.createdAtValue);
+        signupDay.setHours(0, 0, 0, 0);
+        if (signups.has(signupDay.getTime())) {
+          signups.set(signupDay.getTime(), (signups.get(signupDay.getTime()) ?? 0) + 1);
+        }
+      }
+    });
+
+    const signupDays = [...signups.keys()].sort((left, right) => left - right);
+    const signupLabels = signupDays.map((day) =>
+      new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" }).format(new Date(day)),
+    );
+
+    if (participants.length === 0) {
+      return {
+        signupLabels,
+        signups: signupDays.map((day) => signups.get(day) ?? 0),
+        dauLabels: [],
+        dauReel: [],
+        dauDayCount: 0,
+      };
+    }
+
+    let oldestParticipation = Date.now();
+    participants.forEach((participant) => {
+      const date = participant.participation_date?.toDate() ?? null;
+      if (date && date.getTime() < oldestParticipation) {
+        oldestParticipation = date.getTime();
+      }
+    });
+
+    const startDau = new Date(oldestParticipation);
+    startDau.setHours(0, 0, 0, 0);
+    const dauByDay = new Map<number, Set<string>>();
+    const dauDayCount = Math.ceil((today.getTime() - startDau.getTime()) / DAY_IN_MS) + 1;
+
+    for (let day = startDau.getTime(); day <= today.getTime(); day += DAY_IN_MS) {
+      dauByDay.set(day, new Set());
+    }
+
+    participants.forEach((participant) => {
+      const date = participant.participation_date?.toDate() ?? null;
+      const userId =
+        typeof participant.user_id === "object" && participant.user_id?.id
+          ? participant.user_id.id
+          : typeof participant.user_id === "string"
+            ? participant.user_id
+            : null;
+
+      if (!date || !userId) {
+        return;
+      }
+
+      const day = new Date(date);
+      day.setHours(0, 0, 0, 0);
+      if (dauByDay.has(day.getTime())) {
+        dauByDay.get(day.getTime())?.add(userId);
+      }
+    });
+
+    const sortedDays = [...dauByDay.keys()].sort((left, right) => left - right);
+    const dauLabels = sortedDays.map((day) =>
+      new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" }).format(new Date(day)),
+    );
+
+    return {
+      signupLabels,
+      signups: signupDays.map((day) => signups.get(day) ?? 0),
+      dauLabels,
+      dauReel: sortedDays.map((day) => dauByDay.get(day)?.size ?? 0),
+      dauDayCount,
+    };
+  }, [participants, players]);
+
+  useEffect(() => {
+    return () => {
+      signupsChartRef.current?.destroy();
+      uniqueDauChartRef.current?.destroy();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!chartJsReady || !window.Chart || !signupsCanvasRef.current) {
+      signupsChartRef.current?.destroy();
+      signupsChartRef.current = null;
+      return;
+    }
+
+    signupsChartRef.current?.destroy();
+    const context = signupsCanvasRef.current.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    signupsChartRef.current = new window.Chart(context, {
+      type: "bar",
+      data: {
+        labels: chartSeries.signupLabels,
+        datasets: [
+          {
+            data: chartSeries.signups,
+            backgroundColor: "#378ADD",
+            borderRadius: 6,
+            maxBarThickness: 18,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            displayColors: false,
+            callbacks: {
+              label: (context) => `${context.parsed.y} inscription${context.parsed.y > 1 ? "s" : ""}`,
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false, drawBorder: false }, ticks: { color: "#999999", font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { precision: 0, color: "#999999", font: { size: 10 } }, grid: { color: "#F0F0EC", drawBorder: false } },
+        },
+      },
+    });
+  }, [chartJsReady, chartSeries.signupLabels, chartSeries.signups]);
+
+  useEffect(() => {
+    if (!chartJsReady || !window.Chart || !uniqueDauCanvasRef.current) {
+      uniqueDauChartRef.current?.destroy();
+      uniqueDauChartRef.current = null;
+      return;
+    }
+
+    uniqueDauChartRef.current?.destroy();
+    const context = uniqueDauCanvasRef.current.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    const gradient = context.createLinearGradient(0, 0, 0, 180);
+    gradient.addColorStop(0, "rgba(234, 243, 222, 0.3)");
+    gradient.addColorStop(1, "rgba(234, 243, 222, 0)");
+
+    uniqueDauChartRef.current = new window.Chart(context, {
+      type: "line",
+      data: {
+        labels: chartSeries.dauLabels,
+        datasets: [
+          {
+            data: chartSeries.dauReel,
+            borderColor: "#639922",
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.28,
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            displayColors: false,
+            callbacks: {
+              label: (context) => `${context.parsed.y} joueur${context.parsed.y > 1 ? "s" : ""}`,
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false, drawBorder: false }, ticks: { color: "#999999", font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { precision: 0, color: "#999999", font: { size: 10 } }, grid: { color: "#F0F0EC", drawBorder: false } },
+        },
+      },
+    });
+  }, [chartJsReady, chartSeries.dauLabels, chartSeries.dauReel]);
+
   const playerKpis = [
     {
       accent: "#639922",
@@ -339,6 +626,11 @@ export default function AdminActivityPage() {
 
   return (
     <section className="space-y-4 bg-[#F7F7F5] text-[#1A1A1A]">
+      <Script
+        src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"
+        strategy="afterInteractive"
+        onLoad={() => setChartJsReady(true)}
+      />
       <div className="flex flex-col gap-4 rounded-[12px] border border-[#E8E8E4] bg-white p-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1A1A1A]">Activite</h1>
@@ -432,6 +724,29 @@ export default function AdminActivityPage() {
                     );
                   })}
                 </div>
+              </section>
+
+              <section className="grid gap-4 xl:grid-cols-2">
+                <article className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
+                  <h2 className="mb-1 text-[15px] font-medium text-[#1A1A1A]">Nouvelles inscriptions — 30 jours</h2>
+                  <p className="mb-4 text-[11px] text-[#999999]">Basé sur created_time des joueurs chargés</p>
+                  <div style={{ height: 180 }}>
+                    <canvas ref={signupsCanvasRef} />
+                  </div>
+                  <p className="mt-2 text-[10px] text-[#999999]">
+                    Basé sur {participants.length} participations chargées · fenêtre ajustée automatiquement
+                  </p>
+                </article>
+                <article className="rounded-[12px] border border-[#E8E8E4] bg-white p-5 xl:col-span-2">
+                  <h2 className="mb-1 text-[15px] font-medium text-[#1A1A1A]">Joueurs uniques par jour — {chartSeries.dauDayCount} jours</h2>
+                  <p className="mb-4 text-[11px] text-[#999999]">DAU réel calculé depuis les participations · joueurs distincts par jour</p>
+                  <div style={{ height: 180 }}>
+                    <canvas ref={uniqueDauCanvasRef} />
+                  </div>
+                  <p className="mt-2 text-[10px] text-[#999999]">
+                    Basé sur {participants.length} participations chargées · fenêtre ajustée automatiquement
+                  </p>
+                </article>
               </section>
             </div>
           ) : null}
