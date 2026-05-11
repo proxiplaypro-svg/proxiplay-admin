@@ -214,7 +214,7 @@ export function GameCard({
           ) : null}
         </div>
 
-        <p className="mt-2 text-[12px] font-semibold text-[#1A1A1A] sm:hidden">
+        <p className="mt-2 text-[13px] font-semibold text-[#1A1A1A] sm:hidden">
           {new Intl.NumberFormat("fr-FR").format(game.sessionCount)} parties jouées
         </p>
 
@@ -226,9 +226,49 @@ export function GameCard({
             {progress.helper}
           </span>
         </div>
+
+        <div className="mt-2 flex flex-wrap gap-2 sm:hidden">
+          <div className="relative group flex items-center">
+            <button
+              type="button"
+              className={`relative h-[18px] w-8 rounded-full transition ${
+                isSwitchOn(game) ? "bg-[#639922]" : "bg-[#D7D7D1]"
+              }`}
+              onClick={() => onToggle(game)}
+              disabled={isTogglePending}
+              title="Activer ou désactiver la visibilité du jeu dans l'app"
+              aria-pressed={isSwitchOn(game)}
+              aria-label="Activer ou désactiver la visibilité du jeu dans l'app"
+            >
+              <span
+                className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition ${
+                  isSwitchOn(game) ? "left-[16px]" : "left-[2px]"
+                }`}
+              />
+            </button>
+            <div className="pointer-events-none absolute right-full top-1/2 z-10 mr-2 hidden -translate-y-1/2 whitespace-nowrap rounded-[6px] bg-[#1A1A1A] px-2 py-1 text-[11px] text-white group-hover:block">
+              {game.status === "actif" || game.status === "prive"
+                ? "Désactiver (passer en brouillon)"
+                : "Activer (rendre visible)"}
+            </div>
+          </div>
+
+          <button type="button" className={actionButtonClassName} onClick={() => onEdit(game)}>
+            Modifier
+          </button>
+
+          <button
+            type="button"
+            className={actionButtonClassName}
+            onClick={() => onDuplicate(game)}
+            disabled={isDuplicatePending}
+          >
+            {isDuplicatePending ? "Duplication..." : "Dupliquer"}
+          </button>
+        </div>
       </div>
 
-      <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
+      <div className="hidden items-center gap-2 sm:flex">
         <div className="relative group flex items-center">
           <button
             type="button"
