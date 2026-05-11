@@ -152,7 +152,7 @@ export function GameCard({
 
   return (
     <article
-      className={`grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-[12px] border border-[#E8E8E4] bg-white px-4 py-3 ${
+      className={`grid grid-cols-[48px_minmax(0,1fr)] items-start gap-3 rounded-[12px] border border-[#E8E8E4] bg-white px-4 py-3 sm:grid-cols-[48px_minmax(0,1fr)_auto] sm:items-center ${
         game.imageMissing ? "rounded-l-none border-l-2 border-l-[#E24B4A]" : ""
       }`}
     >
@@ -214,6 +214,10 @@ export function GameCard({
           ) : null}
         </div>
 
+        <p className="mt-2 text-[12px] font-semibold text-[#1A1A1A] sm:hidden">
+          {new Intl.NumberFormat("fr-FR").format(game.sessionCount)} parties jouées
+        </p>
+
         <div className="mt-2 flex items-center gap-2">
           <div className="h-[3px] w-full max-w-[280px] overflow-hidden rounded-full bg-[#E8E8E4]">
             <div className={`h-full rounded-full ${progress.barClassName}`} style={{ width: `${progress.progress}%` }} />
@@ -224,7 +228,7 @@ export function GameCard({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
         <div className="relative group flex items-center">
           <button
             type="button"
