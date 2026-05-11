@@ -150,12 +150,15 @@ export function GameCard({
       ? "border border-[#B6D7F2] bg-[#EAF4FD] text-[#185FA5]"
       : "border border-[#F0D8A8] bg-[#FFF6E8] text-[#8C6115]";
 
+  const sessionCountFormatted = new Intl.NumberFormat("fr-FR").format(game.sessionCount);
+
   return (
     <article
       className={`grid grid-cols-[48px_minmax(0,1fr)] items-start gap-3 rounded-[12px] border border-[#E8E8E4] bg-white px-4 py-3 sm:grid-cols-[48px_minmax(0,1fr)_auto] sm:items-center ${
         game.imageMissing ? "rounded-l-none border-l-2 border-l-[#E24B4A]" : ""
       }`}
     >
+      {/* Colonne image */}
       <div className="flex h-12 w-12 items-center justify-center">
         {game.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -167,7 +170,9 @@ export function GameCard({
         )}
       </div>
 
+      {/* Colonne centrale */}
       <div className="min-w-0">
+        {/* Titre + badge statut */}
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="truncate text-[14px] font-medium text-[#1A1A1A]">
             {game.title}
@@ -177,31 +182,33 @@ export function GameCard({
           </span>
         </div>
 
+        {/* Ligne meta : marchand · dates — sans parties (affichées séparément sur mobile) */}
         <p className="mt-1 truncate text-[11px] text-[#666666]">
-          {`${game.merchantName} · ${formatDate(game.startDate)} · ${formatDate(game.endDate)} · ${new Intl.NumberFormat(
-            "fr-FR",
-          ).format(game.sessionCount)} parties`}
+          {`${game.merchantName} · ${formatDate(game.startDate)} · ${formatDate(game.endDate)}`}
+          {/* Parties visibles uniquement sur desktop dans cette ligne */}
+          <span className="hidden sm:inline">{` · ${sessionCountFormatted} parties`}</span>
         </p>
 
+        {/* Badges lots */}
         <div className="mt-3 flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
-          {prizeSummary.hasMainPrize ? (
-            <span className={`rounded-full px-2 py-1 text-[10.5px] font-medium leading-none ${mainPrizeBadgeClassName}`}>
-              {`Lot principal : ${prizeSummary.mainPrizeLabel}`}
-            </span>
-          ) : null}
+            {prizeSummary.hasMainPrize ? (
+              <span className={`rounded-full px-2 py-1 text-[10.5px] font-medium leading-none ${mainPrizeBadgeClassName}`}>
+                {`Lot principal : ${prizeSummary.mainPrizeLabel}`}
+              </span>
+            ) : null}
 
-          {prizeSummary.secondaryCount > 0 ? (
-            <span className="rounded-full border border-[#E8E8E4] bg-[#F7F7F5] px-2 py-1 text-[10.5px] font-medium leading-none text-[#666666]">
+            {prizeSummary.secondaryCount > 0 ? (
+              <span className="rounded-full border border-[#E8E8E4] bg-[#F7F7F5] px-2 py-1 text-[10.5px] font-medium leading-none text-[#666666]">
                 {prizeSummary.secondaryCountLabel}
               </span>
-          ) : null}
+            ) : null}
 
-          {prizeSummary.isEmpty ? (
-            <span className="rounded-full border border-[#F2D49A] bg-[#FFF5DF] px-2 py-1 text-[10.5px] font-medium leading-none text-[#9A6508]">
-              Aucun lot renseigné
-            </span>
-          ) : null}
+            {prizeSummary.isEmpty ? (
+              <span className="rounded-full border border-[#F2D49A] bg-[#FFF5DF] px-2 py-1 text-[10.5px] font-medium leading-none text-[#9A6508]">
+                Aucun lot renseigné
+              </span>
+            ) : null}
           </div>
 
           {prizeSummary.secondaryPreview ? (
@@ -214,10 +221,12 @@ export function GameCard({
           ) : null}
         </div>
 
+        {/* Parties jouées — mobile uniquement, bien visible */}
         <p className="mt-2 text-[13px] font-semibold text-[#1A1A1A] sm:hidden">
-          {new Intl.NumberFormat("fr-FR").format(game.sessionCount)} parties jouées
+          {sessionCountFormatted} parties jouées
         </p>
 
+        {/* Barre de progression */}
         <div className="mt-2 flex items-center gap-2">
           <div className="h-[3px] w-full max-w-[280px] overflow-hidden rounded-full bg-[#E8E8E4]">
             <div className={`h-full rounded-full ${progress.barClassName}`} style={{ width: `${progress.progress}%` }} />
@@ -227,31 +236,24 @@ export function GameCard({
           </span>
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-2 sm:hidden">
-          <div className="relative group flex items-center">
-            <button
-              type="button"
-              className={`relative h-[18px] w-8 rounded-full transition ${
-                isSwitchOn(game) ? "bg-[#639922]" : "bg-[#D7D7D1]"
+        {/* Boutons — mobile uniquement */}
+        <div className="mt-3 flex flex-wrap items-center gap-2 sm:hidden">
+          <button
+            type="button"
+            className={`relative h-[18px] w-8 rounded-full transition ${
+              isSwitchOn(game) ? "bg-[#639922]" : "bg-[#D7D7D1]"
+            }`}
+            onClick={() => onToggle(game)}
+            disabled={isTogglePending}
+            aria-pressed={isSwitchOn(game)}
+            aria-label="Activer ou désactiver la visibilité du jeu dans l'app"
+          >
+            <span
+              className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition ${
+                isSwitchOn(game) ? "left-[16px]" : "left-[2px]"
               }`}
-              onClick={() => onToggle(game)}
-              disabled={isTogglePending}
-              title="Activer ou désactiver la visibilité du jeu dans l'app"
-              aria-pressed={isSwitchOn(game)}
-              aria-label="Activer ou désactiver la visibilité du jeu dans l'app"
-            >
-              <span
-                className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition ${
-                  isSwitchOn(game) ? "left-[16px]" : "left-[2px]"
-                }`}
-              />
-            </button>
-            <div className="pointer-events-none absolute right-full top-1/2 z-10 mr-2 hidden -translate-y-1/2 whitespace-nowrap rounded-[6px] bg-[#1A1A1A] px-2 py-1 text-[11px] text-white group-hover:block">
-              {game.status === "actif" || game.status === "prive"
-                ? "Désactiver (passer en brouillon)"
-                : "Activer (rendre visible)"}
-            </div>
-          </div>
+            />
+          </button>
 
           <button type="button" className={actionButtonClassName} onClick={() => onEdit(game)}>
             Modifier
@@ -268,6 +270,7 @@ export function GameCard({
         </div>
       </div>
 
+      {/* 3e colonne — desktop uniquement */}
       <div className="hidden items-center gap-2 sm:flex">
         <div className="relative group flex items-center">
           <button
