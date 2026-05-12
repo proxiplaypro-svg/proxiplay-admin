@@ -73,6 +73,7 @@ type FirestoreGameDocument = {
     count?: number | string;
     image?: string;
   }> | null;
+  restrictedToAdults?: boolean;
 };
 
 type FirestoreMerchantDocument = {
@@ -329,6 +330,7 @@ function mapGameDocument(
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
+    restrictedToAdults: game.restrictedToAdults === true,
   };
 }
 
@@ -563,7 +565,7 @@ function AdminGamesPageInner() {
     mainPrizeImage: string | null;
     mainPrizeImageFile: File | null;
     secondaryPrizes: GameSecondaryPrize[];
-    secondaryPrizeImageFiles: Array<File | null>;
+    restrictedToAdults: boolean;
   }) => {
     if (!selectedGame) {
       return;
@@ -601,6 +603,7 @@ function AdminGamesPageInner() {
         mainPrizeValue: payload.mainPrizeValue,
         mainPrizeImage: result.mainPrizeImage,
         secondaryPrizes: result.secondaryPrizes,
+        restrictedToAdults: payload.restrictedToAdults,
       };
 
       setGames((current) =>

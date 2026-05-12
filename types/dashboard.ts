@@ -136,6 +136,7 @@ export interface Game {
   mainPrizeValue: string;
   mainPrizeImage: string | null;
   secondaryPrizes: GameSecondaryPrize[];
+  restrictedToAdults: boolean;
 }
 
 export interface GameMerchantOption {

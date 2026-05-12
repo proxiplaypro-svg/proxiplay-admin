@@ -60,6 +60,7 @@ type FirestoreGameDocument = {
   prize_value?: number | string | null;
   main_prize_image?: string;
   secondary_prizes?: FirestoreSecondaryPrizeDocument[] | null;
+  restrictedToAdults?: boolean;
 };
 
 type FirestoreSecondaryPrizeDocument = {
@@ -109,6 +110,7 @@ export type UpdateGameInput = {
   mainPrizeImageFile?: File | null;
   secondaryPrizes: GameSecondaryPrize[];
   secondaryPrizeImageFiles?: Array<File | null>;
+  restrictedToAdults: boolean;
 };
 
 export type DuplicateGameInput = {
@@ -372,9 +374,7 @@ function mapGameDocument(
   merchantsById: Map<string, GameMerchantOption>,
 ): Game {
   const game = snapshot.data() as FirestoreGameDocument;
-  // TODO: verifier champ title si certains documents n utilisent que `name`.
   const title = readText(game.title, game.name, "Jeu sans titre");
-  // TODO: verifier champ description/conditions selon la version du document.
   const description = readText(game.description, game.conditions);
   const merchantId = readMerchantId(game.enseigne_id, game.merchantId ?? game.merchant_id ?? null);
   const merchantName =
@@ -385,7 +385,6 @@ function mapGameDocument(
     ) ?? "Marchand inconnu";
   const startTimestamp = readTimestamp(game.start_date, game.startDate);
   const endTimestamp = readTimestamp(game.end_date, game.endDate);
-  // TODO: verifier champ imageUrl si l app repose encore sur `photo`.
   const imageUrl = readNullableText(game.imageUrl, game.photo, game.coverUrl);
   const status = deriveStatus(game);
   const hasMainPrize = readBoolean(game.hasMainPrize, false);
@@ -407,7 +406,6 @@ function mapGameDocument(
     status,
     imageUrl,
     isPrivate: status === "prive",
-    // TODO: verifier champ sessionCount si certains documents utilisent partiesCount/participations.
     sessionCount: readNumber(
       game.sessionCount,
       game.partiesCount,
@@ -422,6 +420,7 @@ function mapGameDocument(
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
+    restrictedToAdults: readBoolean(game.restrictedToAdults, false),
   };
 }
 
@@ -482,6 +481,7 @@ function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
     prize_value: hasMainPrize ? mainPrizeValue : null,
     main_prize_image: hasMainPrize ? input.mainPrizeImage?.trim() || "" : "",
     secondary_prizes: secondaryPrizes,
+    restrictedToAdults: input.restrictedToAdults,
     ...buildStatusPatch(input.status),
   };
 }
@@ -627,8 +627,9 @@ export async function duplicateGameDocument(
   const merchantRef = getMerchantReference(merchantCollectionName, original.merchantId);
 
   const payload = {
-    title: `[Copie] ${original.title}`,
-    name: `[Copie] ${original.title}`,
+    // Pas de préfixe [Copie] — titre identique à l'original
+    title: original.title,
+    name: original.title,
     description: original.description,
     conditions: original.description,
     merchantId: original.merchantId,
@@ -643,8 +644,8 @@ export async function duplicateGameDocument(
     end_date: Timestamp.fromDate(endDate),
     imageUrl: original.imageUrl,
     photo: original.imageUrl,
-    sessionCount: original.sessionCount,
-    partiesCount: original.sessionCount,
+    sessionCount: 0,
+    partiesCount: 0,
     hasMainPrize: original.hasMainPrize,
     main_prize_title: original.mainPrizeTitle,
     main_prize_description: original.mainPrizeDescription,
@@ -656,6 +657,7 @@ export async function duplicateGameDocument(
       count: readNumber(prize.count, 0),
       image: prize.image ?? "",
     })),
+    restrictedToAdults: original.restrictedToAdults,
     ...buildStatusPatch("brouillon"),
   };
 
@@ -675,7 +677,7 @@ export async function duplicateGameDocument(
       status: "brouillon",
       imageUrl: original.imageUrl,
       isPrivate: false,
-      sessionCount: original.sessionCount,
+      sessionCount: 0,
       collectionName: input.collectionName,
       imageMissing: !original.imageUrl,
       hasMainPrize: original.hasMainPrize,
@@ -684,6 +686,7 @@ export async function duplicateGameDocument(
       mainPrizeValue: original.mainPrizeValue,
       mainPrizeImage: original.mainPrizeImage,
       secondaryPrizes: original.secondaryPrizes.map((prize) => ({ ...prize })),
+      restrictedToAdults: original.restrictedToAdults,
     },
   };
 }

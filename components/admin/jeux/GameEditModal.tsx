@@ -20,7 +20,7 @@ type SavePayload = {
   mainPrizeImage: string | null;
   mainPrizeImageFile: File | null;
   secondaryPrizes: GameSecondaryPrize[];
-  secondaryPrizeImageFiles: Array<File | null>;
+  restrictedToAdults: boolean;
 };
 
 type GameEditModalProps = {
@@ -44,6 +44,7 @@ type GeneralFormState = {
   status: GameStatus;
   imageUrl: string;
   imageFile: File | null;
+  restrictedToAdults: boolean;
 };
 
 type MainPrizeFormState = {
@@ -84,7 +85,6 @@ function createSecondaryPrizeId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
-
   return `secondary-prize-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
@@ -102,6 +102,7 @@ function buildInitialGeneralForm(game: Game | null): GeneralFormState {
     status: game?.status ?? "brouillon",
     imageUrl: game?.imageUrl ?? "",
     imageFile: null,
+    restrictedToAdults: game?.restrictedToAdults ?? false,
   };
 }
 
@@ -243,17 +244,13 @@ export function GameEditModal({
 
   const coverPreviewUrl = useMemo(() => buildPreviewUrl(generalForm.imageFile, generalForm.imageUrl), [generalForm.imageFile, generalForm.imageUrl]);
   const mainPrizePreviewUrl = useMemo(() => buildPreviewUrl(mainPrizeForm.imageFile, mainPrizeForm.imageUrl), [mainPrizeForm.imageFile, mainPrizeForm.imageUrl]);
-  const secondaryPreviewUrls = useMemo(() => secondaryPrizes.map((prize) => buildPreviewUrl(prize.imageFile, prize.image)), [secondaryPrizes]);
 
   useEffect(() => {
     return () => {
       if (generalForm.imageFile && coverPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(coverPreviewUrl);
       if (mainPrizeForm.imageFile && mainPrizePreviewUrl.startsWith("blob:")) URL.revokeObjectURL(mainPrizePreviewUrl);
-      secondaryPreviewUrls.forEach((previewUrl, index) => {
-        if (secondaryPrizes[index]?.imageFile && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-      });
     };
-  }, [coverPreviewUrl, generalForm.imageFile, mainPrizeForm.imageFile, mainPrizePreviewUrl, secondaryPreviewUrls, secondaryPrizes]);
+  }, [coverPreviewUrl, generalForm.imageFile, mainPrizeForm.imageFile, mainPrizePreviewUrl]);
 
   if (!open || !game) return null;
 
@@ -356,7 +353,7 @@ export function GameEditModal({
         count: prize.count.trim(),
         image: prize.image?.trim() || null,
       })),
-      secondaryPrizeImageFiles: filteredSecondaryPrizes.map((prize) => prize.imageFile),
+      restrictedToAdults: generalForm.restrictedToAdults,
     });
   };
 
@@ -397,6 +394,7 @@ export function GameEditModal({
               </div>
             ) : null}
 
+            {/* ── Section : Informations du jeu ── */}
             <section className={sectionClassName}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
@@ -457,9 +455,34 @@ export function GameEditModal({
                   onFileSelect={(file) => applyFile(file, (nextFile) => updateGeneralForm("imageFile", nextFile))}
                   disabled={saving}
                 />
+
+                {/* Toggle : Interdire aux mineurs */}
+                <label className="flex items-center justify-between gap-3 rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-3">
+                  <div>
+                    <span className="text-[13px] font-medium text-[#1A1A1A]">Interdire aux mineurs</span>
+                    <p className="mt-0.5 text-[11px] text-[#666666]">Le jeu sera reserve aux joueurs majeurs.</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={generalForm.restrictedToAdults}
+                    className={`relative h-[24px] w-[42px] flex-shrink-0 rounded-full transition ${
+                      generalForm.restrictedToAdults ? "bg-[#639922]" : "bg-[#D7D7D1]"
+                    }`}
+                    onClick={() => updateGeneralForm("restrictedToAdults", !generalForm.restrictedToAdults)}
+                    disabled={saving}
+                  >
+                    <span
+                      className={`absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white shadow transition-all ${
+                        generalForm.restrictedToAdults ? "left-[21px]" : "left-[3px]"
+                      }`}
+                    />
+                  </button>
+                </label>
               </div>
             </section>
 
+            {/* ── Section : Lot principal ── */}
             <section className={sectionClassName}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
@@ -477,11 +500,11 @@ export function GameEditModal({
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="flex flex-col gap-1 sm:col-span-2">
-                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Nom du lot principal</span>
+                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Titre du lot principal</span>
                     <input className={inputClassName} type="text" value={mainPrizeForm.title} onChange={(event) => updateMainPrizeForm("title", event.target.value)} disabled={!mainPrizeForm.hasMainPrize} />
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Valeur du lot principal</span>
+                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Valeur du lot principal (€)</span>
                     <input className={inputClassName} type="number" min="0" step="0.01" value={mainPrizeForm.value} onChange={(event) => updateMainPrizeForm("value", event.target.value)} disabled={!mainPrizeForm.hasMainPrize} />
                   </label>
                 </div>
@@ -502,6 +525,7 @@ export function GameEditModal({
               </div>
             </section>
 
+            {/* ── Section : Lots secondaires ── */}
             <section className={sectionClassName}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
@@ -530,7 +554,7 @@ export function GameEditModal({
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
                         <h4 className="text-[13px] font-medium text-[#1A1A1A]">Lot secondaire {index + 1}</h4>
-                        <p className="mt-1 text-[11px] text-[#666666]">Nom, description, quantite et image optionnelle.</p>
+                        <p className="mt-1 text-[11px] text-[#666666]">Titre, description et quantite.</p>
                       </div>
                       <button
                         type="button"
@@ -544,29 +568,19 @@ export function GameEditModal({
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <label className="flex flex-col gap-1">
-                        <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Nom</span>
+                        <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Titre du lot</span>
                         <input className={inputClassName} type="text" value={prize.name} onChange={(event) => updateSecondaryPrize(prize.id, (current) => ({ ...current, name: event.target.value }))} />
                       </label>
                       <label className="flex flex-col gap-1">
-                        <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Quantite</span>
+                        <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Nombre de lots</span>
                         <input className={inputClassName} type="number" min="0" step="1" value={prize.count} onChange={(event) => updateSecondaryPrize(prize.id, (current) => ({ ...current, count: event.target.value }))} />
                       </label>
                       <label className="flex flex-col gap-1 sm:col-span-2">
-                        <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Description</span>
+                        <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Description (facultatif)</span>
                         <textarea className={`${inputClassName} min-h-20 resize-none`} value={prize.description} onChange={(event) => updateSecondaryPrize(prize.id, (current) => ({ ...current, description: event.target.value }))} />
                       </label>
                     </div>
-
-                    <div className="mt-3">
-                      <ImageInputCard
-                        label="Image du lot secondaire"
-                        previewUrl={secondaryPreviewUrls[index] || ""}
-                        emptyLabel="Ajouter une image optionnelle"
-                        emptyHint="JPG/PNG/WEBP, max 2 Mo"
-                        onFileSelect={(file) => applyFile(file, (nextFile) => updateSecondaryPrize(prize.id, (current) => ({ ...current, imageFile: nextFile })))}
-                        disabled={saving}
-                      />
-                    </div>
+                    {/* Pas d'image pour les lots secondaires — cohérence avec l'app Flutter */}
                   </article>
                 ))}
               </div>
@@ -581,7 +595,7 @@ export function GameEditModal({
                 {feedback}
               </div>
             ) : null}
-            </div>
+          </div>
         </form>
 
         <div className="shrink-0 border-t border-[#F0F0EC] bg-white px-5 py-4">
