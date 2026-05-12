@@ -509,19 +509,6 @@ export function GameEditModal({
                   </label>
                 </div>
 
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Description du lot principal</span>
-                  <textarea className={`${inputClassName} min-h-20 resize-none`} value={mainPrizeForm.description} onChange={(event) => updateMainPrizeForm("description", event.target.value)} disabled={!mainPrizeForm.hasMainPrize} />
-                </label>
-
-                <ImageInputCard
-                  label="Image du lot principal"
-                  previewUrl={mainPrizePreviewUrl}
-                  emptyLabel="Ajouter une image dediee"
-                  emptyHint="Visible seulement si un visuel existe pour ce lot"
-                  onFileSelect={(file) => applyFile(file, (nextFile) => updateMainPrizeForm("imageFile", nextFile))}
-                  disabled={saving || !mainPrizeForm.hasMainPrize}
-                />
               </div>
             </section>
 
