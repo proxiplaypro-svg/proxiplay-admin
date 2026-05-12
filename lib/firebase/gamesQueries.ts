@@ -60,6 +60,7 @@ type FirestoreGameDocument = {
   prize_value?: number | string | null;
   main_prize_image?: string;
   secondary_prizes?: FirestoreSecondaryPrizeDocument[] | null;
+  prohibited_for_minors?: boolean;
   restrictedToAdults?: boolean;
 };
 
@@ -420,7 +421,10 @@ function mapGameDocument(
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
-    restrictedToAdults: readBoolean(game.restrictedToAdults, false),
+    restrictedToAdults: readBoolean(
+      game.prohibited_for_minors ?? game.restrictedToAdults,
+      false,
+    ),
   };
 }
 
@@ -481,6 +485,7 @@ function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
     prize_value: hasMainPrize ? mainPrizeValue : null,
     main_prize_image: hasMainPrize ? input.mainPrizeImage?.trim() || "" : "",
     secondary_prizes: secondaryPrizes,
+    prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
     ...buildStatusPatch(input.status),
   };
