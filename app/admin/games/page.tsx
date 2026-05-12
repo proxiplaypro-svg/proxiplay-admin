@@ -581,6 +581,7 @@ function AdminGamesPageInner() {
         collectionName: selectedGame.collectionName,
         merchantCollectionName,
         ...payload,
+        restrictedToAdults: payload.restrictedToAdults,
       });
 
       const updatedGame: Game = {
