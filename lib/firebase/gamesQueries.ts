@@ -76,6 +76,8 @@ type FirestoreMerchantDocument = {
   name?: string;
   title?: string;
   merchantName?: string;
+  owner?: DocumentReference | string | { id?: string; path?: string } | null;
+  owner_id?: DocumentReference | null;
 };
 
 export type GamesAdminData = {
@@ -448,6 +450,45 @@ function getMerchantReference(
   return doc(db, merchantCollectionName, merchantId);
 }
 
+function extractUserIdFromOwner(
+  owner?: FirestoreMerchantDocument["owner"],
+) {
+  if (!owner) {
+    return null;
+  }
+
+  if (typeof owner === "string") {
+    const match = owner.match(/(?:^|\/)users\/([^/]+)$/);
+    return match?.[1] ?? null;
+  }
+
+  if ("id" in owner && typeof owner.id === "string" && owner.id.length > 0) {
+    return owner.id;
+  }
+
+  if ("path" in owner && typeof owner.path === "string") {
+    const match = owner.path.match(/(?:^|\/)users\/([^/]+)$/);
+    return match?.[1] ?? null;
+  }
+
+  return null;
+}
+
+function getMerchantOwnerReference(
+  merchant: FirestoreMerchantDocument | undefined,
+): DocumentReference | null {
+  if (!merchant) {
+    return null;
+  }
+
+  if (merchant.owner_id) {
+    return merchant.owner_id;
+  }
+
+  const ownerUserId = extractUserIdFromOwner(merchant.owner);
+  return ownerUserId ? doc(db, "users", ownerUserId) : null;
+}
+
 function buildGamePatch(
   input: UpdateGameInput,
   imageUrl: string | null,
@@ -583,9 +624,9 @@ export async function updateGame(input: UpdateGameInput) {
     const merchantSnapshot = await getDoc(
       doc(db, input.merchantCollectionName, input.merchantId),
     );
-    ownerRef =
-      (merchantSnapshot.data() as { owner?: DocumentReference | null } | undefined)
-        ?.owner ?? null;
+    ownerRef = getMerchantOwnerReference(
+      merchantSnapshot.data() as FirestoreMerchantDocument | undefined,
+    );
   }
 
   let finalImageUrl = input.imageUrl;
@@ -658,9 +699,9 @@ export async function duplicateGameDocument(
     const merchantSnapshot = await getDoc(
       doc(db, merchantCollectionName, original.merchantId),
     );
-    ownerRef =
-      (merchantSnapshot.data() as { owner?: DocumentReference | null } | undefined)
-        ?.owner ?? null;
+    ownerRef = getMerchantOwnerReference(
+      merchantSnapshot.data() as FirestoreMerchantDocument | undefined,
+    );
   }
 
   const payload = {
