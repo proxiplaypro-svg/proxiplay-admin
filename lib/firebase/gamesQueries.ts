@@ -6,6 +6,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   limit,
   query,
@@ -450,6 +451,7 @@ function getMerchantReference(
 function buildGamePatch(
   input: UpdateGameInput,
   imageUrl: string | null,
+  createByRef: DocumentReference | null = null,
   userId: string | null = null,
 ) {
   const startDate = input.startDate ? Timestamp.fromDate(new Date(input.startDate)) : null;
@@ -469,7 +471,7 @@ function buildGamePatch(
   return {
     title: input.title.trim(),
     name: input.title.trim(),
-    ...(userId ? { create_by: doc(db, "users", userId) } : {}),
+    create_by: createByRef ?? doc(db, "users", userId ?? ""),
     description: input.description.trim(),
     conditions: input.description.trim(),
     merchantId: input.merchantId,
@@ -575,6 +577,16 @@ async function uploadPrizeImage(gameId: string, folderName: string, file: File) 
 
 export async function updateGame(input: UpdateGameInput) {
   const user = await ensureGamesAuthenticated();
+  let ownerRef: DocumentReference | null = null;
+
+  if (input.merchantId) {
+    const merchantSnapshot = await getDoc(
+      doc(db, input.merchantCollectionName, input.merchantId),
+    );
+    ownerRef =
+      (merchantSnapshot.data() as { owner?: DocumentReference | null } | undefined)
+        ?.owner ?? null;
+  }
 
   let finalImageUrl = input.imageUrl;
   let finalMainPrizeImage = input.mainPrizeImage;
@@ -612,6 +624,7 @@ export async function updateGame(input: UpdateGameInput) {
         secondaryPrizes: finalSecondaryPrizes,
       },
       finalImageUrl,
+      ownerRef ?? doc(db, "users", user.uid),
       user.uid,
     ),
   );
@@ -639,12 +652,22 @@ export async function duplicateGameDocument(
   const now = new Date();
   const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const merchantRef = getMerchantReference(merchantCollectionName, original.merchantId);
+  let ownerRef: DocumentReference | null = null;
+
+  if (original.merchantId) {
+    const merchantSnapshot = await getDoc(
+      doc(db, merchantCollectionName, original.merchantId),
+    );
+    ownerRef =
+      (merchantSnapshot.data() as { owner?: DocumentReference | null } | undefined)
+        ?.owner ?? null;
+  }
 
   const payload = {
     // Pas de préfixe [Copie] — titre identique à l'original
     title: original.title,
     name: original.title,
-    create_by: doc(db, "users", user.uid),
+    create_by: ownerRef ?? doc(db, "users", user.uid),
     description: original.description,
     conditions: original.description,
     merchantId: original.merchantId,
