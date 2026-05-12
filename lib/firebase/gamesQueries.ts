@@ -447,7 +447,11 @@ function getMerchantReference(
   return doc(db, merchantCollectionName, merchantId);
 }
 
-function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
+function buildGamePatch(
+  input: UpdateGameInput,
+  imageUrl: string | null,
+  userId: string | null = null,
+) {
   const startDate = input.startDate ? Timestamp.fromDate(new Date(input.startDate)) : null;
   const endDate = input.endDate ? Timestamp.fromDate(new Date(input.endDate)) : null;
   const merchantRef = getMerchantReference(input.merchantCollectionName, input.merchantId);
@@ -465,6 +469,7 @@ function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
   return {
     title: input.title.trim(),
     name: input.title.trim(),
+    ...(userId ? { create_by: doc(db, "users", userId) } : {}),
     description: input.description.trim(),
     conditions: input.description.trim(),
     merchantId: input.merchantId,
@@ -478,6 +483,7 @@ function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
     endDate: endDate ?? null,
     end_date: endDate ?? null,
     game_type: "scratcher",
+    hasWinner: false,
     imageUrl,
     photo: imageUrl,
     hasMainPrize,
@@ -567,7 +573,7 @@ async function uploadPrizeImage(gameId: string, folderName: string, file: File) 
 }
 
 export async function updateGame(input: UpdateGameInput) {
-  await ensureGamesAuthenticated();
+  const user = await ensureGamesAuthenticated();
 
   let finalImageUrl = input.imageUrl;
   let finalMainPrizeImage = input.mainPrizeImage;
@@ -605,6 +611,7 @@ export async function updateGame(input: UpdateGameInput) {
         secondaryPrizes: finalSecondaryPrizes,
       },
       finalImageUrl,
+      user.uid,
     ),
   );
 
@@ -619,7 +626,7 @@ export async function duplicateGameDocument(
   input: DuplicateGameInput,
   merchantCollectionName: MerchantCollectionName = "enseignes",
 ): Promise<DuplicateGameResult> {
-  await ensureGamesAuthenticated();
+  const user = await ensureGamesAuthenticated();
 
   const adminData = await getGamesAdminData();
   const original = adminData.games.find((game) => game.id === input.gameId);
@@ -636,6 +643,7 @@ export async function duplicateGameDocument(
     // Pas de préfixe [Copie] — titre identique à l'original
     title: original.title,
     name: original.title,
+    create_by: doc(db, "users", user.uid),
     description: original.description,
     conditions: original.description,
     merchantId: original.merchantId,
@@ -649,6 +657,7 @@ export async function duplicateGameDocument(
     endDate: Timestamp.fromDate(endDate),
     end_date: Timestamp.fromDate(endDate),
     game_type: "scratcher",
+    hasWinner: false,
     imageUrl: original.imageUrl,
     photo: original.imageUrl,
     sessionCount: 0,

@@ -368,6 +368,7 @@ function AdminGamesPageInner() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<GamesSortValue>("created_desc");
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
+  const [modalMode, setModalMode] = useState<"edit" | "duplicate">("edit");
   const [merchantCollectionName, setMerchantCollectionName] = useState<"enseignes" | "merchants">(
     "enseignes",
   );
@@ -540,7 +541,12 @@ function AdminGamesPageInner() {
 
       setGames((current) => [result.game, ...current]);
       setSelectedGame(result.game);
+      setModalMode("duplicate");
       setModalFeedback("Copie créée. Tu peux ajuster les champs avant publication.");
+      if (modalMode === "duplicate") {
+        setSuccessMessage("Jeu relancÃ© avec succÃ¨s.");
+        setModalFeedback("Jeu relancÃ© avec succÃ¨s.");
+      }
       setModalFeedbackTone("success");
     } catch (duplicateError) {
       console.error(duplicateError);
@@ -578,11 +584,13 @@ function AdminGamesPageInner() {
     setModalFeedbackTone(null);
 
     try {
+      const effectiveStatus = modalMode === "duplicate" ? "actif" : payload.status;
       const result = await updateGame({
         gameId: selectedGame.id,
         collectionName: selectedGame.collectionName,
         merchantCollectionName,
         ...payload,
+        status: effectiveStatus,
         restrictedToAdults: payload.restrictedToAdults,
       });
 
@@ -596,9 +604,9 @@ function AdminGamesPageInner() {
         endDate: payload.endDate,
         startDateValue: payload.startDate ? new Date(payload.startDate).getTime() : null,
         endDateValue: payload.endDate ? new Date(payload.endDate).getTime() : null,
-        status: payload.status,
+        status: effectiveStatus,
         imageUrl: result.imageUrl,
-        isPrivate: payload.status === "prive",
+        isPrivate: effectiveStatus === "prive",
         imageMissing: !result.imageUrl,
         hasMainPrize: payload.hasMainPrize,
         mainPrizeTitle: payload.mainPrizeTitle,
@@ -613,6 +621,7 @@ function AdminGamesPageInner() {
         current.map((game) => (game.id === updatedGame.id ? updatedGame : game)),
       );
       setSelectedGame(null);
+      setModalMode("edit");
       setSuccessMessage("Jeu enregistrÃ© avec succÃ¨s.");
       setModalFeedback("Jeu enregistré avec succès.");
       setModalFeedbackTone("success");
@@ -735,6 +744,7 @@ function AdminGamesPageInner() {
               tabIndex={0}
               onClick={() => {
                 setSelectedGame(game);
+                setModalMode("edit");
                 setModalFeedback(null);
                 setModalFeedbackTone(null);
                 setSuccessMessage(null);
@@ -743,6 +753,7 @@ function AdminGamesPageInner() {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   setSelectedGame(game);
+                  setModalMode("edit");
                   setModalFeedback(null);
                   setModalFeedbackTone(null);
                   setSuccessMessage(null);
@@ -756,6 +767,7 @@ function AdminGamesPageInner() {
                 onToggle={handleToggle}
                 onEdit={(item) => {
                   setSelectedGame(item);
+                  setModalMode("edit");
                   setModalFeedback(null);
                   setModalFeedbackTone(null);
                   setSuccessMessage(null);
@@ -782,11 +794,13 @@ function AdminGamesPageInner() {
         merchants={merchants}
         open={selectedGame !== null}
         saving={modalSaving}
+        submitLabel={modalMode === "duplicate" ? "Relancer le jeu" : "Enregistrer"}
         feedback={modalFeedback}
         feedbackTone={modalFeedbackTone}
         onClose={() => {
           if (!modalSaving) {
             setSelectedGame(null);
+            setModalMode("edit");
             setModalFeedback(null);
             setModalFeedbackTone(null);
           }

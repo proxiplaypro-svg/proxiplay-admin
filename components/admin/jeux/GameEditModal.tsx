@@ -28,6 +28,7 @@ type GameEditModalProps = {
   merchants: GameMerchantOption[];
   open: boolean;
   saving: boolean;
+  submitLabel?: string;
   feedback: string | null;
   feedbackTone: "success" | "error" | null;
   onClose: () => void;
@@ -220,6 +221,7 @@ export function GameEditModal({
   merchants,
   open,
   saving,
+  submitLabel = "Enregistrer",
   feedback,
   feedbackTone,
   onClose,
@@ -618,7 +620,7 @@ export function GameEditModal({
                 Annuler
               </button>
               <button type="submit" form="game-edit-form" className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-70" disabled={saving}>
-                {saving ? "Enregistrement..." : "Enregistrer"}
+                {saving ? "Enregistrement..." : submitLabel}
               </button>
             </div>
           </div>
