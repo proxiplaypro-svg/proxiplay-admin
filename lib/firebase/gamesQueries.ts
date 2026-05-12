@@ -10,6 +10,7 @@ import {
   getDocs,
   limit,
   query,
+  setDoc,
   Timestamp,
   updateDoc,
   type DocumentData,
@@ -655,6 +656,12 @@ export async function updateGame(input: UpdateGameInput) {
       }),
     );
   }
+
+  await setDoc(
+    doc(db, input.collectionName, input.gameId),
+    { created_time: Timestamp.now() },
+    { merge: true },
+  );
 
   await updateDoc(
     doc(db, input.collectionName, input.gameId),
