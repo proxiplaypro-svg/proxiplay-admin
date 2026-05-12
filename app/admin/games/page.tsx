@@ -362,6 +362,7 @@ function AdminGamesPageInner() {
   const [merchants, setMerchants] = useState<GameMerchantOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<GamesFilterValue>("tous");
   const [merchantFilter, setMerchantFilter] = useState(() => searchParams.get("merchantId") ?? "tous");
   const [search, setSearch] = useState("");
@@ -528,6 +529,7 @@ function AdminGamesPageInner() {
   const handleDuplicate = async (game: Game) => {
     setDuplicatePendingId(game.id);
     setError(null);
+    setSuccessMessage(null);
 
     try {
       const result = await duplicateGame({
@@ -610,7 +612,8 @@ function AdminGamesPageInner() {
       setGames((current) =>
         current.map((game) => (game.id === updatedGame.id ? updatedGame : game)),
       );
-      setSelectedGame(updatedGame);
+      setSelectedGame(null);
+      setSuccessMessage("Jeu enregistrÃ© avec succÃ¨s.");
       setModalFeedback("Jeu enregistré avec succès.");
       setModalFeedbackTone("success");
     } catch (saveError) {
@@ -703,6 +706,12 @@ function AdminGamesPageInner() {
         </div>
       ) : null}
 
+      {successMessage ? (
+        <div className="rounded-[12px] border border-[#B9D98E] bg-[#F2F8E8] px-4 py-3 text-[12px] text-[#3B6D11]">
+          {successMessage}
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="flex flex-col gap-2">
           {Array.from({ length: 4 }).map((_, index) => (
@@ -728,6 +737,7 @@ function AdminGamesPageInner() {
                 setSelectedGame(game);
                 setModalFeedback(null);
                 setModalFeedbackTone(null);
+                setSuccessMessage(null);
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
@@ -735,6 +745,7 @@ function AdminGamesPageInner() {
                   setSelectedGame(game);
                   setModalFeedback(null);
                   setModalFeedbackTone(null);
+                  setSuccessMessage(null);
                 }
               }}
             >
@@ -747,6 +758,7 @@ function AdminGamesPageInner() {
                   setSelectedGame(item);
                   setModalFeedback(null);
                   setModalFeedbackTone(null);
+                  setSuccessMessage(null);
                 }}
                 onDuplicate={handleDuplicate}
               />

@@ -477,6 +477,7 @@ function buildGamePatch(input: UpdateGameInput, imageUrl: string | null) {
     start_date: startDate ?? null,
     endDate: endDate ?? null,
     end_date: endDate ?? null,
+    game_type: "scratcher",
     imageUrl,
     photo: imageUrl,
     hasMainPrize,
@@ -647,6 +648,7 @@ export async function duplicateGameDocument(
     start_date: Timestamp.fromDate(now),
     endDate: Timestamp.fromDate(endDate),
     end_date: Timestamp.fromDate(endDate),
+    game_type: "scratcher",
     imageUrl: original.imageUrl,
     photo: original.imageUrl,
     sessionCount: 0,
@@ -662,6 +664,7 @@ export async function duplicateGameDocument(
       count: readNumber(prize.count, 0),
       image: prize.image ?? "",
     })),
+    prohibited_for_minors: original.restrictedToAdults,
     restrictedToAdults: original.restrictedToAdults,
     ...buildStatusPatch("brouillon"),
   };

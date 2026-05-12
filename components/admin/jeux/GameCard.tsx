@@ -243,7 +243,10 @@ export function GameCard({
             className={`relative h-[18px] w-8 rounded-full transition ${
               isSwitchOn(game) ? "bg-[#639922]" : "bg-[#D7D7D1]"
             }`}
-            onClick={() => onToggle(game)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle(game);
+            }}
             disabled={isTogglePending}
             aria-pressed={isSwitchOn(game)}
             aria-label="Activer ou désactiver la visibilité du jeu dans l'app"
@@ -255,14 +258,24 @@ export function GameCard({
             />
           </button>
 
-          <button type="button" className={actionButtonClassName} onClick={() => onEdit(game)}>
+          <button
+            type="button"
+            className={actionButtonClassName}
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit(game);
+            }}
+          >
             Modifier
           </button>
 
           <button
             type="button"
             className={actionButtonClassName}
-            onClick={() => onDuplicate(game)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDuplicate(game);
+            }}
             disabled={isDuplicatePending}
           >
             {isDuplicatePending ? "Duplication..." : "Dupliquer"}
@@ -278,7 +291,10 @@ export function GameCard({
             className={`relative h-[18px] w-8 rounded-full transition ${
               isSwitchOn(game) ? "bg-[#639922]" : "bg-[#D7D7D1]"
             }`}
-            onClick={() => onToggle(game)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle(game);
+            }}
             disabled={isTogglePending}
             title="Activer ou désactiver la visibilité du jeu dans l'app"
             aria-pressed={isSwitchOn(game)}
@@ -297,14 +313,24 @@ export function GameCard({
           </div>
         </div>
 
-        <button type="button" className={actionButtonClassName} onClick={() => onEdit(game)}>
+        <button
+          type="button"
+          className={actionButtonClassName}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit(game);
+          }}
+        >
           Modifier
         </button>
 
         <button
           type="button"
           className={actionButtonClassName}
-          onClick={() => onDuplicate(game)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDuplicate(game);
+          }}
           disabled={isDuplicatePending}
         >
           {isDuplicatePending ? "Duplication..." : "Dupliquer"}
