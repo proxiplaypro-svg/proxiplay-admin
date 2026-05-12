@@ -299,11 +299,6 @@ export function GameEditModal({
     }
 
     if (mainPrizeForm.hasMainPrize) {
-      if (!mainPrizeForm.title.trim()) {
-        setValidationError("Le nom du lot principal est requis si le lot principal est active.");
-        return;
-      }
-
       if (mainPrizeForm.value.trim()) {
         const normalizedValue = Number.parseFloat(mainPrizeForm.value.replace(",", "."));
         if (!Number.isFinite(normalizedValue) || normalizedValue < 0) {
@@ -499,10 +494,6 @@ export function GameEditModal({
                 </label>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="flex flex-col gap-1 sm:col-span-2">
-                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Titre du lot principal</span>
-                    <input className={inputClassName} type="text" value={mainPrizeForm.title} onChange={(event) => updateMainPrizeForm("title", event.target.value)} disabled={!mainPrizeForm.hasMainPrize} />
-                  </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Valeur du lot principal (€)</span>
                     <input className={inputClassName} type="number" min="0" step="0.01" value={mainPrizeForm.value} onChange={(event) => updateMainPrizeForm("value", event.target.value)} disabled={!mainPrizeForm.hasMainPrize} />
