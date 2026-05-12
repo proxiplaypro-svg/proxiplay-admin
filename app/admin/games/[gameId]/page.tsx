@@ -2,7 +2,7 @@
 
 import { FirebaseError } from "firebase/app";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   collection,
   doc,
@@ -15,27 +15,37 @@ import {
 import { db } from "@/lib/firebase/client-app";
 
 type GameDetailsPageProps = {
-  params: Promise<{
-    gameId: string;
-  }>;
+  params: Promise<{ gameId: string }>;
 };
 
 type FirestoreGameDetailsDocument = {
   name?: string;
+  title?: string;
   description?: string;
   prize_value?: number;
   start_date?: Timestamp;
   end_date?: Timestamp;
   enseigne_id?: DocumentReference;
   enseigne_name?: string;
+  merchantName?: string;
+  merchantId?: string;
   game_type?: string;
   hasMainPrize?: boolean;
   hasWinner?: boolean;
   main_prize_winner?: DocumentReference | null;
   visible_public?: boolean;
-  created_at?: Timestamp;
-  updated_at?: Timestamp;
-  last_activity_at?: Timestamp;
+  status?: string;
+  imageUrl?: string;
+  photo?: string;
+  views?: number;
+  prohibited_for_minors?: boolean;
+  restrictedToAdults?: boolean;
+  sessionCount?: number;
+  partiesCount?: number;
+  participations?: number;
+  secondary_prizes?: Array<{ name?: string; count?: number; description?: string }> | null;
+  main_prize_title?: string;
+  main_prize_description?: string;
 };
 
 type FirestoreParticipantDocument = {
@@ -47,7 +57,7 @@ type AdminGameDetails = {
   name: string;
   merchantId: string | null;
   merchantName: string;
-  status: "actif" | "termine" | "brouillon";
+  status: "actif" | "termine" | "brouillon" | "expire" | "prive";
   startDateLabel: string;
   endDateLabel: string;
   startDateValue: number;
@@ -55,17 +65,14 @@ type AdminGameDetails = {
   participationsCount: number;
   uniquePlayersCount: number;
   winnersCount: number;
-  conversionRateLabel: string;
-  performanceTone: "hot" | "warning" | "danger";
-  performanceLabel: string;
+  viewsCount: number;
+  conversionRate: number | null;
   description: string;
-  gameType: string;
-  mainPrizeLabel: string;
+  imageUrl: string | null;
   hasMainPrize: boolean;
-  alerts: string[];
-  createdAtLabel: string;
-  lastActivityLabel: string;
-  dataSummary: string[];
+  mainPrizeValue: number | null;
+  secondaryPrizes: Array<{ name: string; count: number }>;
+  restrictedToAdults: boolean;
 };
 
 function formatDate(date: Date) {
@@ -76,140 +83,84 @@ function formatDate(date: Date) {
   }).format(date);
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 function formatCount(value: number) {
   return new Intl.NumberFormat("fr-FR").format(Number.isFinite(value) ? value : 0);
 }
 
-function getGameDetailsErrorMessage(error: unknown) {
+function getErrorMessage(error: unknown) {
   if (error instanceof FirebaseError) {
-    switch (error.code) {
-      case "permission-denied":
-        return "Connexion requise pour lire la fiche du jeu.";
-      case "unavailable":
-        return "Firestore est temporairement indisponible. Reessaie dans un instant.";
-      default:
-        return "Impossible de charger la fiche du jeu pour le moment.";
-    }
+    if (error.code === "permission-denied") return "Connexion requise.";
+    if (error.code === "unavailable") return "Firestore indisponible.";
   }
-
-  return "Impossible de charger la fiche du jeu pour le moment.";
+  return "Impossible de charger ce jeu.";
 }
 
-function getGameStatus(game: FirestoreGameDetailsDocument, now = new Date()) {
-  const startDate = game.start_date?.toDate();
-  const endDate = game.end_date?.toDate();
+function deriveStatus(game: FirestoreGameDetailsDocument): AdminGameDetails["status"] {
+  const now = Date.now();
+  const endMs = game.end_date?.toMillis() ?? null;
+  const startMs = game.start_date?.toMillis() ?? null;
 
-  if (!game.visible_public) {
-    return "brouillon" as const;
-  }
-
-  if (endDate && endDate.getTime() < now.getTime()) {
-    return "termine" as const;
-  }
-
-  if (
-    startDate &&
-    endDate &&
-    startDate.getTime() <= now.getTime() &&
-    endDate.getTime() >= now.getTime()
-  ) {
-    return "actif" as const;
-  }
-
-  return "brouillon" as const;
+  if (game.status === "prive") return "prive";
+  if (game.status === "brouillon" || game.visible_public === false) return "brouillon";
+  if (endMs !== null && endMs < now) return "expire";
+  if (startMs !== null && startMs > now) return "brouillon";
+  return "actif";
 }
 
-function getStatusLabel(status: AdminGameDetails["status"]) {
-  switch (status) {
-    case "actif":
-      return "Actif";
-    case "termine":
-      return "Termine";
-    default:
-      return "Brouillon";
-  }
-}
-
-function buildGameDetails(
+function buildDetails(
   gameId: string,
   game: FirestoreGameDetailsDocument,
   participationsCount: number,
   uniquePlayersCount: number,
   winnersCount: number,
-) {
-  const now = new Date();
+): AdminGameDetails {
   const startDate = game.start_date?.toDate() ?? null;
   const endDate = game.end_date?.toDate() ?? null;
-  const status = getGameStatus(game, now);
-  const conversionRate =
-    participationsCount > 0 ? (winnersCount / participationsCount) * 100 : null;
-
-  const alerts: string[] = [];
-  if (status === "actif" && participationsCount === 0) {
-    alerts.push("Jeu actif sans aucune participation.");
-  }
-
-  if (game.visible_public === true && endDate && endDate.getTime() < now.getTime()) {
-    alerts.push("Date de fin depassee alors que le jeu reste publie.");
-  }
-
-  let performanceTone: AdminGameDetails["performanceTone"] = "hot";
-  let performanceLabel = "🔥 actif";
-
-  if (participationsCount === 0) {
-    performanceTone = "danger";
-    performanceLabel = "❌ aucune activite";
-  } else if (participationsCount < 10 || alerts.length > 0) {
-    performanceTone = "warning";
-    performanceLabel = "⚠️ faible";
-  }
-
-  const createdAt = game.created_at?.toDate() ?? null;
-  const lastActivityAt = game.last_activity_at?.toDate() ?? game.updated_at?.toDate() ?? null;
-  const mainPrizeLabel = game.hasMainPrize
-    ? typeof game.prize_value === "number"
-      ? `Valeur estimee ${formatCurrency(game.prize_value)}`
-      : "Lot principal present"
-    : "Aucun lot principal detecte";
+  const imageUrl = game.imageUrl ?? game.photo ?? null;
+  const secondaryPrizes = Array.isArray(game.secondary_prizes)
+    ? game.secondary_prizes.map((p) => ({ name: p.name?.trim() || "Lot sans nom", count: typeof p.count === "number" ? p.count : 0 }))
+    : [];
 
   return {
     id: gameId,
-    name: game.name?.trim() || "Jeu sans nom",
-    merchantId: game.enseigne_id?.id ?? null,
-    merchantName: game.enseigne_name?.trim() || "Commercant non renseigne",
-    status,
-    startDateLabel: startDate ? formatDate(startDate) : "Non disponible",
-    endDateLabel: endDate ? formatDate(endDate) : "Non disponible",
+    name: (game.title ?? game.name ?? "").trim() || "Jeu sans titre",
+    merchantId: game.enseigne_id?.id ?? game.merchantId ?? null,
+    merchantName: (game.merchantName ?? game.enseigne_name ?? "").trim() || "Marchand inconnu",
+    status: deriveStatus(game),
+    startDateLabel: startDate ? formatDate(startDate) : "—",
+    endDateLabel: endDate ? formatDate(endDate) : "—",
     startDateValue: startDate?.getTime() ?? 0,
     endDateValue: endDate?.getTime() ?? 0,
     participationsCount,
     uniquePlayersCount,
     winnersCount,
-    conversionRateLabel: conversionRate === null ? "N/A" : `${conversionRate.toFixed(1)} %`,
-    performanceTone,
-    performanceLabel,
-    description: game.description?.trim() || "Aucune description disponible.",
-    gameType: game.game_type?.trim() || "Non renseigne",
-    mainPrizeLabel,
+    viewsCount: typeof game.views === "number" ? game.views : 0,
+    conversionRate: participationsCount > 0 ? (winnersCount / participationsCount) * 100 : null,
+    description: game.description?.trim() || "",
+    imageUrl,
     hasMainPrize: game.hasMainPrize === true,
-    alerts,
-    createdAtLabel: createdAt ? formatDate(createdAt) : "Non disponible",
-    lastActivityLabel: lastActivityAt ? formatDate(lastActivityAt) : "Non disponible",
-    dataSummary: [
-      "Document Firestore `games/{gameId}`",
-      "Sous-collection `participants` pour le compteur",
-      "Collection `prizes` pour le nombre de gagnants",
-      "Champs derives localement: statut, taux simple et alertes",
-    ],
-  } satisfies AdminGameDetails;
+    mainPrizeValue: typeof game.prize_value === "number" ? game.prize_value : null,
+    secondaryPrizes,
+    restrictedToAdults: game.prohibited_for_minors === true || game.restrictedToAdults === true,
+  };
+}
+
+const statusConfig: Record<AdminGameDetails["status"], { label: string; className: string }> = {
+  actif: { label: "Actif", className: "bg-[#EAF3DE] text-[#3B6D11]" },
+  brouillon: { label: "Brouillon", className: "bg-[#FAEEDA] text-[#633806]" },
+  termine: { label: "Terminé", className: "bg-[#F1EFE8] text-[#5F5E5A]" },
+  expire: { label: "Expiré", className: "bg-[#F1EFE8] text-[#5F5E5A]" },
+  prive: { label: "Privé", className: "bg-[#E6F1FB] text-[#185FA5]" },
+};
+
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-3">
+      <p className="text-[11px] font-medium text-[#999999] uppercase tracking-wide">{label}</p>
+      <p className="mt-1 text-[22px] font-semibold text-[#1A1A1A] leading-none">{value}</p>
+      {sub ? <p className="mt-1 text-[11px] text-[#999999]">{sub}</p> : null}
+    </div>
+  );
 }
 
 export default function GameDetailsPage({ params }: GameDetailsPageProps) {
@@ -218,282 +169,196 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let isCancelled = false;
+    let cancelled = false;
 
-    const loadGame = async () => {
+    const load = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        const resolvedParams = await params;
-        const gameRef = doc(db, "games", resolvedParams.gameId);
-        const gameSnapshot = await getDoc(gameRef);
+        const { gameId } = await params;
+        const gameRef = doc(db, "games", gameId);
+        const gameSnap = await getDoc(gameRef);
 
-        if (isCancelled) {
-          return;
-        }
+        if (cancelled) return;
 
-        if (!gameSnapshot.exists()) {
-          setGame(null);
+        if (!gameSnap.exists()) {
           setError("Jeu introuvable.");
+          setLoading(false);
           return;
         }
 
-        const [participantsCountSnapshot, participantsDocsSnapshot, prizesSnapshot] = await Promise.all([
+        const [participantsCount, participantsDocs, prizesSnap] = await Promise.all([
           getCountFromServer(collection(gameRef, "participants")),
           getDocs(collection(gameRef, "participants")),
           getDocs(collection(db, "prizes")),
         ]);
 
-        if (isCancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         const uniquePlayersCount = new Set(
-          participantsDocsSnapshot.docs
-            .map((participantDoc) => {
-              const participant = participantDoc.data() as FirestoreParticipantDocument;
-              return participant.user_id?.id ?? null;
-            })
-            .filter((userId): userId is string => Boolean(userId)),
+          participantsDocs.docs
+            .map((d) => (d.data() as FirestoreParticipantDocument).user_id?.id ?? null)
+            .filter(Boolean),
         ).size;
-        const safeUniquePlayersCount = Number.isFinite(uniquePlayersCount) ? uniquePlayersCount : 0;
 
-        const winnersCount = prizesSnapshot.docs.reduce((total, prizeDoc) => {
-          const prizeGameRef = prizeDoc.get("game_id");
-          return prizeGameRef?.id === resolvedParams.gameId ? total + 1 : total;
-        }, 0);
+        const winnersCount = prizesSnap.docs.filter(
+          (d) => d.get("game_id")?.id === gameId,
+        ).length;
 
-        const details = buildGameDetails(
-          resolvedParams.gameId,
-          gameSnapshot.data() as FirestoreGameDetailsDocument,
-          participantsCountSnapshot.data().count,
-          safeUniquePlayersCount,
+        setGame(buildDetails(
+          gameId,
+          gameSnap.data() as FirestoreGameDetailsDocument,
+          participantsCount.data().count,
+          uniquePlayersCount,
           winnersCount,
-        );
-
-        setGame(details);
-      } catch (loadError) {
-        console.error(loadError);
-        if (!isCancelled) {
-          setGame(null);
-          setError(getGameDetailsErrorMessage(loadError));
-        }
+        ));
+      } catch (err) {
+        if (!cancelled) setError(getErrorMessage(err));
       } finally {
-        if (!isCancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     };
 
-    void loadGame();
-
-    return () => {
-      isCancelled = true;
-    };
+    void load();
+    return () => { cancelled = true; };
   }, [params]);
-
-  const infoCards = useMemo(() => {
-    if (!game) {
-      return [];
-    }
-
-    return [
-      { label: "Description", value: game.description },
-      { label: "Type de jeu", value: game.gameType },
-      { label: "Lot principal", value: game.mainPrizeLabel },
-      { label: "Nombre de gagnants", value: formatCount(game.winnersCount) },
-    ];
-  }, [game]);
 
   if (loading) {
     return (
-      <section className="content-grid">
-        <div className="panel panel-wide">
-          <div className="game-details-skeleton">
-            <span className="skeleton-line skeleton-label" />
-            <strong className="skeleton-line skeleton-value" />
-            <div className="dashboard-kpi-grid">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <article key={index} className="dashboard-kpi-card skeleton-card">
-                  <span className="skeleton-line skeleton-label" />
-                  <strong className="skeleton-line skeleton-value" />
-                  <small className="skeleton-line skeleton-helper" />
-                </article>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
+      <div className="flex flex-col gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-24 animate-pulse rounded-[12px] border border-[#E8E8E4] bg-white" />
+        ))}
+      </div>
     );
   }
 
   if (error || !game) {
     return (
-      <section className="content-grid">
-        <div className="panel panel-wide">
-          <div className="empty-state">
-            <strong>{error ?? "Jeu introuvable"}</strong>
-            <p>Retourne a la liste des jeux pour selectionner un jeu valide.</p>
-          </div>
-        </div>
-      </section>
+      <div className="rounded-[12px] border border-[#F09595] bg-[#FCEBEB] px-4 py-4 text-[13px] text-[#A32D2D]">
+        {error ?? "Jeu introuvable."}
+        <Link href="/admin/games" className="ml-3 underline">← Retour</Link>
+      </div>
     );
   }
 
-  return (
-    <section className="content-grid">
-      <div className="panel panel-wide">
-        <div className="panel-heading game-details-header">
-          <div>
-            <h2>{game.name}</h2>
-            <p>Analyse detaillee du jeu pour pilotage commercial et suivi de coherence.</p>
-          </div>
+  const status = statusConfig[game.status];
 
-          <div className="game-details-header-actions">
-            <Link className="row-link-button secondary" href={`/admin/games/${game.id}/edit`}>
-              Editer
-            </Link>
-            {game.merchantId ? (
-              <Link className="row-link-button" href={`/admin/commercants/${game.merchantId}`}>
-                Voir commercant
-              </Link>
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          {game.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={game.imageUrl} alt={game.name} className="h-14 w-14 rounded-[10px] object-cover border border-[#E8E8E4]" />
+          ) : null}
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-[22px] font-semibold text-[#1A1A1A]">{game.name}</h1>
+              <span className={`rounded-full px-2 py-1 text-[10.5px] font-medium leading-none ${status.className}`}>
+                {status.label}
+              </span>
+              {game.restrictedToAdults ? (
+                <span className="rounded-full bg-[#FCEBEB] px-2 py-1 text-[10.5px] font-medium leading-none text-[#A32D2D]">
+                  18+
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1 text-[13px] text-[#666666]">{game.merchantName}</p>
+            {game.description ? (
+              <p className="mt-1 text-[12px] text-[#999999] max-w-[480px]">{game.description}</p>
             ) : null}
           </div>
         </div>
 
-        <div className="game-details-meta-grid">
-          <article className="overview-card">
-            <span>Statut</span>
-            <strong>
-              <span className={`game-badge ${game.status === "brouillon" ? "a_venir" : game.status}`}>
-                {getStatusLabel(game.status)}
-              </span>
-            </strong>
-          </article>
-          <article className="overview-card">
-            <span>Commercant</span>
-            <strong>{game.merchantName}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Date debut</span>
-            <strong>{game.startDateLabel}</strong>
-          </article>
-          <article className="overview-card">
-            <span>Date fin</span>
-            <strong>{game.endDateLabel}</strong>
-          </article>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/admin/games"
+            className="rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-2 text-[12px] font-medium text-[#666666] hover:bg-[#F7F7F5]"
+          >
+            ← Retour
+          </Link>
+          {game.merchantId ? (
+            <Link
+              href={`/admin/commercants/${game.merchantId}`}
+              className="rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-2 text-[12px] font-medium text-[#1A1A1A] hover:bg-[#F7F7F5]"
+            >
+              Voir le marchand
+            </Link>
+          ) : null}
+          <Link
+            href={`/admin/winners?gameId=${game.id}`}
+            className="rounded-[8px] border border-[#639922] bg-[#639922] px-3 py-2 text-[12px] font-medium text-white hover:bg-[#57881d]"
+          >
+            Voir les gagnants
+          </Link>
         </div>
       </div>
 
-      <div className="panel panel-wide">
-        <div className="panel-heading">
-          <h2>Performance</h2>
-          <p>Le bloc principal pour juger rapidement traction, volume et conversion simple.</p>
+      {/* Meta */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-3">
+          <p className="text-[11px] text-[#999999]">Date début</p>
+          <p className="mt-0.5 text-[14px] font-medium text-[#1A1A1A]">{game.startDateLabel}</p>
         </div>
-
-        <div className="game-details-performance-grid">
-          <article className="dashboard-kpi-card featured">
-            <span>Badge visuel</span>
-            <strong>{game.performanceLabel}</strong>
-            <small>Lecture rapide de l activite du jeu.</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Participations</span>
-            <strong>{formatCount(game.participationsCount)}</strong>
-            <small>Compteur de la sous-collection `participants`.</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Joueurs uniques</span>
-            <strong>{formatCount(game.uniquePlayersCount)}</strong>
-            <small>Nombre de `user_id` distincts dans `participants`.</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Gagnants</span>
-            <strong>{formatCount(game.winnersCount)}</strong>
-            <small>Nombre de documents `prizes` relies au jeu.</small>
-          </article>
-          <article className="dashboard-kpi-card neutral">
-            <span>Taux simple</span>
-            <strong>{game.conversionRateLabel}</strong>
-            <small>Gagnants / participations.</small>
-          </article>
+        <div className="rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-3">
+          <p className="text-[11px] text-[#999999]">Date fin</p>
+          <p className="mt-0.5 text-[14px] font-medium text-[#1A1A1A]">{game.endDateLabel}</p>
+        </div>
+        <div className="rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-3">
+          <p className="text-[11px] text-[#999999]">Lot principal</p>
+          <p className="mt-0.5 text-[14px] font-medium text-[#1A1A1A]">
+            {game.hasMainPrize
+              ? game.mainPrizeValue !== null
+                ? `${game.mainPrizeValue} €`
+                : "Oui"
+              : "Non"}
+          </p>
+        </div>
+        <div className="rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-3">
+          <p className="text-[11px] text-[#999999]">Lots secondaires</p>
+          <p className="mt-0.5 text-[14px] font-medium text-[#1A1A1A]">
+            {game.secondaryPrizes.length > 0
+              ? `${game.secondaryPrizes.length} lot${game.secondaryPrizes.length > 1 ? "s" : ""}`
+              : "Aucun"}
+          </p>
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>Informations</h2>
-          <p>Elements disponibles dans le document Firestore du jeu.</p>
-        </div>
-
-        <div className="dashboard-placeholder-grid">
-          {infoCards.map((item) => (
-            <article key={item.label} className="dashboard-placeholder-card">
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-            </article>
-          ))}
+      {/* Stats */}
+      <div>
+        <h2 className="mb-2 text-[13px] font-medium text-[#666666] uppercase tracking-wide">Performance</h2>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <StatCard label="Vues" value={formatCount(game.viewsCount)} />
+          <StatCard label="Parties" value={formatCount(game.participationsCount)} />
+          <StatCard label="Joueurs uniques" value={formatCount(game.uniquePlayersCount)} />
+          <StatCard label="Gagnants" value={formatCount(game.winnersCount)} />
+          <StatCard
+            label="Taux conversion"
+            value={game.conversionRate !== null ? `${game.conversionRate.toFixed(1)} %` : "—"}
+            sub="gagnants / parties"
+          />
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>Coherence / alertes</h2>
-          <p>Verifications simples derivees localement pour remonter les points d attention.</p>
-        </div>
-
-        {game.alerts.length === 0 ? (
-          <div className="empty-state compact-empty-state">
-            <strong>Aucune alerte bloquante</strong>
-            <p>Les donnees actuellement visibles ne remontent pas d incoherence majeure.</p>
-          </div>
-        ) : (
-          <div className="dashboard-feedback-stack">
-            {game.alerts.map((alert) => (
-              <div key={alert} className="dashboard-banner error">
-                <strong>Alerte</strong>
-                <p>{alert}</p>
+      {/* Lots secondaires */}
+      {game.secondaryPrizes.length > 0 ? (
+        <div>
+          <h2 className="mb-2 text-[13px] font-medium text-[#666666] uppercase tracking-wide">Lots secondaires</h2>
+          <div className="flex flex-col gap-2">
+            {game.secondaryPrizes.map((prize, i) => (
+              <div key={i} className="flex items-center justify-between rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-3">
+                <span className="text-[13px] text-[#1A1A1A]">{prize.name}</span>
+                <span className="text-[12px] text-[#666666]">{prize.count} disponible{prize.count > 1 ? "s" : ""}</span>
               </div>
             ))}
           </div>
-        )}
-      </div>
-
-      <div className="panel">
-        <div className="panel-heading">
-          <h2>Timeline</h2>
-          <p>Chronologie simple a partir des timestamps disponibles dans Firestore.</p>
         </div>
+      ) : null}
 
-        <div className="dashboard-placeholder-grid">
-          <article className="dashboard-placeholder-card">
-            <span>Creation</span>
-            <strong>{game.createdAtLabel}</strong>
-            <small>Champ `created_at` si disponible.</small>
-          </article>
-          <article className="dashboard-placeholder-card">
-            <span>Derniere activite</span>
-            <strong>{game.lastActivityLabel}</strong>
-            <small>Champ `last_activity_at` ou `updated_at` si disponible.</small>
-          </article>
-        </div>
-      </div>
-
-      <div className="panel panel-wide">
-        <div className="panel-heading">
-          <h2>Resume des donnees utilisees</h2>
-          <p>Cette page ne touche pas au backend et derive uniquement ce qui est deja lisible cote client.</p>
-        </div>
-
-        <div className="action-list">
-          {game.dataSummary.map((item) => (
-            <article key={item} className="action-item">
-              <span>{item}</span>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
+    </div>
   );
 }
