@@ -2,9 +2,11 @@
 
 import { FirebaseError } from "firebase/app";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   collection,
+  deleteDoc,
   doc,
   getCountFromServer,
   getDoc,
@@ -164,9 +166,11 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 }
 
 export default function GameDetailsPage({ params }: GameDetailsPageProps) {
+  const router = useRouter();
   const [game, setGame] = useState<AdminGameDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -244,6 +248,10 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   }
 
   const status = statusConfig[game.status];
+  const handleDelete = async () => {
+    await deleteDoc(doc(db, "games", game.id));
+    router.push("/admin/games");
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -281,6 +289,39 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
           >
             ← Retour
           </Link>
+          <Link
+            href={`/admin/games/${game.id}/edit`}
+            className="rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-2 text-[12px] font-medium text-[#1A1A1A] hover:bg-[#F7F7F5]"
+          >
+            Modifier
+          </Link>
+          {!deleteConfirm ? (
+            <button
+              type="button"
+              className="rounded-[8px] border border-[#F09595] bg-white px-3 py-2 text-[12px] font-medium text-[#A32D2D] hover:bg-[#F7F7F5]"
+              onClick={() => setDeleteConfirm(true)}
+            >
+              Supprimer
+            </button>
+          ) : (
+            <>
+              <span className="text-[12px] font-medium text-[#A32D2D]">Confirmer ?</span>
+              <button
+                type="button"
+                className="rounded-[8px] border border-[#E24B4A] bg-[#E24B4A] px-3 py-2 text-[12px] font-medium text-white hover:bg-[#cf403f]"
+                onClick={() => void handleDelete()}
+              >
+                Oui
+              </button>
+              <button
+                type="button"
+                className="rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-2 text-[12px] font-medium text-[#666666] hover:bg-[#F7F7F5]"
+                onClick={() => setDeleteConfirm(false)}
+              >
+                Annuler
+              </button>
+            </>
+          )}
           {game.merchantId ? (
             <Link
               href={`/admin/commercants/${game.merchantId}`}
