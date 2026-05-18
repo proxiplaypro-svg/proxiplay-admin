@@ -117,6 +117,10 @@ function readNumber(...values: Array<number | string | null | undefined>) {
   return 0;
 }
 
+function readLargestNumber(...values: Array<number | string | null | undefined>) {
+  return values.reduce<number>((largest, value) => Math.max(largest, readNumber(value)), 0);
+}
+
 function readOptionalNumber(...values: Array<number | string | null | undefined>) {
   for (const value of values) {
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -283,6 +287,7 @@ function mapGameDocument(
   snapshot: QueryDocumentSnapshot<DocumentData>,
   collectionName: GameCollectionName,
   merchantsById: Map<string, GameMerchantOption>,
+  sessionCountOverride?: number,
 ): Game {
   const game = snapshot.data() as FirestoreGameDocument;
   const title = readText(game.title, game.name, "Jeu sans titre");
@@ -316,12 +321,15 @@ function mapGameDocument(
     status,
     imageUrl,
     isPrivate: status === "prive",
-    sessionCount: readNumber(
-      game.sessionCount,
-      game.partiesCount,
-      game.participations,
-      game.participations_count,
-    ),
+    sessionCount:
+      typeof sessionCountOverride === "number"
+        ? sessionCountOverride
+        : readLargestNumber(
+            game.sessionCount,
+            game.partiesCount,
+            game.participations,
+            game.participations_count,
+          ),
     collectionName,
     imageMissing: !imageUrl,
     hasMainPrize: game.hasMainPrize === true,
@@ -332,6 +340,51 @@ function mapGameDocument(
     secondaryPrizes,
     restrictedToAdults: game.restrictedToAdults === true,
   };
+}
+
+async function buildGamesWithRealParticipantCounts(
+  snapshots: QueryDocumentSnapshot<DocumentData>[],
+  collectionName: GameCollectionName,
+  merchantsById: Map<string, GameMerchantOption>,
+) {
+  const participantCounts = await Promise.all(
+    snapshots.map(async (snapshot) => {
+      const game = snapshot.data() as FirestoreGameDocument;
+      const storedCount = readLargestNumber(
+        game.sessionCount,
+        game.partiesCount,
+        game.participations,
+        game.participations_count,
+      );
+
+      try {
+        const [participantsSnapshot, participantDetailsSnapshot] = await Promise.all([
+          getDocs(collection(snapshot.ref, "participants")),
+          getDocs(collection(snapshot.ref, "participants_details")),
+        ]);
+
+        if (participantDetailsSnapshot.size > 0) {
+          return participantDetailsSnapshot.size;
+        }
+
+        if (participantsSnapshot.size > 0) {
+          return participantsSnapshot.size;
+        }
+
+        return storedCount;
+      } catch (error) {
+        console.warn("Unable to load real participants count for game", {
+          gameId: snapshot.id,
+          error,
+        });
+        return storedCount;
+      }
+    }),
+  );
+
+  return snapshots.map((snapshot, index) =>
+    mapGameDocument(snapshot, collectionName, merchantsById, participantCounts[index] ?? 0),
+  );
 }
 
 function formatCount(value: number) {
@@ -409,8 +462,11 @@ function AdminGamesPageInner() {
           { merchantCollectionName: resolvedMerchantCollectionName, merchantOptions },
         ] = await Promise.all([fetchGames(), loadMerchantOptions()]);
         const merchantsById = new Map(merchantOptions.map((merchant) => [merchant.id, merchant]));
-        const gameItems = finalSnapshot.docs
-          .map((snapshot) => mapGameDocument(snapshot, gameCollection, merchantsById))
+        const gameItems = (await buildGamesWithRealParticipantCounts(
+          finalSnapshot.docs,
+          gameCollection,
+          merchantsById,
+        ))
           .sort((left, right) => (right.startDateValue ?? 0) - (left.startDateValue ?? 0));
 
         if (!active) {
@@ -661,8 +717,10 @@ function AdminGamesPageInner() {
       lastDocRef.current = moreSnapshot.docs[moreSnapshot.docs.length - 1] ?? null;
       setHasMore(moreSnapshot.docs.length === 30);
       const merchantsById = new Map(merchants.map((merchant) => [merchant.id, merchant]));
-      const moreGames = moreSnapshot.docs.map((snapshot) =>
-        mapGameDocument(snapshot, gameCollectionRef.current, merchantsById),
+      const moreGames = await buildGamesWithRealParticipantCounts(
+        moreSnapshot.docs,
+        gameCollectionRef.current,
+        merchantsById,
       );
       setGames((current) => [...current, ...moreGames]);
     } catch (loadMoreError) {
