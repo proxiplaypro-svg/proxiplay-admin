@@ -22,7 +22,18 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { jsPDF } from "jspdf";
 import { db, storage } from "@/lib/firebase/client-app";
+
+const QRCode = require("qrcode") as {
+  toDataURL: (
+    text: string,
+    options?: {
+      width?: number;
+      margin?: number;
+    },
+  ) => Promise<string>;
+};
 
 type CampaignStatus = "draft" | "active" | "ended";
 
@@ -109,6 +120,7 @@ type FirestoreGameDocument = {
   end_date?: Timestamp;
   type?: string;
   campaign_id?: string | null;
+  prize_value?: number | string | null;
 };
 
 type FirestoreUserDocument = {
@@ -127,6 +139,44 @@ type FirestoreProgressDocument = {
   last_updated?: Timestamp;
 };
 
+type FirestorePrizeDocument = {
+  animation_id?: string | null;
+  winner_id?: DocumentReference | null;
+  game_id?: DocumentReference | null;
+  merchantName?: string;
+  merchant_name?: string;
+  enseigne_name?: string;
+  claimed?: boolean;
+  claimed_at?: Timestamp;
+  redeemed_at?: Timestamp;
+  expiredAt?: Timestamp | null;
+  expired_at?: Timestamp | null;
+  win_date?: Timestamp;
+  created_at?: Timestamp;
+  created_time?: Timestamp;
+  updated_at?: Timestamp;
+  prize_label?: string;
+  prize_name?: string;
+  prize_title?: string;
+  label?: string;
+  name?: string;
+  title?: string;
+  status?: string;
+};
+
+type CampaignPrizeRow = {
+  id: string;
+  playerLabel: string;
+  playerEmail: string;
+  merchantName: string;
+  prizeLabel: string;
+  wonAtLabel: string;
+  wonAtValue: number;
+  status: "pending" | "claimed" | "expired";
+};
+
+type CampaignPrizeStatusFilter = "tous" | "pending" | "claimed" | "expired";
+
 type DetailState = {
   loading: boolean;
   error: string | null;
@@ -134,6 +184,8 @@ type DetailState = {
   participantsCount: number;
   linkedGameIds: string[];
   winner: CampaignWinner | null;
+  prizes: CampaignPrizeRow[];
+  prizesError: string | null;
 };
 
 const cardClassName = "rounded-[12px] border border-[#E8E8E4] bg-white p-5";
@@ -363,6 +415,14 @@ function buildPlayerLabel(data: FirestoreUserDocument, fallbackEmail: string) {
   return fallbackEmail || "Joueur inconnu";
 }
 
+function normalizeStatusValue(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 function toErrorMessage(error: unknown, fallback: string) {
   if (error instanceof FirebaseError) {
     return `${fallback} (${error.code})`;
@@ -408,9 +468,20 @@ export default function AdminCampaignsPage() {
     participantsCount: 0,
     linkedGameIds: [],
     winner: null,
+    prizes: [],
+    prizesError: null,
   });
   const [drawLoading, setDrawLoading] = useState(false);
   const [drawFeedback, setDrawFeedback] = useState<string | null>(null);
+  const [prizeStatusFilter, setPrizeStatusFilter] =
+    useState<CampaignPrizeStatusFilter>("tous");
+  const [prizeActionLoadingIds, setPrizeActionLoadingIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [prizeActionFeedback, setPrizeActionFeedback] = useState<string | null>(null);
+  const [qrCodeUrls, setQrCodeUrls] = useState<Record<string, string>>({});
+  const [qrCodesLoading, setQrCodesLoading] = useState(false);
+  const [qrCodesError, setQrCodesError] = useState<string | null>(null);
 
   useEffect(() => {
     const campaignsQuery = query(collection(db, "campaigns"), orderBy("start_date", "desc"));
@@ -472,6 +543,13 @@ export default function AdminCampaignsPage() {
     () => campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? null,
     [campaigns, selectedCampaignId],
   );
+  const linkedCampaignGames = useMemo(
+    () =>
+      games
+        .filter((game) => detailState.linkedGameIds.includes(game.id))
+        .sort((left, right) => left.merchantName.localeCompare(right.merchantName, "fr")),
+    [detailState.linkedGameIds, games],
+  );
 
   useEffect(() => {
     if (!selectedCampaignId) {
@@ -482,6 +560,8 @@ export default function AdminCampaignsPage() {
         participantsCount: 0,
         linkedGameIds: [],
         winner: null,
+        prizes: [],
+        prizesError: null,
       });
       return;
     }
@@ -497,6 +577,9 @@ export default function AdminCampaignsPage() {
 
       try {
         const progressSnapshots = await getDocs(collectionGroup(db, "campaigns"));
+        const prizesSnapshot = await getDocs(
+          query(collection(db, "prizes"), where("animation_id", "==", selectedCampaignId)),
+        );
         const matchingProgress = progressSnapshots.docs.filter((snapshot) => {
           const parentUserId = snapshot.ref.parent.parent?.id;
           return snapshot.id === selectedCampaignId && typeof parentUserId === "string";
@@ -546,6 +629,148 @@ export default function AdminCampaignsPage() {
           .filter((game) => game.campaignId === selectedCampaignId)
           .map((game) => game.id);
 
+        const uniqueWinnerIds = [
+          ...new Set(
+            prizesSnapshot.docs
+              .map((snapshot) => {
+                const prize = snapshot.data() as FirestorePrizeDocument;
+                return prize.winner_id?.id ?? null;
+              })
+              .filter((value): value is string => Boolean(value)),
+          ),
+        ];
+        const winnerSnapshots = await Promise.all(
+          uniqueWinnerIds.map((uid) => getDoc(doc(db, "users", uid))),
+        );
+        const usersById = new Map(
+          winnerSnapshots
+            .filter((snapshot) => snapshot.exists())
+            .map((snapshot) => [
+              snapshot.id,
+              (snapshot.data() as FirestoreUserDocument | undefined) ?? {},
+            ]),
+        );
+
+        const uniqueGameIds = [
+          ...new Set(
+            prizesSnapshot.docs
+              .map((snapshot) => {
+                const prize = snapshot.data() as FirestorePrizeDocument;
+                return prize.game_id?.id ?? null;
+              })
+              .filter((value): value is string => Boolean(value)),
+          ),
+        ];
+        const relatedGameSnapshots = await Promise.all(
+          uniqueGameIds.map((gameId) => getDoc(doc(db, "games", gameId))),
+        );
+        const gamesById = new Map(
+          relatedGameSnapshots
+            .filter((snapshot) => snapshot.exists())
+            .map((snapshot) => [
+              snapshot.id,
+              (snapshot.data() as FirestoreGameDocument | undefined) ?? {},
+            ]),
+        );
+
+        const uniqueMerchantIds = [
+          ...new Set(
+            relatedGameSnapshots
+              .map((snapshot) => {
+                const gameData =
+                  (snapshot.data() as FirestoreGameDocument | undefined) ?? {};
+                return readMerchantId(gameData.enseigne_id, gameData.merchant_id) ?? null;
+              })
+              .filter((value): value is string => Boolean(value)),
+          ),
+        ];
+        const merchantSnapshots = await Promise.all(
+          uniqueMerchantIds.map((merchantId) => getDoc(doc(db, "enseignes", merchantId))),
+        );
+        const merchantsById = new Map(
+          merchantSnapshots
+            .filter((snapshot) => snapshot.exists())
+            .map((snapshot) => [
+              snapshot.id,
+              (snapshot.data() as { name?: string } | undefined) ?? {},
+            ]),
+        );
+
+        const prizes = prizesSnapshot.docs
+          .map((snapshot) => {
+            const prize = snapshot.data() as FirestorePrizeDocument;
+            const winnerId = prize.winner_id?.id ?? null;
+            const userData = winnerId ? usersById.get(winnerId) ?? null : null;
+            const gameId = prize.game_id?.id ?? null;
+            const gameData = gameId ? gamesById.get(gameId) ?? null : null;
+            const merchantId = gameData
+              ? readMerchantId(gameData.enseigne_id, gameData.merchant_id)
+              : null;
+            const merchantData = merchantId ? merchantsById.get(merchantId) ?? null : null;
+            const explicitStatus = normalizeStatusValue(readText(prize.status));
+            const isClaimed =
+              prize.claimed === true ||
+              prize.claimed_at instanceof Timestamp ||
+              prize.redeemed_at instanceof Timestamp ||
+              [
+                "retire",
+                "retiree",
+                "redeemed",
+                "claimed",
+                "remis",
+                "reclame",
+                "reclamee",
+              ].includes(explicitStatus);
+            const expiresAt =
+              (prize.expiredAt instanceof Timestamp ? prize.expiredAt : null) ??
+              (prize.expired_at instanceof Timestamp ? prize.expired_at : null);
+            const isExpired =
+              !isClaimed &&
+              (explicitStatus === "expire" ||
+                explicitStatus === "expired" ||
+                ((expiresAt?.toMillis() ?? 0) > 0 &&
+                  (expiresAt?.toMillis() ?? 0) < Date.now()));
+            const wonAt =
+              (prize.win_date instanceof Timestamp ? prize.win_date : null) ??
+              (prize.created_at instanceof Timestamp ? prize.created_at : null) ??
+              (prize.created_time instanceof Timestamp ? prize.created_time : null) ??
+              (prize.updated_at instanceof Timestamp ? prize.updated_at : null);
+
+            return {
+              id: snapshot.id,
+              playerLabel: buildPlayerLabel(userData ?? {}, readText(userData?.email)),
+              playerEmail: readText(userData?.email) || "-",
+              merchantName:
+                readText(
+                  prize.merchantName,
+                  prize.merchant_name,
+                  prize.enseigne_name,
+                  gameData?.enseigne_name,
+                  gameData?.merchantName,
+                  merchantData?.name,
+                ) || "Commerce inconnu",
+              prizeLabel:
+                readText(
+                  prize.prize_label,
+                  prize.prize_name,
+                  prize.prize_title,
+                  prize.label,
+                  prize.name,
+                  prize.title,
+                ) || "Lot non renseigne",
+              wonAtLabel: formatDateValue(wonAt?.toMillis() ?? null, {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              wonAtValue: wonAt?.toMillis() ?? 0,
+              status: isClaimed ? "claimed" : isExpired ? "expired" : "pending",
+            } satisfies CampaignPrizeRow;
+          })
+          .sort((left, right) => right.wonAtValue - left.wonAtValue);
+
         if (!cancelled) {
           setDetailState({
             loading: false,
@@ -569,6 +794,8 @@ export default function AdminCampaignsPage() {
                   }),
                 }
               : null,
+            prizes,
+            prizesError: null,
           });
           setSelectedGameIds(linkedGameIds);
         }
@@ -579,6 +806,8 @@ export default function AdminCampaignsPage() {
             ...current,
             loading: false,
             error: "Impossible de charger le detail de la campagne.",
+            prizes: [],
+            prizesError: "Impossible de charger les lots gagnes.",
           }));
         }
       }
@@ -605,6 +834,208 @@ export default function AdminCampaignsPage() {
       setSelectedGameIds([]);
     }
   }, [selectedCampaign, selectedCampaignId]);
+
+  useEffect(() => {
+    if (!selectedCampaignId || linkedCampaignGames.length === 0) {
+      setQrCodeUrls({});
+      setQrCodesLoading(false);
+      setQrCodesError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const generateQrCodes = async () => {
+      setQrCodesLoading(true);
+      setQrCodesError(null);
+
+      try {
+        const entries = await Promise.all(
+          linkedCampaignGames.map(async (game) => [
+            game.id,
+            await QRCode.toDataURL(`https://proxiplay.fr/j/${game.id}`, {
+              width: 200,
+              margin: 1,
+            }),
+          ] as const),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setQrCodeUrls(Object.fromEntries(entries));
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          setQrCodesError("Impossible de generer les QR codes.");
+          setQrCodeUrls({});
+        }
+      } finally {
+        if (!cancelled) {
+          setQrCodesLoading(false);
+        }
+      }
+    };
+
+    void generateQrCodes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedCampaignGames, selectedCampaignId]);
+
+  const filteredPrizes = useMemo(
+    () =>
+      detailState.prizes.filter(
+        (prize) => prizeStatusFilter === "tous" || prize.status === prizeStatusFilter,
+      ),
+    [detailState.prizes, prizeStatusFilter],
+  );
+
+  const exportPrizesCsv = () => {
+    const csv = [
+      ["Joueur", "Email", "Commerce", "Lot gagne", "Date du gain", "Statut"],
+      ...filteredPrizes.map((prize) => [
+        prize.playerLabel,
+        prize.playerEmail,
+        prize.merchantName,
+        prize.prizeLabel,
+        prize.wonAtLabel,
+        prize.status === "claimed"
+          ? "Reclame"
+          : prize.status === "expired"
+            ? "Expire"
+            : "En attente",
+      ]),
+    ]
+      .map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `campagne-${selectedCampaignId ?? "animation"}-lots-gagnes.csv`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const sanitizeFileName = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9-_]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase();
+
+  const downloadQrCode = (game: CampaignGameOption) => {
+    const dataUrl = qrCodeUrls[game.id];
+    if (!dataUrl) {
+      return;
+    }
+
+    const anchor = document.createElement("a");
+    anchor.href = dataUrl;
+    anchor.download = `proxiplay-qr-${sanitizeFileName(game.merchantName || game.title || game.id)}.png`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  };
+
+  const downloadAllQrCodesPdf = () => {
+    if (!selectedCampaign || linkedCampaignGames.length === 0) {
+      return;
+    }
+
+    const readyGames = linkedCampaignGames.filter((game) => Boolean(qrCodeUrls[game.id]));
+    if (readyGames.length === 0) {
+      return;
+    }
+
+    const pdf = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const qrSize = 200;
+    const qrX = (pageWidth - qrSize) / 2;
+
+    readyGames.forEach((game, index) => {
+      if (index > 0) {
+        pdf.addPage();
+      }
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(18);
+      pdf.text(selectedCampaign.name, pageWidth / 2, 72, { align: "center" });
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(14);
+      pdf.text(game.merchantName, pageWidth / 2, 108, { align: "center" });
+
+      pdf.addImage(qrCodeUrls[game.id], "PNG", qrX, 150, qrSize, qrSize);
+
+      pdf.setFontSize(11);
+      pdf.text(`proxiplay.fr/j/${game.id}`, pageWidth / 2, 382, { align: "center" });
+    });
+
+    pdf.save(`proxiplay-${sanitizeFileName(selectedCampaign.name)}-qr-codes.pdf`);
+  };
+
+  const updatePrizeStatus = async (
+    prize: CampaignPrizeRow,
+    nextStatus: "claimed" | "expired",
+  ) => {
+    const confirmationMessage =
+      nextStatus === "claimed"
+        ? `Confirmer la remise du lot a ${prize.playerLabel} ?`
+        : `Confirmer le passage du lot de ${prize.playerLabel} en expire ?`;
+
+    if (!window.confirm(confirmationMessage)) {
+      return;
+    }
+
+    setPrizeActionFeedback(null);
+    setPrizeActionLoadingIds((current) => new Set(current).add(prize.id));
+
+    const previousPrizes = detailState.prizes;
+
+    setDetailState((current) => ({
+      ...current,
+      prizes: current.prizes.map((entry) =>
+        entry.id === prize.id ? { ...entry, status: nextStatus } : entry,
+      ),
+    }));
+
+    try {
+      await updateDoc(doc(db, "prizes", prize.id), {
+        status: nextStatus === "claimed" ? "reclame" : "expire",
+        ...(nextStatus === "claimed" ? { claimed_at: serverTimestamp() } : {}),
+      });
+
+      setPrizeActionFeedback(
+        nextStatus === "claimed"
+          ? `Lot marque comme reclame pour ${prize.playerLabel}.`
+          : `Lot marque comme expire pour ${prize.playerLabel}.`,
+      );
+    } catch (error) {
+      console.error(error);
+      setDetailState((current) => ({
+        ...current,
+        prizes: previousPrizes,
+      }));
+      setPrizeActionFeedback(
+        toErrorMessage(error, "Impossible de mettre a jour le statut du lot."),
+      );
+    } finally {
+      setPrizeActionLoadingIds((current) => {
+        const next = new Set(current);
+        next.delete(prize.id);
+        return next;
+      });
+    }
+  };
 
   const coverPreviewUrl = useMemo(
     () => createPreviewUrl(formState.coverImageFile, formState.coverImageUrl),
@@ -1396,6 +1827,220 @@ export default function AdminCampaignsPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h3 className="text-[14px] font-medium text-[#1A1A1A]">
+                      Lots gagnes
+                    </h3>
+                    <p className="mt-1 text-[12px] text-[#7B7B7B]">
+                      Gains instantanes associes a cette animation.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: "tous", label: "Tous" },
+                      { id: "pending", label: "En attente" },
+                      { id: "claimed", label: "Reclames" },
+                      { id: "expired", label: "Expires" },
+                    ].map((filter) => (
+                      <button
+                        key={filter.id}
+                        type="button"
+                        onClick={() =>
+                          setPrizeStatusFilter(filter.id as CampaignPrizeStatusFilter)
+                        }
+                        className={`rounded-full px-3 py-[7px] text-[11px] font-medium transition ${
+                          prizeStatusFilter === filter.id
+                            ? "border border-[#639922] bg-[#EAF3DE] text-[#3B6D11]"
+                            : "border border-[#E8E8E4] bg-white text-[#666666] hover:bg-[#F7F7F5]"
+                        }`}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={buttonSecondaryClassName}
+                      onClick={exportPrizesCsv}
+                      disabled={filteredPrizes.length === 0}
+                    >
+                      Exporter CSV
+                    </button>
+                  </div>
+                </div>
+
+                {prizeActionFeedback ? (
+                  <div className="mt-4 rounded-[10px] border border-[#E8E8E4] bg-[#FAFAF8] px-4 py-3 text-[12px] text-[#666666]">
+                    {prizeActionFeedback}
+                  </div>
+                ) : null}
+
+                {detailState.prizesError ? (
+                  <div className="mt-4 rounded-[10px] border border-[#F5C9C9] bg-[#FFF5F5] px-4 py-3 text-[12px] text-[#A32D2D]">
+                    {detailState.prizesError}
+                  </div>
+                ) : detailState.prizes.length === 0 ? (
+                  <div className="mt-4 text-[12.5px] text-[#999999]">
+                    Aucun lot gagne pour cette animation.
+                  </div>
+                ) : filteredPrizes.length === 0 ? (
+                  <div className="mt-4 text-[12.5px] text-[#999999]">
+                    Aucun lot ne correspond au filtre selectionne.
+                  </div>
+                ) : (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full">
+                      <thead>
+                        <tr className="border-b border-[#F0F0EC]">
+                          <th className={tableHeadClassName}>Joueur</th>
+                          <th className={tableHeadClassName}>Commerce</th>
+                          <th className={tableHeadClassName}>Lot gagne</th>
+                          <th className={tableHeadClassName}>Date du gain</th>
+                          <th className={tableHeadClassName}>Statut</th>
+                          <th className={`${tableHeadClassName} text-right`}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPrizes.map((prize) => (
+                          <tr key={prize.id} className="border-b border-[#F0F0EC] last:border-b-0">
+                            <td className={tableCellClassName}>
+                              <div>
+                                <p className="font-medium">{prize.playerLabel}</p>
+                                <p className="mt-1 text-[11px] text-[#7B7B7B]">{prize.playerEmail}</p>
+                              </div>
+                            </td>
+                            <td className={tableCellClassName}>{prize.merchantName}</td>
+                            <td className={tableCellClassName}>{prize.prizeLabel}</td>
+                            <td className={tableCellClassName}>{prize.wonAtLabel}</td>
+                            <td className={tableCellClassName}>
+                              <span
+                                className={`inline-flex rounded-full px-3 py-[4px] text-[11px] font-medium ${
+                                  prize.status === "claimed"
+                                    ? "bg-[#EAF3DE] text-[#3B6D11]"
+                                  : prize.status === "expired"
+                                      ? "bg-[#F1EFE8] text-[#5F5E5A]"
+                                      : "bg-[#FAEEDA] text-[#633806]"
+                                }`}
+                              >
+                                {prize.status === "claimed"
+                                  ? "Reclame"
+                                  : prize.status === "expired"
+                                    ? "Expire"
+                                    : "En attente"}
+                              </span>
+                            </td>
+                            <td className={`${tableCellClassName} text-right`}>
+                              {prize.status === "pending" ? (
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    className="rounded-[8px] border border-[#639922] bg-[#639922] px-3 py-[8px] text-[11px] font-medium text-white transition hover:bg-[#57881D] disabled:cursor-not-allowed disabled:opacity-50"
+                                    disabled={prizeActionLoadingIds.has(prize.id)}
+                                    onClick={() => void updatePrizeStatus(prize, "claimed")}
+                                  >
+                                    {prizeActionLoadingIds.has(prize.id)
+                                      ? "Mise a jour..."
+                                      : "Valider reclamation"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded-[8px] border border-[#D8D7D1] bg-white px-3 py-[8px] text-[11px] font-medium text-[#666666] transition hover:bg-[#F7F7F5] disabled:cursor-not-allowed disabled:opacity-50"
+                                    disabled={prizeActionLoadingIds.has(prize.id)}
+                                    onClick={() => void updatePrizeStatus(prize, "expired")}
+                                  >
+                                    Marquer expire
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-[#999999]">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h3 className="text-[14px] font-medium text-[#1A1A1A]">
+                      QR Codes
+                    </h3>
+                    <p className="mt-1 text-[12px] text-[#7B7B7B]">
+                      Deep links des jeux associes a cette animation.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={buttonSecondaryClassName}
+                    onClick={downloadAllQrCodesPdf}
+                    disabled={qrCodesLoading || linkedCampaignGames.length === 0}
+                  >
+                    Tout telecharger
+                  </button>
+                </div>
+
+                {qrCodesError ? (
+                  <div className="mt-4 rounded-[10px] border border-[#F5C9C9] bg-[#FFF5F5] px-4 py-3 text-[12px] text-[#A32D2D]">
+                    {qrCodesError}
+                  </div>
+                ) : qrCodesLoading ? (
+                  <div className="mt-4 text-[12.5px] text-[#999999]">
+                    Generation des QR codes...
+                  </div>
+                ) : linkedCampaignGames.length === 0 ? (
+                  <div className="mt-4 text-[12.5px] text-[#999999]">
+                    Aucun jeu n est rattache a cette animation.
+                  </div>
+                ) : (
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {linkedCampaignGames.map((game) => (
+                      <div
+                        key={game.id}
+                        className="rounded-[12px] border border-[#E8E8E4] bg-[#FAFAF8] p-4"
+                      >
+                        <div className="flex min-h-[28px] items-center justify-center text-center text-[12.5px] font-medium text-[#1A1A1A]">
+                          {game.merchantName}
+                        </div>
+                        <div className="mt-3 flex justify-center">
+                          <div className="flex h-[200px] w-[200px] items-center justify-center rounded-[10px] border border-[#E8E8E4] bg-white p-2">
+                            {qrCodeUrls[game.id] ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={qrCodeUrls[game.id]}
+                                alt={`QR code ${game.merchantName}`}
+                                className="h-[200px] w-[200px]"
+                              />
+                            ) : (
+                              <span className="text-[11px] text-[#999999]">
+                                QR indisponible
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="mt-3 text-center text-[12px] text-[#666666]">
+                          {game.merchantName}
+                        </p>
+                        <div className="mt-4 flex justify-center">
+                          <button
+                            type="button"
+                            className={buttonSecondaryClassName}
+                            onClick={() => downloadQrCode(game)}
+                            disabled={!qrCodeUrls[game.id]}
+                          >
+                            Telecharger
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
