@@ -58,10 +58,28 @@ type CampaignGameOption = {
   title: string;
   merchantId: string | null;
   merchantName: string;
+  merchantCity: string;
   startDate: string | null;
   endDate: string | null;
   photo: string | null;
   campaignId: string | null;
+  secondaryPrize: string;
+  prizeCount: number;
+};
+
+type MerchantOption = {
+  id: string;
+  name: string;
+  city: string;
+};
+
+type CampaignMerchantRow = {
+  merchantId: string;
+  merchantName: string;
+  merchantCity: string;
+  secondaryPrize: string;
+  prizeCount: string;
+  gameEndDate: string;
 };
 
 type QualifiedPlayer = {
@@ -112,15 +130,24 @@ type FirestoreGameDocument = {
   title?: string;
   enseigne_name?: string;
   merchantName?: string;
+  enseigne_ref?: DocumentReference | string | null;
   enseigne_id?: DocumentReference | string | null;
   merchant_id?: string;
+  prize_description?: string;
+  prize_count?: number | string | null;
   photo?: string;
   coverUrl?: string;
   start_date?: Timestamp;
   end_date?: Timestamp;
   type?: string;
+  animation_id?: string | null;
   campaign_id?: string | null;
   prize_value?: number | string | null;
+};
+
+type FirestoreMerchantDocument = {
+  name?: string;
+  city?: string;
 };
 
 type FirestoreUserDocument = {
@@ -325,13 +352,26 @@ function mapCampaignGame(snapshot: QueryDocumentSnapshot) {
   return {
     id: snapshot.id,
     title: readText(data.name, data.title, "Jeu sans nom"),
-    merchantId: readMerchantId(data.enseigne_id, data.merchant_id),
+    merchantId: readMerchantId(data.enseigne_ref ?? data.enseigne_id, data.merchant_id),
     merchantName: readText(data.enseigne_name, data.merchantName, "Commerce inconnu"),
+    merchantCity: "",
     startDate: startDate?.toDate().toISOString() ?? null,
     endDate: endDate?.toDate().toISOString() ?? null,
     photo: readText(data.photo, data.coverUrl) || null,
-    campaignId: readText(data.campaign_id ?? undefined) || null,
+    campaignId: readText(data.animation_id ?? undefined, data.campaign_id ?? undefined) || null,
+    secondaryPrize: readText(data.prize_description),
+    prizeCount: Math.max(0, readNumber(data.prize_count)),
   } satisfies CampaignGameOption;
+}
+
+function mapMerchant(snapshot: QueryDocumentSnapshot) {
+  const data = snapshot.data() as FirestoreMerchantDocument;
+
+  return {
+    id: snapshot.id,
+    name: readText(data.name, "Commerce sans nom"),
+    city: readText(data.city),
+  } satisfies MerchantOption;
 }
 
 function buildInitialFormState(): CampaignFormState {
@@ -452,10 +492,14 @@ export default function AdminCampaignsPage() {
   const [games, setGames] = useState<CampaignGameOption[]>([]);
   const [gamesLoading, setGamesLoading] = useState(true);
   const [gamesError, setGamesError] = useState<string | null>(null);
+  const [merchants, setMerchants] = useState<MerchantOption[]>([]);
+  const [merchantsLoading, setMerchantsLoading] = useState(true);
+  const [merchantsError, setMerchantsError] = useState<string | null>(null);
 
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [formState, setFormState] = useState<CampaignFormState>(() => buildInitialFormState());
-  const [selectedGameIds, setSelectedGameIds] = useState<string[]>([]);
+  const [merchantSearch, setMerchantSearch] = useState("");
+  const [participantMerchants, setParticipantMerchants] = useState<CampaignMerchantRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [formFeedback, setFormFeedback] = useState<string | null>(null);
   const [formFeedbackTone, setFormFeedbackTone] = useState<"success" | "error" | null>(null);
@@ -510,7 +554,7 @@ export default function AdminCampaignsPage() {
       setGamesError(null);
 
       try {
-        const snapshot = await getDocs(query(collection(db, "games"), where("type", "==", "campaign")));
+        const snapshot = await getDocs(query(collection(db, "games"), where("type", "==", "animation")));
         if (cancelled) {
           return;
         }
@@ -523,7 +567,7 @@ export default function AdminCampaignsPage() {
       } catch (error) {
         console.error(error);
         if (!cancelled) {
-          setGamesError("Impossible de charger les jeux de campagne.");
+          setGamesError("Impossible de charger les jeux d animation.");
         }
       } finally {
         if (!cancelled) {
@@ -537,6 +581,29 @@ export default function AdminCampaignsPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const merchantsQuery = query(collection(db, "enseignes"));
+    const unsubscribe = onSnapshot(
+      merchantsQuery,
+      (snapshot) => {
+        setMerchants(
+          snapshot.docs
+            .map((docSnapshot) => mapMerchant(docSnapshot))
+            .sort((left, right) => left.name.localeCompare(right.name, "fr")),
+        );
+        setMerchantsLoading(false);
+        setMerchantsError(null);
+      },
+      (error) => {
+        console.error(error);
+        setMerchantsError("Impossible de charger les commercants.");
+        setMerchantsLoading(false);
+      },
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const selectedCampaign = useMemo(
@@ -797,7 +864,6 @@ export default function AdminCampaignsPage() {
             prizes,
             prizesError: null,
           });
-          setSelectedGameIds(linkedGameIds);
         }
       } catch (error) {
         console.error(error);
@@ -831,9 +897,31 @@ export default function AdminCampaignsPage() {
 
     if (!selectedCampaignId) {
       setFormState(buildInitialFormState());
-      setSelectedGameIds([]);
+      setParticipantMerchants([]);
+      setMerchantSearch("");
     }
   }, [selectedCampaign, selectedCampaignId]);
+
+  useEffect(() => {
+    if (!selectedCampaignId) {
+      return;
+    }
+
+    const merchantCityById = new Map(merchants.map((merchant) => [merchant.id, merchant.city]));
+    const linkedGames = games.filter((game) => game.campaignId === selectedCampaignId);
+
+    setParticipantMerchants(
+      linkedGames.map((game) => ({
+        merchantId: game.merchantId ?? game.id,
+        merchantName: game.merchantName,
+        merchantCity: merchantCityById.get(game.merchantId ?? "") ?? "",
+        secondaryPrize: game.secondaryPrize,
+        prizeCount: String(game.prizeCount > 0 ? game.prizeCount : 1),
+        gameEndDate: formatInputDate(game.endDate) || formState.endDate,
+      })),
+    );
+    setMerchantSearch("");
+  }, [formState.endDate, games, merchants, selectedCampaignId]);
 
   useEffect(() => {
     if (!selectedCampaignId || linkedCampaignGames.length === 0) {
@@ -1057,29 +1145,37 @@ export default function AdminCampaignsPage() {
     };
   }, [coverPreviewUrl, formState.coverImageFile, formState.prizeImageFile, prizePreviewUrl]);
 
-  const merchantCount = useMemo(() => {
-    const uniqueMerchants = new Set(
-      selectedGameIds
-        .map((gameId) => games.find((entry) => entry.id === gameId)?.merchantId)
-        .filter(Boolean),
-    );
-    return uniqueMerchants.size;
-  }, [games, selectedGameIds]);
+  const filteredMerchantOptions = useMemo(() => {
+    const normalizedSearch = merchantSearch
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
 
-  const assignableGames = useMemo(
-    () =>
-      games.map((game) => ({
-        ...game,
-        disabled:
-          !!game.campaignId &&
-          game.campaignId !== selectedCampaignId,
-      })),
-    [games, selectedCampaignId],
-  );
+    const selectedMerchantIds = new Set(participantMerchants.map((merchant) => merchant.merchantId));
+    const availableMerchants = merchants.filter((merchant) => !selectedMerchantIds.has(merchant.id));
+
+    if (!normalizedSearch) {
+      return availableMerchants.slice(0, 8);
+    }
+
+    return availableMerchants
+      .filter((merchant) => {
+        const haystack = `${merchant.name} ${merchant.city}`
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+        return haystack.includes(normalizedSearch);
+      })
+      .slice(0, 8);
+  }, [merchantSearch, merchants, participantMerchants]);
+
+  const merchantCount = useMemo(() => participantMerchants.length, [participantMerchants]);
 
   const handleNewCampaign = () => {
     setSelectedCampaignId(null);
-    setSelectedGameIds([]);
+    setParticipantMerchants([]);
+    setMerchantSearch("");
     setFormState(buildInitialFormState());
     setFormFeedback(null);
     setFormFeedbackTone(null);
@@ -1096,11 +1192,36 @@ export default function AdminCampaignsPage() {
     }));
   };
 
-  const toggleGameSelection = (gameId: string) => {
-    setSelectedGameIds((current) =>
-      current.includes(gameId)
-        ? current.filter((entry) => entry !== gameId)
-        : [...current, gameId],
+  const handleAddMerchant = (merchant: MerchantOption) => {
+    setParticipantMerchants((current) => [
+      ...current,
+      {
+        merchantId: merchant.id,
+        merchantName: merchant.name,
+        merchantCity: merchant.city,
+        secondaryPrize: "",
+        prizeCount: "1",
+        gameEndDate: formState.endDate,
+      },
+    ]);
+    setMerchantSearch("");
+  };
+
+  const updateParticipantMerchant = (
+    merchantId: string,
+    field: "secondaryPrize" | "prizeCount" | "gameEndDate",
+    value: string,
+  ) => {
+    setParticipantMerchants((current) =>
+      current.map((merchant) =>
+        merchant.merchantId === merchantId ? { ...merchant, [field]: value } : merchant,
+      ),
+    );
+  };
+
+  const removeParticipantMerchant = (merchantId: string) => {
+    setParticipantMerchants((current) =>
+      current.filter((merchant) => merchant.merchantId !== merchantId),
     );
   };
 
@@ -1127,8 +1248,11 @@ export default function AdminCampaignsPage() {
         throw new Error("La date de fin doit etre posterieure a la date de debut.");
       }
 
-      const selectedGames = games.filter((game) => selectedGameIds.includes(game.id));
-      const merchantIds = [...new Set(selectedGames.map((game) => game.merchantId).filter(Boolean))] as string[];
+      const merchantIds = [...new Set(participantMerchants.map((merchant) => merchant.merchantId))];
+
+      if (merchantIds.length === 0) {
+        throw new Error("Ajoute au moins un commerce participant avant de creer l animation.");
+      }
 
       const basePayload = {
         name: trimmedName,
@@ -1171,37 +1295,78 @@ export default function AdminCampaignsPage() {
         updated_at: serverTimestamp(),
       });
 
-      const previouslyLinkedGames = games.filter((game) => game.campaignId === campaignId).map((game) => game.id);
-      const nextSelectedSet = new Set(selectedGameIds);
-      const previousSelectedSet = new Set(previouslyLinkedGames);
-      const batch = writeBatch(db);
+      const existingGamesByMerchantId = new Map(
+        games
+          .filter((game) => game.campaignId === campaignId && game.merchantId)
+          .map((game) => [game.merchantId as string, game]),
+      );
 
-      for (const game of games) {
-        if (!previousSelectedSet.has(game.id) && !nextSelectedSet.has(game.id)) {
-          continue;
-        }
+      const syncedGames = await Promise.all(
+        participantMerchants.map(async (merchant) => {
+          const prizeCount = Math.max(1, Number.parseInt(merchant.prizeCount || "1", 10) || 1);
+          const gameEndDate = parseDateInput(merchant.gameEndDate) ?? endDate;
+          const gamePayload = {
+            name: `${merchant.merchantName} — ${trimmedName}`,
+            type: "animation",
+            access_mode: "qr_only",
+            animation_id: campaignId,
+            enseigne_ref: doc(db, "enseignes", merchant.merchantId),
+            enseigne_name: merchant.merchantName,
+            merchant_id: merchant.merchantId,
+            prize_description: merchant.secondaryPrize.trim(),
+            prize_count: prizeCount,
+            end_date: gameEndDate,
+            status: "active",
+            updated_at: serverTimestamp(),
+          };
 
-        const gameRef = doc(db, "games", game.id);
-        if (nextSelectedSet.has(game.id)) {
-          batch.update(gameRef, { campaign_id: campaignId });
-        } else if (previousSelectedSet.has(game.id)) {
-          batch.update(gameRef, { campaign_id: null });
-        }
-      }
-
-      await batch.commit();
-
-      setGames((current) =>
-        current.map((game) => {
-          if (nextSelectedSet.has(game.id)) {
-            return { ...game, campaignId };
+          const existingGame = existingGamesByMerchantId.get(merchant.merchantId);
+          if (existingGame) {
+            await updateDoc(doc(db, "games", existingGame.id), gamePayload);
+            return {
+              ...existingGame,
+              title: gamePayload.name,
+              merchantId: merchant.merchantId,
+              merchantName: merchant.merchantName,
+              merchantCity: merchant.merchantCity,
+              campaignId,
+              endDate: gameEndDate.toDate().toISOString(),
+              secondaryPrize: merchant.secondaryPrize.trim(),
+              prizeCount,
+            } satisfies CampaignGameOption;
           }
-          if (previousSelectedSet.has(game.id)) {
-            return { ...game, campaignId: null };
-          }
-          return game;
+
+          const newGameRef = await addDoc(collection(db, "games"), {
+            ...gamePayload,
+            created_at: serverTimestamp(),
+          });
+
+          return {
+            id: newGameRef.id,
+            title: gamePayload.name,
+            merchantId: merchant.merchantId,
+            merchantName: merchant.merchantName,
+            merchantCity: merchant.merchantCity,
+            startDate: null,
+            endDate: gameEndDate.toDate().toISOString(),
+            photo: null,
+            campaignId,
+            secondaryPrize: merchant.secondaryPrize.trim(),
+            prizeCount,
+          } satisfies CampaignGameOption;
         }),
       );
+
+      setGames((current) => {
+        const nextGames = current.filter(
+          (game) =>
+            game.campaignId !== campaignId ||
+            !participantMerchants.some((merchant) => merchant.merchantId === game.merchantId),
+        );
+        return [...nextGames, ...syncedGames].sort((left, right) =>
+          left.title.localeCompare(right.title, "fr"),
+        );
+      });
 
       setSelectedCampaignId(campaignId);
       setFormFeedback("Campagne enregistree avec succes.");
@@ -1566,77 +1731,159 @@ export default function AdminCampaignsPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-[14px] font-medium text-[#1A1A1A]">
-                  Jeux participants
+                  Commerces participants
                 </h3>
                 <p className="mt-1 text-[12px] text-[#7B7B7B]">
-                  Selectionne les jeux de type campagne a rattacher.
+                  Recherche et configure les commerces qui recevront un jeu animation.
                 </p>
               </div>
               <span className="rounded-full bg-[#F7F7F5] px-3 py-[6px] text-[11px] text-[#666666]">
-                {selectedGameIds.length} jeu(x) • {merchantCount} commerce(s)
+                {merchantCount} commerce(s)
               </span>
             </div>
 
-            {gamesLoading ? (
-              <div className="mt-4 text-[12.5px] text-[#999999]">
-                Chargement des jeux...
-              </div>
-            ) : gamesError ? (
-              <div className="mt-4 rounded-[10px] border border-[#F5C9C9] bg-[#FFF5F5] px-4 py-3 text-[12px] text-[#A32D2D]">
-                {gamesError}
-              </div>
-            ) : assignableGames.length === 0 ? (
-              <div className="mt-4 text-[12.5px] text-[#999999]">
-                Aucun jeu de type campagne disponible.
-              </div>
-            ) : (
-              <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                {assignableGames.map((game) => {
-                  const selected = selectedGameIds.includes(game.id);
-                  return (
-                    <label
-                      key={game.id}
-                      className={`flex cursor-pointer gap-3 rounded-[12px] border p-3 transition ${
-                        game.disabled
-                          ? "border-[#E8E8E4] bg-[#F7F7F5] opacity-60"
-                          : selected
-                            ? "border-[#C0DD97] bg-[#F4F9EC]"
-                            : "border-[#E8E8E4] bg-white hover:bg-[#FAFAF8]"
+            <div className="mt-4">
+              <label className="grid gap-2">
+                <span className="text-[12px] font-medium text-[#666666]">
+                  Recherche commerçant
+                </span>
+                <input
+                  className={inputClassName}
+                  value={merchantSearch}
+                  onChange={(event) => setMerchantSearch(event.target.value)}
+                  placeholder="Rechercher par nom ou ville"
+                />
+              </label>
+
+              {merchantsLoading ? (
+                <div className="mt-4 text-[12.5px] text-[#999999]">
+                  Chargement des commercants...
+                </div>
+              ) : merchantsError ? (
+                <div className="mt-4 rounded-[10px] border border-[#F5C9C9] bg-[#FFF5F5] px-4 py-3 text-[12px] text-[#A32D2D]">
+                  {merchantsError}
+                </div>
+              ) : filteredMerchantOptions.length > 0 ? (
+                <div className="mt-3 rounded-[12px] border border-[#E8E8E4] bg-white">
+                  {filteredMerchantOptions.map((merchant, index) => (
+                    <button
+                      key={merchant.id}
+                      type="button"
+                      onClick={() => handleAddMerchant(merchant)}
+                      className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-[#FAFAF8] ${
+                        index < filteredMerchantOptions.length - 1
+                          ? "border-b border-[#F0F0EC]"
+                          : ""
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 rounded-[4px] border border-[#D3D1C7]"
-                        checked={selected}
-                        disabled={game.disabled}
-                        onChange={() => toggleGameSelection(game.id)}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-[12.5px] font-medium text-[#1A1A1A]">
-                              {game.title}
-                            </p>
-                            <p className="mt-1 text-[11px] text-[#7B7B7B]">
-                              {game.merchantName}
-                            </p>
-                          </div>
-                          {game.campaignId && game.campaignId !== selectedCampaignId ? (
-                            <span className="rounded-full bg-[#FCEBEB] px-2 py-[4px] text-[10px] text-[#A32D2D]">
-                              Deja lie
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-2 text-[11px] text-[#999999]">
-                          {formatDateRange(
-                            game.startDate ? new Date(game.startDate).getTime() : null,
-                            game.endDate ? new Date(game.endDate).getTime() : null,
-                          )}
+                      <div>
+                        <p className="text-[12.5px] font-medium text-[#1A1A1A]">
+                          {merchant.name}
+                        </p>
+                        <p className="mt-1 text-[11px] text-[#7B7B7B]">
+                          {merchant.city || "Ville non renseignee"}
                         </p>
                       </div>
-                    </label>
-                  );
-                })}
+                      <span className="text-[11px] font-medium text-[#639922]">
+                        Ajouter
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : merchantSearch.trim().length > 0 ? (
+                <div className="mt-4 text-[12.5px] text-[#999999]">
+                  Aucun commerce ne correspond a la recherche.
+                </div>
+              ) : null}
+            </div>
+
+            {participantMerchants.length === 0 ? (
+              <div className="mt-4 text-[12.5px] text-[#999999]">
+                Aucun commerce ajoute pour le moment.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {participantMerchants.map((merchant) => (
+                  <div
+                    key={merchant.merchantId}
+                    className="rounded-[12px] border border-[#E8E8E4] bg-[#FAFAF8] p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[13px] font-medium text-[#1A1A1A]">
+                          {merchant.merchantName}
+                        </p>
+                        <p className="mt-1 text-[11px] text-[#7B7B7B]">
+                          {merchant.merchantCity || "Ville non renseignee"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-[8px] text-[11px] font-medium text-[#666666] transition hover:bg-[#F7F7F5]"
+                        onClick={() => removeParticipantMerchant(merchant.merchantId)}
+                      >
+                        Supprimer
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      <label className="grid gap-2">
+                        <span className="text-[12px] font-medium text-[#666666]">
+                          Lot secondaire
+                        </span>
+                        <input
+                          className={inputClassName}
+                          value={merchant.secondaryPrize}
+                          onChange={(event) =>
+                            updateParticipantMerchant(
+                              merchant.merchantId,
+                              "secondaryPrize",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Description du lot"
+                        />
+                      </label>
+
+                      <label className="grid gap-2">
+                        <span className="text-[12px] font-medium text-[#666666]">
+                          Nombre de lots disponibles
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          className={inputClassName}
+                          value={merchant.prizeCount}
+                          onChange={(event) =>
+                            updateParticipantMerchant(
+                              merchant.merchantId,
+                              "prizeCount",
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+
+                      <label className="grid gap-2">
+                        <span className="text-[12px] font-medium text-[#666666]">
+                          Date de fin du jeu
+                        </span>
+                        <input
+                          type="date"
+                          className={inputClassName}
+                          value={merchant.gameEndDate}
+                          onChange={(event) =>
+                            updateParticipantMerchant(
+                              merchant.merchantId,
+                              "gameEndDate",
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
