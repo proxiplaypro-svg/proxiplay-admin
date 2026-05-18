@@ -15,6 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ProxiPlay Admin",
   description: "Console d administration ProxiPlay",
+  icons: {
+    icon: "/proxiplay-favicon.svg",
+    shortcut: "/proxiplay-favicon.svg",
+    apple: "/proxiplay-favicon.svg",
+  },
 };
 
 export default function RootLayout({

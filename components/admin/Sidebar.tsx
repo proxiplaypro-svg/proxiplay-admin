@@ -32,6 +32,26 @@ type SidebarSection = {
   items: SidebarNavItem[];
 };
 
+function CampaignGiftIcon() {
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      aria-hidden="true"
+      className="h-4 w-4"
+    >
+      <rect x="10" y="20" width="44" height="34" rx="8" fill="#FFFFFF" stroke="#29286A" strokeWidth="4" />
+      <rect x="18" y="28" width="28" height="18" rx="3" fill="#29286A" />
+      <path d="M18 28h10v18H18z" fill="#B2145A" />
+      <path d="M46 28H36v18h10z" fill="#F27B3D" />
+      <path d="M18 46h18L27 37z" fill="#90A6D8" />
+      <path d="M46 46H36l-9-9 9-9z" fill="#6EC12B" opacity="0.95" />
+      <rect x="27.5" y="31.5" width="9" height="9" rx="1.5" transform="rotate(45 32 36)" fill="#FFF12B" />
+      <path d="M22 20c-4.5 0-8-3-8-7s3.5-7 8-7c5.6 0 10 5.5 10 11v3h-3c-5.7 0-7-6.5-7-9.5 0-1.2.2-2.2.6-3.2-2.5.7-4.6 3-4.6 6 0 2.6 1.9 4.7 4 4.7z" fill="#FFFFFF" stroke="#29286A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M42 20c4.5 0 8-3 8-7s-3.5-7-8-7c-5.6 0-10 5.5-10 11v3h3c5.7 0 7-6.5 7-9.5 0-1.2-.2-2.2-.6-3.2 2.5.7 4.6 3 4.6 6 0 2.6-1.9 4.7-4 4.7z" fill="#FFFFFF" stroke="#29286A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 const initialDashboardData: DashboardData = {
   kpis: [],
   bannerAlerts: [],
@@ -62,7 +82,7 @@ function isPrizeClaimed(data: Record<string, unknown>) {
     data.claimed === true ||
     data.claimed_at !== undefined ||
     data.redeemed_at !== undefined ||
-    ["retire", "retiree", "retiré", "redeemed", "claimed", "remis"].includes(
+    ["retire", "retiree", "retire", "redeemed", "claimed", "remis"].includes(
       normalizePrizeStatus(data.status),
     )
   );
@@ -97,6 +117,7 @@ function buildSections(counts: {
               ? { count: counts.gamesToFix, tone: "red" }
               : undefined,
         },
+        { href: "/admin/campaigns", label: "Campagnes", icon: "◨" },
         {
           href: "/admin/commercants",
           label: "Commercants",
@@ -245,7 +266,7 @@ export function Sidebar({ user }: SidebarProps) {
                     }`}
                   >
                     <div className="flex h-4 w-4 shrink-0 items-center justify-center text-[14px] leading-none">
-                      {item.icon}
+                      {item.href === "/admin/campaigns" ? <CampaignGiftIcon /> : item.icon}
                     </div>
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {item.badge ? (
