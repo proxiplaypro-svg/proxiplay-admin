@@ -484,7 +484,7 @@ export default function AdminCampaignsPage() {
   const [qrCodesError, setQrCodesError] = useState<string | null>(null);
 
   useEffect(() => {
-    const campaignsQuery = query(collection(db, "campaigns"), orderBy("start_date", "desc"));
+    const campaignsQuery = query(collection(db, "animations"), orderBy("start_date", "desc"));
     const unsubscribe = onSnapshot(
       campaignsQuery,
       (snapshot) => {
@@ -576,7 +576,7 @@ export default function AdminCampaignsPage() {
       }));
 
       try {
-        const progressSnapshots = await getDocs(collectionGroup(db, "campaigns"));
+        const progressSnapshots = await getDocs(collectionGroup(db, "animations"));
         const prizesSnapshot = await getDocs(
           query(collection(db, "prizes"), where("animation_id", "==", selectedCampaignId)),
         );
@@ -615,7 +615,7 @@ export default function AdminCampaignsPage() {
             }),
         );
 
-        const winnerSnapshot = await getDoc(doc(db, "campaigns", selectedCampaignId, "winner", "current"));
+        const winnerSnapshot = await getDoc(doc(db, "animations", selectedCampaignId, "winner", "current"));
         const winnerData = winnerSnapshot.data() as
           | {
               uid?: string;
@@ -1143,10 +1143,10 @@ export default function AdminCampaignsPage() {
 
       let campaignRef: DocumentReference;
       if (formState.id) {
-        campaignRef = doc(db, "campaigns", formState.id);
+        campaignRef = doc(db, "animations", formState.id);
         await updateDoc(campaignRef, basePayload);
       } else {
-        campaignRef = await addDoc(collection(db, "campaigns"), {
+        campaignRef = await addDoc(collection(db, "animations"), {
           ...basePayload,
           cover_image: "",
           prize_image: "",
@@ -1220,7 +1220,7 @@ export default function AdminCampaignsPage() {
     setStatusActionLoadingId(campaign.id);
 
     try {
-      await updateDoc(doc(db, "campaigns", campaign.id), {
+      await updateDoc(doc(db, "animations", campaign.id), {
         status: nextStatus,
         updated_at: serverTimestamp(),
       });
@@ -1250,7 +1250,7 @@ export default function AdminCampaignsPage() {
           Math.floor(Math.random() * detailState.qualifiedPlayers.length)
         ];
 
-      await setDoc(doc(db, "campaigns", selectedCampaignId, "winner", "current"), {
+      await setDoc(doc(db, "animations", selectedCampaignId, "winner", "current"), {
         uid: winner.uid,
         label: winner.label,
         email: winner.email,
@@ -1277,7 +1277,7 @@ export default function AdminCampaignsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <header className="flex flex-col gap-3">
         <div>
           <span className="text-[11px] uppercase tracking-[0.14em] text-[#7B7B7B]">
             Campagnes
@@ -1290,9 +1290,6 @@ export default function AdminCampaignsPage() {
             et le tirage final des joueurs qualifies.
           </p>
         </div>
-        <button type="button" className={buttonPrimaryClassName} onClick={handleNewCampaign}>
-          Nouvelle campagne
-        </button>
       </header>
 
       <section className={cardClassName}>
