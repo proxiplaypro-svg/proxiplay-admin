@@ -363,15 +363,11 @@ async function buildGamesWithRealParticipantCounts(
           getDocs(collection(snapshot.ref, "participants_details")),
         ]);
 
-        if (participantDetailsSnapshot.size > 0) {
-          return participantDetailsSnapshot.size;
-        }
-
-        if (participantsSnapshot.size > 0) {
-          return participantsSnapshot.size;
-        }
-
-        return storedCount;
+        return Math.max(
+          storedCount,
+          participantsSnapshot.size,
+          participantDetailsSnapshot.size,
+        );
       } catch (error) {
         console.warn("Unable to load real participants count for game", {
           gameId: snapshot.id,
