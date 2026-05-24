@@ -61,6 +61,7 @@ export type NotificationSegmentId =
   | "inactifs_j30"
   | "nouveaux_j7"
   | "ambassadeurs";
+  | "commercants";
 
 export type NotificationRecipientUser = {
   id: string;
