@@ -17,6 +17,7 @@ const SEGMENT_OPTIONS: Array<{ id: NotificationSegmentId; label: string; descrip
   { id: "inactifs_j30", label: "Inactifs J30", description: "users sans activite 30j" },
   { id: "nouveaux_j7", label: "Nouveaux J7", description: "users crees cette semaine" },
   { id: "ambassadeurs", label: "Ambassadeurs", description: "users avec 5+ referrals" },
+  { id: "commercants", label: "Commercants", description: "tous les comptes commercants actifs" },
 ];
 
 function formatCount(value: number) {
@@ -49,6 +50,10 @@ function initialsColor(platform: string) {
   return "bg-[#F7F7F5] text-[#666666]";
 }
 
+function getAudienceEntityLabel(segmentId?: NotificationSegmentId) {
+  return segmentId === "commercants" ? "commercants" : "joueurs";
+}
+
 export default function NewNotificationPage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -69,6 +74,7 @@ export default function NewNotificationPage() {
     inactifs_j30: 0,
     nouveaux_j7: 0,
     ambassadeurs: 0,
+    commercants: 0,
   });
   const [loadingAudience, setLoadingAudience] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -184,7 +190,7 @@ export default function NewNotificationPage() {
         initialPageName,
         parameterData: "",
         audienceMode,
-        segmentId: selectedSegment?.label ?? "All",
+        segmentId: audienceMode === "segment" ? segmentId : "All",
         userUid: selectedUser?.id ?? "",
         scheduledAt,
       });
@@ -306,7 +312,7 @@ export default function NewNotificationPage() {
 
             {audienceMode === "all" ? (
               <div className="mt-4 rounded-[10px] border border-[#F0F0EC] bg-[#FCFCFB] p-4 text-[13px] text-[#666666]">
-                {loadingAudience ? "Chargement des joueurs..." : `${formatCount(allUsersCount)} joueurs dans la base users.`}
+                {loadingAudience ? "Chargement des destinataires..." : `${formatCount(allUsersCount)} destinataires dans la base users.`}
               </div>
             ) : null}
 
@@ -330,7 +336,9 @@ export default function NewNotificationPage() {
                   <p className="font-medium text-[#1A1A1A]">{selectedSegment?.label}</p>
                   <p className="mt-1">{selectedSegment?.description}</p>
                   <p className="mt-2 text-[#999999]">
-                    {loadingAudience ? "Estimation en cours..." : `${formatCount(segmentCounts[segmentId] ?? 0)} joueurs estimes`}
+                    {loadingAudience
+                      ? "Estimation en cours..."
+                      : `${formatCount(segmentCounts[segmentId] ?? 0)} ${getAudienceEntityLabel(segmentId)} estimes`}
                   </p>
                 </div>
               </div>
@@ -478,7 +486,9 @@ export default function NewNotificationPage() {
               <div className="mt-4 grid gap-3 text-[12.5px] text-[#666666]">
                 <div className="flex items-center justify-between gap-4">
                   <span>Destinataires</span>
-                  <strong className="text-[#1A1A1A]">{formatCount(recipientsCount)} joueurs</strong>
+                  <strong className="text-[#1A1A1A]">
+                    {formatCount(recipientsCount)} {recipientsCount > 1 ? "destinataires" : "destinataire"}
+                  </strong>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span>Envoi</span>

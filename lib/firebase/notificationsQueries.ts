@@ -34,6 +34,7 @@ type FirestoreUserDocument = {
   referralCount?: number | string;
   referrals_count?: number | string;
   accepted_referrals_count?: number | string;
+  user_role?: string;
 };
 
 type FirestorePushNotificationDocument = {
@@ -60,7 +61,7 @@ export type NotificationSegmentId =
   | "ios_inactifs_j7"
   | "inactifs_j30"
   | "nouveaux_j7"
-  | "ambassadeurs";
+  | "ambassadeurs"
   | "commercants";
 
 export type NotificationRecipientUser = {
@@ -69,6 +70,7 @@ export type NotificationRecipientUser = {
   email: string;
   initials: string;
   platform: string;
+  userRole: string;
   createdAtValue: number;
   lastActivityValue: number;
   referralsCount: number;
@@ -87,7 +89,7 @@ export type CreatePushNotificationInput = {
   initialPageName: string;
   parameterData: string;
   audienceMode: NotificationTabAudience;
-  segmentId: string;
+  segmentId: NotificationSegmentId | "All";
   userUid: string;
   scheduledAt: Date | null;
 };
@@ -247,6 +249,7 @@ export async function getNotificationsAudienceSnapshot(): Promise<NotificationAu
       email,
       initials: buildInitials(displayName, email),
       platform: normalizePlatform(data),
+      userRole: readText(data.user_role),
       createdAtValue: data.created_time?.toMillis() ?? data.created_at?.toMillis() ?? 0,
       lastActivityValue: data.last_real_activity_at?.toMillis() ?? 0,
       referralsCount: readNumber(
@@ -269,6 +272,7 @@ export async function getNotificationsAudienceSnapshot(): Promise<NotificationAu
       ).length,
       nouveaux_j7: users.filter((user) => user.createdAtValue >= j7).length,
       ambassadeurs: users.filter((user) => user.referralsCount >= 5).length,
+      commercants: users.filter((user) => user.userRole === "commercant").length,
     },
   };
 }
@@ -303,6 +307,7 @@ export async function searchNotificationUsers(search: string) {
         email,
         initials: buildInitials(displayName, email),
         platform: normalizePlatform(data),
+        userRole: readText(data.user_role),
         createdAtValue: data.created_time?.toMillis() ?? data.created_at?.toMillis() ?? 0,
         lastActivityValue: data.last_real_activity_at?.toMillis() ?? 0,
         referralsCount: readNumber(
@@ -323,6 +328,7 @@ export async function createPushNotification(input: CreatePushNotificationInput)
   const user = await ensureNotificationsAuthenticated();
   const title = input.title.trim();
   const message = input.message.trim();
+  const isMerchantSegment = input.audienceMode === "segment" && input.segmentId === "commercants";
 
   if (!title || !message) {
     throw new Error("Titre et message sont obligatoires.");
@@ -339,8 +345,16 @@ export async function createPushNotification(input: CreatePushNotificationInput)
     parameter_data: input.parameterData.trim(),
     scheduled_time: input.scheduledAt ? Timestamp.fromDate(input.scheduledAt) : serverTimestamp(),
     status: input.scheduledAt ? "scheduled" : "pending",
-    target_audience: input.audienceMode === "segment" ? input.segmentId : "All",
-    target_user_group: input.audienceMode === "segment" ? input.segmentId : "All",
+    target_audience: isMerchantSegment
+      ? "All"
+      : input.audienceMode === "segment"
+        ? input.segmentId
+        : "All",
+    target_user_group: isMerchantSegment
+      ? "Professionals"
+      : input.audienceMode === "segment"
+        ? input.segmentId
+        : "All",
     user_refs: input.audienceMode === "single" ? input.userUid.trim() : "",
   });
 
