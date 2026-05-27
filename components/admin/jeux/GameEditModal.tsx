@@ -1,6 +1,9 @@
 "use client";
 
+import { FirebaseError } from "firebase/app";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { firebaseApp } from "@/lib/firebase/client-app";
 import type { Game, GameMerchantOption, GameSecondaryPrize, GameStatus } from "@/types/dashboard";
 
 type SavePayload = {
@@ -61,12 +64,41 @@ type SecondaryPrizeFormItem = GameSecondaryPrize & {
   imageFile: File | null;
 };
 
+type BackfillInstantWinnersPayload = {
+  gameId: string;
+  dryRun: boolean;
+};
+
+type BackfillInstantWinnersResult = {
+  success?: boolean;
+  created?: number;
+  existingInstantWinners?: number;
+  error?: string | null;
+};
+
+type BackfillFeedback =
+  | {
+      tone: "success" | "info";
+      message: string;
+      canConfirm: boolean;
+    }
+  | {
+      tone: "error";
+      message: string;
+      canConfirm: false;
+    };
+
 const VALID_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 2 * 1024 * 1024;
 const inputClassName =
   "w-full rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-[10px] text-[13px] text-[#1A1A1A] outline-none placeholder:text-[#999999] disabled:bg-[#F0F0EC] disabled:text-[#999999]";
 const sectionClassName =
   "rounded-[10px] border border-[#E8E8E4] bg-white p-4";
+const functionsClient = getFunctions(firebaseApp, "europe-west1");
+const backfillInstantWinnersCallable = httpsCallable<
+  BackfillInstantWinnersPayload,
+  BackfillInstantWinnersResult
+>(functionsClient, "backfillInstantWinnersForGame");
 
 function toInputDate(value: string | null) {
   if (!value) return "";
@@ -136,6 +168,32 @@ function parsePrizeCount(value: string) {
   if (!value.trim()) return null;
   const parsed = Number.parseInt(value, 10);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat("fr-FR").format(Number.isFinite(value) ? value : 0);
+}
+
+function getBackfillErrorMessage(error: unknown) {
+  if (error instanceof FirebaseError) {
+    switch (error.code) {
+      case "functions/unauthenticated":
+        return "Connexion requise pour lancer le backfill.";
+      case "functions/permission-denied":
+        return "Seuls les admins autorises peuvent lancer le backfill.";
+      case "functions/not-found":
+      case "functions/unavailable":
+        return "La fonction de backfill n est pas disponible.";
+      default:
+        return error.message || "Le backend a retourne une erreur pendant le backfill.";
+    }
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Une erreur inattendue a empeche le backfill.";
 }
 
 function isSecondaryPrizeEmpty(prize: SecondaryPrizeFormItem) {
@@ -233,6 +291,8 @@ export function GameEditModal({
   const [secondaryPrizes, setSecondaryPrizes] = useState<SecondaryPrizeFormItem[]>(() => buildInitialSecondaryPrizes(game));
   const [validationError, setValidationError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [backfillLoading, setBackfillLoading] = useState<"dryRun" | "confirm" | null>(null);
+  const [backfillFeedback, setBackfillFeedback] = useState<BackfillFeedback | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -241,6 +301,8 @@ export function GameEditModal({
       setSecondaryPrizes(buildInitialSecondaryPrizes(game));
       setValidationError(null);
       setDeleteConfirm(false);
+      setBackfillLoading(null);
+      setBackfillFeedback(null);
     }
   }, [game, open]);
 
@@ -285,6 +347,54 @@ export function GameEditModal({
 
     setValidationError(null);
     onValidFile(file);
+  };
+
+  const runBackfillInstantWinners = async (dryRun: boolean) => {
+    setBackfillLoading(dryRun ? "dryRun" : "confirm");
+    setBackfillFeedback(null);
+
+    try {
+      const result = await backfillInstantWinnersCallable({
+        gameId: game.id,
+        dryRun,
+      });
+      const created = typeof result.data?.created === "number" ? result.data.created : 0;
+      const existingInstantWinners = typeof result.data?.existingInstantWinners === "number"
+        ? result.data.existingInstantWinners
+        : 0;
+
+      if (existingInstantWinners > 0) {
+        setBackfillFeedback({
+          tone: "info",
+          message: `${formatCount(existingInstantWinners)} instant winners deja presents, rien a faire`,
+          canConfirm: false,
+        });
+        return;
+      }
+
+      if (dryRun) {
+        setBackfillFeedback({
+          tone: "info",
+          message: `${formatCount(created)} instant winners seraient crees`,
+          canConfirm: created > 0,
+        });
+        return;
+      }
+
+      setBackfillFeedback({
+        tone: "success",
+        message: `${formatCount(created)} instant winners crees`,
+        canConfirm: false,
+      });
+    } catch (backfillError) {
+      setBackfillFeedback({
+        tone: "error",
+        message: getBackfillErrorMessage(backfillError),
+        canConfirm: false,
+      });
+    } finally {
+      setBackfillLoading(null);
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -564,6 +674,43 @@ export function GameEditModal({
                   </article>
                 ))}
               </div>
+              {secondaryPrizes.length > 0 && game.status !== "expire" ? (
+                <div className="mt-4 flex flex-col gap-2 rounded-[8px] border border-[#E8E8E4] bg-[#FAFAF8] px-4 py-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-[8px] border border-[#185FA5] bg-white px-3 py-2 text-[11px] font-medium text-[#185FA5] hover:bg-[#F5FAFE] disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => void runBackfillInstantWinners(true)}
+                      disabled={saving || backfillLoading !== null}
+                    >
+                      {backfillLoading === "dryRun" ? "Analyse..." : "Generer les lots instantanes"}
+                    </button>
+                    {backfillFeedback?.canConfirm ? (
+                      <button
+                        type="button"
+                        className="rounded-[8px] border border-[#639922] bg-[#639922] px-3 py-2 text-[11px] font-medium text-white hover:bg-[#57881d] disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void runBackfillInstantWinners(false)}
+                        disabled={saving || backfillLoading !== null}
+                      >
+                        {backfillLoading === "confirm" ? "Creation..." : "Confirmer"}
+                      </button>
+                    ) : null}
+                  </div>
+                  {backfillFeedback ? (
+                    <div
+                      className={`rounded-[8px] border px-3 py-3 text-[12px] ${
+                        backfillFeedback.tone === "error"
+                          ? "border-[#F09595] bg-[#FCEBEB] text-[#A32D2D]"
+                          : backfillFeedback.tone === "success"
+                            ? "border-[#B9D98E] bg-[#F2F8E8] text-[#3B6D11]"
+                            : "border-[#CFE0F3] bg-[#F5FAFE] text-[#185FA5]"
+                      }`}
+                    >
+                      {backfillFeedback.message}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
 
             {validationError ? (
