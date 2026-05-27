@@ -1,6 +1,7 @@
 "use client";
 
 import { FirebaseError } from "firebase/app";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -14,7 +15,7 @@ import {
   type DocumentReference,
   type Timestamp,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase/client-app";
+import { db, firebaseApp } from "@/lib/firebase/client-app";
 
 type GameDetailsPageProps = {
   params: Promise<{ gameId: string }>;
@@ -77,6 +78,36 @@ type AdminGameDetails = {
   restrictedToAdults: boolean;
 };
 
+type BackfillInstantWinnersPayload = {
+  gameId: string;
+  dryRun: boolean;
+};
+
+type BackfillInstantWinnersResult = {
+  success?: boolean;
+  created?: number;
+  existingInstantWinners?: number;
+  error?: string | null;
+};
+
+type BackfillFeedback =
+  | {
+      tone: "success" | "info";
+      message: string;
+      canConfirm: boolean;
+    }
+  | {
+      tone: "error";
+      message: string;
+      canConfirm: false;
+    };
+
+const functionsClient = getFunctions(firebaseApp, "europe-west1");
+const backfillInstantWinnersCallable = httpsCallable<
+  BackfillInstantWinnersPayload,
+  BackfillInstantWinnersResult
+>(functionsClient, "backfillInstantWinnersForGame");
+
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("fr-FR", {
     day: "2-digit",
@@ -95,6 +126,28 @@ function getErrorMessage(error: unknown) {
     if (error.code === "unavailable") return "Firestore indisponible.";
   }
   return "Impossible de charger ce jeu.";
+}
+
+function getBackfillErrorMessage(error: unknown) {
+  if (error instanceof FirebaseError) {
+    switch (error.code) {
+      case "functions/unauthenticated":
+        return "Connexion requise pour lancer le backfill.";
+      case "functions/permission-denied":
+        return "Seuls les admins autorises peuvent lancer le backfill.";
+      case "functions/not-found":
+      case "functions/unavailable":
+        return "La fonction de backfill n est pas disponible.";
+      default:
+        return error.message || "Le backend a retourne une erreur pendant le backfill.";
+    }
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Une erreur inattendue a empeche le backfill.";
 }
 
 function deriveStatus(game: FirestoreGameDetailsDocument): AdminGameDetails["status"] {
@@ -171,6 +224,8 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [backfillLoading, setBackfillLoading] = useState<"dryRun" | "confirm" | null>(null);
+  const [backfillFeedback, setBackfillFeedback] = useState<BackfillFeedback | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +306,54 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   const handleDelete = async () => {
     await deleteDoc(doc(db, "games", game.id));
     router.push("/admin/games");
+  };
+
+  const runBackfillInstantWinners = async (dryRun: boolean) => {
+    setBackfillLoading(dryRun ? "dryRun" : "confirm");
+    setBackfillFeedback(null);
+
+    try {
+      const result = await backfillInstantWinnersCallable({
+        gameId: game.id,
+        dryRun,
+      });
+      const created = typeof result.data?.created === "number" ? result.data.created : 0;
+      const existingInstantWinners = typeof result.data?.existingInstantWinners === "number"
+        ? result.data.existingInstantWinners
+        : 0;
+
+      if (existingInstantWinners > 0) {
+        setBackfillFeedback({
+          tone: "info",
+          message: `${formatCount(existingInstantWinners)} instant winners deja presents, rien a faire`,
+          canConfirm: false,
+        });
+        return;
+      }
+
+      if (dryRun) {
+        setBackfillFeedback({
+          tone: "info",
+          message: `${formatCount(created)} instant winners seraient crees`,
+          canConfirm: created > 0,
+        });
+        return;
+      }
+
+      setBackfillFeedback({
+        tone: "success",
+        message: `${formatCount(created)} instant winners crees`,
+        canConfirm: false,
+      });
+    } catch (backfillError) {
+      setBackfillFeedback({
+        tone: "error",
+        message: getBackfillErrorMessage(backfillError),
+        canConfirm: false,
+      });
+    } finally {
+      setBackfillLoading(null);
+    }
   };
 
   return (
@@ -397,6 +500,43 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
               </div>
             ))}
           </div>
+          {game.status !== "expire" ? (
+            <div className="mt-3 flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-[8px] border border-[#185FA5] bg-white px-3 py-2 text-[12px] font-medium text-[#185FA5] hover:bg-[#F5FAFE] disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => void runBackfillInstantWinners(true)}
+                  disabled={backfillLoading !== null}
+                >
+                  {backfillLoading === "dryRun" ? "Analyse..." : "Backfill instant winners"}
+                </button>
+                {backfillFeedback?.canConfirm ? (
+                  <button
+                    type="button"
+                    className="rounded-[8px] border border-[#639922] bg-[#639922] px-3 py-2 text-[12px] font-medium text-white hover:bg-[#57881d] disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void runBackfillInstantWinners(false)}
+                    disabled={backfillLoading !== null}
+                  >
+                    {backfillLoading === "confirm" ? "Creation..." : "Confirmer"}
+                  </button>
+                ) : null}
+              </div>
+              {backfillFeedback ? (
+                <div
+                  className={`rounded-[10px] border px-4 py-3 text-[12px] ${
+                    backfillFeedback.tone === "error"
+                      ? "border-[#F09595] bg-[#FCEBEB] text-[#A32D2D]"
+                      : backfillFeedback.tone === "success"
+                        ? "border-[#CFE2B3] bg-[#F3F8EA] text-[#3B6D11]"
+                        : "border-[#CFE0F3] bg-[#F5FAFE] text-[#185FA5]"
+                  }`}
+                >
+                  {backfillFeedback.message}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
