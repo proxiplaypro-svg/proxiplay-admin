@@ -94,7 +94,7 @@ const inputClassName =
   "w-full rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-[10px] text-[13px] text-[#1A1A1A] outline-none placeholder:text-[#999999] disabled:bg-[#F0F0EC] disabled:text-[#999999]";
 const sectionClassName =
   "rounded-[10px] border border-[#E8E8E4] bg-white p-4";
-const functionsClient = getFunctions(firebaseApp, "europe-west1");
+const functionsClient = getFunctions(firebaseApp, "us-central1");
 const backfillInstantWinnersCallable = httpsCallable<
   BackfillInstantWinnersPayload,
   BackfillInstantWinnersResult
