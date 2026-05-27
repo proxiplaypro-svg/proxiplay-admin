@@ -125,7 +125,7 @@ function buildSections(counts: {
       label: "Communication",
       items: [
         { href: "/admin/notifications/nouvelle", label: "Notifications", icon: "◯" },
-        { href: "/admin/activite", label: "Relances auto", icon: "◪" },
+        { href: "/admin/relances-auto", label: "Relances auto", icon: "◪" },
         { href: "/admin/parrainage", label: "Parrainage", icon: "△" },
       ],
     },
