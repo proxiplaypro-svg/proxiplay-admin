@@ -21,9 +21,8 @@ import {
   type DocumentReference,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { jsPDF } from "jspdf";
-import { db, storage } from "@/lib/firebase/client-app";
+import { db } from "@/lib/firebase/client-app";
 
 const QRCode = require("qrcode") as {
   toDataURL: (
@@ -327,7 +326,7 @@ function mapCampaign(snapshot: QueryDocumentSnapshot) {
 
   return {
     id: snapshot.id,
-    name: readText(data.name, "Campagne sans nom"),
+    name: readText(data.name, "Animation sans nom"),
     description: readText(data.description),
     coverImage: readText(data.cover_image) || null,
     startDate: startDate?.toDate().toISOString() ?? null,
@@ -479,9 +478,24 @@ async function uploadCampaignImage(
   kind: "cover" | "prize",
 ) {
   const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
-  const storageRef = ref(storage, `campaigns/${campaignId}/${kind}.${extension}`);
-  await uploadBytes(storageRef, file, { contentType: file.type });
-  return getDownloadURL(storageRef);
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("path", `animations/${campaignId}/${kind}.${extension}`);
+
+  const response = await fetch("/api/admin/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { url?: string; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.url) {
+    throw new Error(payload?.error?.trim() || "Impossible d uploader l image.");
+  }
+
+  return payload.url;
 }
 
 export default function AdminCampaignsPage() {
@@ -504,6 +518,7 @@ export default function AdminCampaignsPage() {
   const [formFeedback, setFormFeedback] = useState<string | null>(null);
   const [formFeedbackTone, setFormFeedbackTone] = useState<"success" | "error" | null>(null);
   const [statusActionLoadingId, setStatusActionLoadingId] = useState<string | null>(null);
+  const [deleteActionLoadingId, setDeleteActionLoadingId] = useState<string | null>(null);
 
   const [detailState, setDetailState] = useState<DetailState>({
     loading: false,
@@ -538,7 +553,7 @@ export default function AdminCampaignsPage() {
       },
       (error) => {
         console.error(error);
-        setCampaignsError("Impossible de charger les campagnes Firestore.");
+        setCampaignsError("Impossible de charger les animations Firestore.");
         setCampaignsLoading(false);
       },
     );
@@ -643,237 +658,67 @@ export default function AdminCampaignsPage() {
       }));
 
       try {
-        const progressSnapshots = await getDocs(collectionGroup(db, "animations"));
-        const prizesSnapshot = await getDocs(
-          query(collection(db, "prizes"), where("animation_id", "==", selectedCampaignId)),
-        );
-        const matchingProgress = progressSnapshots.docs.filter((snapshot) => {
-          const parentUserId = snapshot.ref.parent.parent?.id;
-          return snapshot.id === selectedCampaignId && typeof parentUserId === "string";
+        console.log("[campaign detail] animationId", selectedCampaignId);
+        const response = await fetch(`/api/admin/animations/${selectedCampaignId}/detail`, {
+          method: "GET",
+          cache: "no-store",
         });
-
-        const qualifiedEntries = await Promise.all(
-          matchingProgress
-            .filter((snapshot) => (snapshot.data() as FirestoreProgressDocument).qualified === true)
-            .map(async (snapshot) => {
-              const progressData = snapshot.data() as FirestoreProgressDocument;
-              const uid = snapshot.ref.parent.parent?.id ?? "";
-              const userSnapshot = uid ? await getDoc(doc(db, "users", uid)) : null;
-              const userData = (userSnapshot?.data() as FirestoreUserDocument | undefined) ?? {};
-              const email = readText(userData.email);
-              return {
-                uid,
-                label: buildPlayerLabel(userData, email),
-                email: email || "-",
-                visitedMerchantsCount: Array.isArray(progressData.visited_merchants)
-                  ? progressData.visited_merchants.length
-                  : 0,
-                lastUpdatedLabel: formatDateValue(
-                  progressData.last_updated?.toMillis() ?? null,
-                  {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  },
-                ),
-              } satisfies QualifiedPlayer;
-            }),
-        );
-
-        const winnerSnapshot = await getDoc(doc(db, "animations", selectedCampaignId, "winner", "current"));
-        const winnerData = winnerSnapshot.data() as
+        const payload = (await response.json().catch(() => null)) as
           | {
-              uid?: string;
-              label?: string;
-              email?: string;
-              selected_at?: Timestamp;
+              error?: string;
+              games?: Array<{ id: string }>;
+              prizes?: CampaignPrizeRow[];
+              qualifiedUsers?: QualifiedPlayer[];
+              winner?: CampaignWinner | null;
+              participantsCount?: number;
             }
-          | undefined;
+          | null;
 
-        const linkedGameIds = games
-          .filter((game) => game.campaignId === selectedCampaignId)
-          .map((game) => game.id);
+        if (!response.ok) {
+          throw new Error(payload?.error?.trim() || "Impossible de charger le detail de l animation.");
+        }
 
-        const uniqueWinnerIds = [
-          ...new Set(
-            prizesSnapshot.docs
-              .map((snapshot) => {
-                const prize = snapshot.data() as FirestorePrizeDocument;
-                return prize.winner_id?.id ?? null;
-              })
-              .filter((value): value is string => Boolean(value)),
-          ),
-        ];
-        const winnerSnapshots = await Promise.all(
-          uniqueWinnerIds.map((uid) => getDoc(doc(db, "users", uid))),
-        );
-        const usersById = new Map(
-          winnerSnapshots
-            .filter((snapshot) => snapshot.exists())
-            .map((snapshot) => [
-              snapshot.id,
-              (snapshot.data() as FirestoreUserDocument | undefined) ?? {},
-            ]),
-        );
-
-        const uniqueGameIds = [
-          ...new Set(
-            prizesSnapshot.docs
-              .map((snapshot) => {
-                const prize = snapshot.data() as FirestorePrizeDocument;
-                return prize.game_id?.id ?? null;
-              })
-              .filter((value): value is string => Boolean(value)),
-          ),
-        ];
-        const relatedGameSnapshots = await Promise.all(
-          uniqueGameIds.map((gameId) => getDoc(doc(db, "games", gameId))),
-        );
-        const gamesById = new Map(
-          relatedGameSnapshots
-            .filter((snapshot) => snapshot.exists())
-            .map((snapshot) => [
-              snapshot.id,
-              (snapshot.data() as FirestoreGameDocument | undefined) ?? {},
-            ]),
-        );
-
-        const uniqueMerchantIds = [
-          ...new Set(
-            relatedGameSnapshots
-              .map((snapshot) => {
-                const gameData =
-                  (snapshot.data() as FirestoreGameDocument | undefined) ?? {};
-                return readMerchantId(gameData.enseigne_id, gameData.merchant_id) ?? null;
-              })
-              .filter((value): value is string => Boolean(value)),
-          ),
-        ];
-        const merchantSnapshots = await Promise.all(
-          uniqueMerchantIds.map((merchantId) => getDoc(doc(db, "enseignes", merchantId))),
-        );
-        const merchantsById = new Map(
-          merchantSnapshots
-            .filter((snapshot) => snapshot.exists())
-            .map((snapshot) => [
-              snapshot.id,
-              (snapshot.data() as { name?: string } | undefined) ?? {},
-            ]),
-        );
-
-        const prizes = prizesSnapshot.docs
-          .map((snapshot) => {
-            const prize = snapshot.data() as FirestorePrizeDocument;
-            const winnerId = prize.winner_id?.id ?? null;
-            const userData = winnerId ? usersById.get(winnerId) ?? null : null;
-            const gameId = prize.game_id?.id ?? null;
-            const gameData = gameId ? gamesById.get(gameId) ?? null : null;
-            const merchantId = gameData
-              ? readMerchantId(gameData.enseigne_id, gameData.merchant_id)
-              : null;
-            const merchantData = merchantId ? merchantsById.get(merchantId) ?? null : null;
-            const explicitStatus = normalizeStatusValue(readText(prize.status));
-            const isClaimed =
-              prize.claimed === true ||
-              prize.claimed_at instanceof Timestamp ||
-              prize.redeemed_at instanceof Timestamp ||
-              [
-                "retire",
-                "retiree",
-                "redeemed",
-                "claimed",
-                "remis",
-                "reclame",
-                "reclamee",
-              ].includes(explicitStatus);
-            const expiresAt =
-              (prize.expiredAt instanceof Timestamp ? prize.expiredAt : null) ??
-              (prize.expired_at instanceof Timestamp ? prize.expired_at : null);
-            const isExpired =
-              !isClaimed &&
-              (explicitStatus === "expire" ||
-                explicitStatus === "expired" ||
-                ((expiresAt?.toMillis() ?? 0) > 0 &&
-                  (expiresAt?.toMillis() ?? 0) < Date.now()));
-            const wonAt =
-              (prize.win_date instanceof Timestamp ? prize.win_date : null) ??
-              (prize.created_at instanceof Timestamp ? prize.created_at : null) ??
-              (prize.created_time instanceof Timestamp ? prize.created_time : null) ??
-              (prize.updated_at instanceof Timestamp ? prize.updated_at : null);
-
-            return {
-              id: snapshot.id,
-              playerLabel: buildPlayerLabel(userData ?? {}, readText(userData?.email)),
-              playerEmail: readText(userData?.email) || "-",
-              merchantName:
-                readText(
-                  prize.merchantName,
-                  prize.merchant_name,
-                  prize.enseigne_name,
-                  gameData?.enseigne_name,
-                  gameData?.merchantName,
-                  merchantData?.name,
-                ) || "Commerce inconnu",
-              prizeLabel:
-                readText(
-                  prize.prize_label,
-                  prize.prize_name,
-                  prize.prize_title,
-                  prize.label,
-                  prize.name,
-                  prize.title,
-                ) || "Lot non renseigne",
-              wonAtLabel: formatDateValue(wonAt?.toMillis() ?? null, {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              wonAtValue: wonAt?.toMillis() ?? 0,
-              status: isClaimed ? "claimed" : isExpired ? "expired" : "pending",
-            } satisfies CampaignPrizeRow;
-          })
-          .sort((left, right) => right.wonAtValue - left.wonAtValue);
+        const linkedGameIds = Array.isArray(payload?.games)
+          ? payload.games.map((game) => game.id)
+          : [];
+        const qualifiedPlayers = Array.isArray(payload?.qualifiedUsers)
+          ? payload.qualifiedUsers
+          : [];
+        const prizes = Array.isArray(payload?.prizes) ? payload.prizes : [];
+        const winner = payload?.winner ?? null;
+        const participantsCount =
+          typeof payload?.participantsCount === "number"
+            ? payload.participantsCount
+            : qualifiedPlayers.length;
 
         if (!cancelled) {
           setDetailState({
             loading: false,
             error: null,
-            qualifiedPlayers: qualifiedEntries.sort((left, right) =>
-              left.label.localeCompare(right.label, "fr"),
-            ),
-            participantsCount: matchingProgress.length,
+            qualifiedPlayers,
+            participantsCount,
             linkedGameIds,
-            winner: winnerData?.uid
-              ? {
-                  uid: winnerData.uid,
-                  label: readText(winnerData.label, "Gagnant inconnu"),
-                  email: readText(winnerData.email, "-"),
-                  selectedAtLabel: formatDateValue(winnerData.selected_at?.toMillis() ?? null, {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                }
-              : null,
+            winner,
             prizes,
             prizesError: null,
           });
         }
       } catch (error) {
-        console.error(error);
+        console.error("[campaign detail] failed to load detail", {
+          animationId: selectedCampaignId,
+          error,
+        });
         if (!cancelled) {
+          const detailErrorMessage = toErrorMessage(
+            error,
+            "Impossible de charger le detail de l animation.",
+          );
           setDetailState((current) => ({
             ...current,
             loading: false,
-            error: "Impossible de charger le detail de la campagne.",
+            error: `Impossible de charger le detail de l animation : ${detailErrorMessage}`,
             prizes: [],
-            prizesError: "Impossible de charger les lots gagnes.",
+            prizesError: `Impossible de charger les lots gagnes : ${detailErrorMessage}`,
           }));
         }
       }
@@ -884,7 +729,7 @@ export default function AdminCampaignsPage() {
     return () => {
       cancelled = true;
     };
-  }, [games, selectedCampaignId]);
+  }, [selectedCampaignId]);
 
   useEffect(() => {
     if (selectedCampaign) {
@@ -1233,7 +1078,7 @@ export default function AdminCampaignsPage() {
     try {
       const trimmedName = formState.name.trim();
       if (!trimmedName) {
-        throw new Error("Le nom de campagne est obligatoire.");
+        throw new Error("Le nom de l animation est obligatoire.");
       }
 
       const threshold = Math.max(1, Number.parseInt(formState.threshold || "3", 10) || 3);
@@ -1265,19 +1110,9 @@ export default function AdminCampaignsPage() {
         threshold,
       };
 
-      let campaignRef: DocumentReference;
-      if (formState.id) {
-        campaignRef = doc(db, "animations", formState.id);
-        await updateDoc(campaignRef, basePayload);
-      } else {
-        campaignRef = await addDoc(collection(db, "animations"), {
-          ...basePayload,
-          cover_image: "",
-          prize_image: "",
-          created_at: serverTimestamp(),
-        });
-      }
-
+      const campaignRef = formState.id
+        ? doc(db, "animations", formState.id)
+        : doc(collection(db, "animations"));
       const campaignId = campaignRef.id;
 
       const coverImageUrl = formState.coverImageFile
@@ -1287,13 +1122,22 @@ export default function AdminCampaignsPage() {
         ? await uploadCampaignImage(campaignId, formState.prizeImageFile, "prize")
         : formState.prizeImageUrl.trim() || "";
 
-      await updateDoc(campaignRef, {
-        cover_image: coverImageUrl,
-        prize_image: prizeImageUrl,
-        merchant_ids: merchantIds,
-        threshold,
-        updated_at: serverTimestamp(),
-      });
+      if (formState.id) {
+        await updateDoc(campaignRef, {
+          ...basePayload,
+          cover_image: coverImageUrl,
+          prize_image: prizeImageUrl,
+          updated_at: serverTimestamp(),
+        });
+      } else {
+        await setDoc(campaignRef, {
+          ...basePayload,
+          cover_image: coverImageUrl,
+          prize_image: prizeImageUrl,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        });
+      }
 
       const existingGamesByMerchantId = new Map(
         games
@@ -1369,11 +1213,11 @@ export default function AdminCampaignsPage() {
       });
 
       setSelectedCampaignId(campaignId);
-      setFormFeedback("Campagne enregistree avec succes.");
+      setFormFeedback("Animation enregistree avec succes.");
       setFormFeedbackTone("success");
     } catch (error) {
       console.error(error);
-      setFormFeedback(toErrorMessage(error, "Impossible d enregistrer la campagne."));
+      setFormFeedback(toErrorMessage(error, "Impossible d enregistrer l animation."));
       setFormFeedbackTone("error");
     } finally {
       setSaving(false);
@@ -1397,6 +1241,42 @@ export default function AdminCampaignsPage() {
     }
   };
 
+  const handleDeleteCampaign = async (campaign: CampaignListItem) => {
+    if (campaign.status !== "draft" && campaign.status !== "ended") {
+      return;
+    }
+
+    const confirmed = window.confirm("Supprimer cette animation ?");
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleteActionLoadingId(campaign.id);
+
+    try {
+      const linkedGamesSnapshot = await getDocs(
+        query(collection(db, "games"), where("animation_id", "==", campaign.id)),
+      );
+      const batch = writeBatch(db);
+
+      batch.delete(doc(db, "animations", campaign.id));
+      linkedGamesSnapshot.docs.forEach((gameSnapshot) => {
+        batch.delete(gameSnapshot.ref);
+      });
+
+      await batch.commit();
+
+      if (selectedCampaignId === campaign.id) {
+        setSelectedCampaignId(null);
+      }
+    } catch (error) {
+      console.error(error);
+      window.alert(toErrorMessage(error, "Impossible de supprimer cette animation."));
+    } finally {
+      setDeleteActionLoadingId(null);
+    }
+  };
+
   const handleDraw = async () => {
     if (!selectedCampaignId) {
       return;
@@ -1407,7 +1287,7 @@ export default function AdminCampaignsPage() {
 
     try {
       if (detailState.qualifiedPlayers.length === 0) {
-        throw new Error("Aucun joueur qualifie pour cette campagne.");
+        throw new Error("Aucun joueur qualifie pour cette animation.");
       }
 
       const winner =
@@ -1445,13 +1325,13 @@ export default function AdminCampaignsPage() {
       <header className="flex flex-col gap-3">
         <div>
           <span className="text-[11px] uppercase tracking-[0.14em] text-[#7B7B7B]">
-            Campagnes
+            Animations
           </span>
           <h1 className="mt-1 text-[28px] font-medium text-[#1A1A1A]">
-            Gestion des campagnes
+            Gestion des animations
           </h1>
           <p className="mt-2 max-w-[780px] text-[13px] text-[#666666]">
-            Cree, active et pilote les campagnes collectives, les jeux associes
+            Cree, active et pilote les animations collectives, les jeux associes
             et le tirage final des joueurs qualifies.
           </p>
         </div>
@@ -1461,17 +1341,17 @@ export default function AdminCampaignsPage() {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-[16px] font-medium text-[#1A1A1A]">
-              Liste des campagnes
+              Liste des animations
             </h2>
             <p className="mt-1 text-[12px] text-[#7B7B7B]">
-              Vue d ensemble des campagnes et actions rapides.
+              Vue d ensemble des animations et actions rapides.
             </p>
           </div>
         </div>
 
         {campaignsLoading ? (
           <div className="py-10 text-[12.5px] text-[#999999]">
-            Chargement des campagnes...
+            Chargement des animations...
           </div>
         ) : campaignsError ? (
           <div className="rounded-[10px] border border-[#F5C9C9] bg-[#FFF5F5] px-4 py-3 text-[12px] text-[#A32D2D]">
@@ -1479,7 +1359,7 @@ export default function AdminCampaignsPage() {
           </div>
         ) : campaigns.length === 0 ? (
           <div className="py-10 text-[12.5px] text-[#999999]">
-            Aucune campagne pour le moment.
+            Aucune animation pour le moment.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1536,7 +1416,10 @@ export default function AdminCampaignsPage() {
                         <button
                           type="button"
                           className={buttonPrimaryClassName}
-                          disabled={statusActionLoadingId === campaign.id}
+                          disabled={
+                            statusActionLoadingId === campaign.id ||
+                            deleteActionLoadingId === campaign.id
+                          }
                           onClick={() => void handleStatusAction(campaign)}
                         >
                           {statusActionLoadingId === campaign.id
@@ -1545,6 +1428,18 @@ export default function AdminCampaignsPage() {
                               ? "Terminer"
                               : "Activer"}
                         </button>
+                        {campaign.status === "draft" || campaign.status === "ended" ? (
+                          <button
+                            type="button"
+                            className="rounded-[10px] border border-[#F5C9C9] bg-white px-4 py-[10px] text-[12px] font-medium text-[#A32D2D] transition hover:bg-[#FFF5F5] disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={deleteActionLoadingId === campaign.id}
+                            onClick={() => void handleDeleteCampaign(campaign)}
+                          >
+                            {deleteActionLoadingId === campaign.id
+                              ? "Suppression..."
+                              : "Supprimer"}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -1560,15 +1455,15 @@ export default function AdminCampaignsPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-[16px] font-medium text-[#1A1A1A]">
-                {formState.id ? "Edition campagne" : "Creation campagne"}
+                {formState.id ? "Edition animation" : "Nouvelle animation"}
               </h2>
               <p className="mt-1 text-[12px] text-[#7B7B7B]">
-                Configure la campagne, ses visuels et les jeux participants.
+                Configure l animation, ses visuels et les jeux participants.
               </p>
             </div>
             {formState.id ? (
               <button type="button" className={buttonSecondaryClassName} onClick={handleNewCampaign}>
-                Nouvelle campagne
+                Nouvelle animation
               </button>
             ) : null}
           </div>
@@ -1582,7 +1477,7 @@ export default function AdminCampaignsPage() {
                 onChange={(event) =>
                   setFormState((current) => ({ ...current, name: event.target.value }))
                 }
-                placeholder="Campagne printemps"
+                placeholder="Animation printemps"
               />
             </label>
 
@@ -1597,7 +1492,7 @@ export default function AdminCampaignsPage() {
                     description: event.target.value,
                   }))
                 }
-                placeholder="Description de la campagne"
+                placeholder="Description de l animation"
               />
             </label>
 
@@ -1695,7 +1590,7 @@ export default function AdminCampaignsPage() {
               <div className="mt-3 overflow-hidden rounded-[10px] border border-[#E8E8E4] bg-white">
                 {coverPreviewUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={coverPreviewUrl} alt="Banniere campagne" className="h-[150px] w-full object-cover" />
+                  <img src={coverPreviewUrl} alt="Banniere animation" className="h-[150px] w-full object-cover" />
                 ) : (
                   <div className="flex h-[150px] items-center justify-center text-[12px] text-[#999999]">
                     Aucune image selectionnee
@@ -1717,7 +1612,7 @@ export default function AdminCampaignsPage() {
               <div className="mt-3 overflow-hidden rounded-[10px] border border-[#E8E8E4] bg-white">
                 {prizePreviewUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={prizePreviewUrl} alt="Lot campagne" className="h-[150px] w-full object-cover" />
+                  <img src={prizePreviewUrl} alt="Lot animation" className="h-[150px] w-full object-cover" />
                 ) : (
                   <div className="flex h-[150px] items-center justify-center text-[12px] text-[#999999]">
                     Aucune image selectionnee
@@ -1910,7 +1805,7 @@ export default function AdminCampaignsPage() {
               disabled={saving}
               onClick={() => void handleSaveCampaign()}
             >
-              {saving ? "Enregistrement..." : formState.id ? "Mettre a jour" : "Creer la campagne"}
+              {saving ? "Enregistrement..." : formState.id ? "Mettre a jour" : "Creer l animation"}
             </button>
           </div>
         </div>
@@ -1919,7 +1814,7 @@ export default function AdminCampaignsPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-[16px] font-medium text-[#1A1A1A]">
-                Detail campagne
+                Détail animation
               </h2>
               <p className="mt-1 text-[12px] text-[#7B7B7B]">
                 Suivi des qualifies, participants et tirage final.
@@ -1929,7 +1824,7 @@ export default function AdminCampaignsPage() {
 
           {!selectedCampaignId || !selectedCampaign ? (
             <div className="mt-6 rounded-[10px] border border-dashed border-[#D9D8D3] bg-[#FAFAF8] px-4 py-10 text-center text-[12.5px] text-[#999999]">
-              Selectionne une campagne depuis la liste pour voir son detail.
+              Selectionne une animation depuis la liste pour voir son detail.
             </div>
           ) : detailState.loading ? (
             <div className="mt-6 text-[12.5px] text-[#999999]">
