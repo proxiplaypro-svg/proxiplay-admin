@@ -50,6 +50,10 @@ const runPrizeReminderDryRunCallable = httpsCallable<void, PrizeReminderDryRunRe
   functionsClient,
   "adminRunPrizeReminderDryRun",
 );
+const sendPrizeReminderEmailTestCallable = httpsCallable<void, { ok?: boolean }>(
+  functionsClient,
+  "adminSendPrizeReminderEmailTest",
+);
 
 function normalizeNumber(value: number, fallback: number) {
   return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : fallback;
@@ -184,6 +188,7 @@ export default function AutoRemindersPage() {
   const [gameEndingDaysInput, setGameEndingDaysInput] = useState(String(defaultConfig.game_ending_days_before));
   const [inactiveFrequencyInput, setInactiveFrequencyInput] = useState(String(defaultConfig.inactive_relaunch_frequency_days));
   const [dryRunLoading, setDryRunLoading] = useState(false);
+  const [emailTestLoading, setEmailTestLoading] = useState(false);
   const [dryRunResult, setDryRunResult] = useState<PrizeReminderDryRunResult | null>(null);
 
   useEffect(() => {
@@ -297,6 +302,21 @@ export default function AutoRemindersPage() {
       setError(getErrorMessage(dryRunError));
     } finally {
       setDryRunLoading(false);
+    }
+  };
+
+  const handleSendEmailTest = async () => {
+    setEmailTestLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await sendPrizeReminderEmailTestCallable();
+      setSuccess("Email envoye a votre adresse admin.");
+    } catch (emailTestError) {
+      setError(getErrorMessage(emailTestError));
+    } finally {
+      setEmailTestLoading(false);
     }
   };
 
@@ -471,10 +491,18 @@ export default function AutoRemindersPage() {
             <button
               type="button"
               onClick={() => void handleDryRun()}
-              disabled={dryRunLoading || savingKey !== null}
+              disabled={dryRunLoading || emailTestLoading || savingKey !== null}
               className="rounded-[8px] border border-[#185FA5] bg-white px-4 py-[10px] text-[12px] font-medium text-[#185FA5] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {dryRunLoading ? "Dry run..." : "Lancer dry run"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSendEmailTest()}
+              disabled={emailTestLoading || dryRunLoading || savingKey !== null}
+              className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {emailTestLoading ? "Envoi..." : "Envoyer email test"}
             </button>
             {canActivatePrizeReminder ? (
               <button
