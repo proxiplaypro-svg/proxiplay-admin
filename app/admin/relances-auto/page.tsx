@@ -2,9 +2,8 @@
 
 import { FirebaseError } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
-import { db, firebaseApp } from "@/lib/firebase/client-app";
+import { firebaseApp } from "@/lib/firebase/client-app";
 
 type NotificationsConfig = {
   new_game_enabled: boolean;
@@ -19,22 +18,6 @@ type NotificationsConfig = {
 };
 
 type NotificationsConfigResponse = Partial<NotificationsConfig>;
-
-type NotificationsAutoDoc = Partial<
-  Pick<
-    NotificationsConfig,
-    | "new_game_enabled"
-    | "game_ending_enabled"
-    | "game_ending_days_before"
-    | "inactive_relaunch_enabled"
-    | "inactive_relaunch_frequency_days"
-    | "merchant_relaunch_enabled"
-    | "merchant_relaunch_delay_7d_enabled"
-    | "merchant_relaunch_delay_21d_enabled"
-  >
->;
-
-type NotificationsDoc = Partial<Pick<NotificationsConfig, "prizeReminderEnabled">>;
 
 type PrizeReminderDryRunResult = {
   eligiblePrizes?: number;
@@ -94,48 +77,6 @@ function normalizeConfig(data?: Partial<NotificationsConfig> | null): Notificati
     merchant_relaunch_delay_21d_enabled: data?.merchant_relaunch_delay_21d_enabled === true,
     prizeReminderEnabled: data?.prizeReminderEnabled === true,
   };
-}
-
-function mergeNotificationsConfigSources({
-  callableData,
-  notificationsAutoData,
-  notificationsData,
-}: {
-  callableData?: NotificationsConfigResponse | null;
-  notificationsAutoData?: NotificationsAutoDoc | null;
-  notificationsData?: NotificationsDoc | null;
-}) {
-  const merged: Partial<NotificationsConfig> = {...callableData};
-
-  const assignIfMissing = <K extends keyof NotificationsConfig>(
-    key: K,
-    value: NotificationsConfig[K] | undefined,
-  ) => {
-    if (!Object.prototype.hasOwnProperty.call(merged, key) && value !== undefined) {
-      merged[key] = value;
-    }
-  };
-
-  assignIfMissing("new_game_enabled", notificationsAutoData?.new_game_enabled);
-  assignIfMissing("game_ending_enabled", notificationsAutoData?.game_ending_enabled);
-  assignIfMissing("game_ending_days_before", notificationsAutoData?.game_ending_days_before);
-  assignIfMissing("inactive_relaunch_enabled", notificationsAutoData?.inactive_relaunch_enabled);
-  assignIfMissing(
-    "inactive_relaunch_frequency_days",
-    notificationsAutoData?.inactive_relaunch_frequency_days,
-  );
-  assignIfMissing("merchant_relaunch_enabled", notificationsAutoData?.merchant_relaunch_enabled);
-  assignIfMissing(
-    "merchant_relaunch_delay_7d_enabled",
-    notificationsAutoData?.merchant_relaunch_delay_7d_enabled,
-  );
-  assignIfMissing(
-    "merchant_relaunch_delay_21d_enabled",
-    notificationsAutoData?.merchant_relaunch_delay_21d_enabled,
-  );
-  assignIfMissing("prizeReminderEnabled", notificationsData?.prizeReminderEnabled);
-
-  return merged;
 }
 
 function getErrorMessage(error: unknown) {
@@ -258,24 +199,10 @@ export default function AutoRemindersPage() {
       setError(null);
 
       try {
-        const [response, notificationsAutoSnap, notificationsSnap] = await Promise.all([
-          getNotificationsConfigCallable(),
-          getDoc(doc(db, "app_config", "notifications_auto")),
-          getDoc(doc(db, "app_config", "notifications")),
-        ]);
+        const response = await getNotificationsConfigCallable();
         if (cancelled) return;
 
-        const nextConfig = normalizeConfig(
-          mergeNotificationsConfigSources({
-            callableData: response.data,
-            notificationsAutoData: notificationsAutoSnap.exists()
-              ? (notificationsAutoSnap.data() as NotificationsAutoDoc)
-              : null,
-            notificationsData: notificationsSnap.exists()
-              ? (notificationsSnap.data() as NotificationsDoc)
-              : null,
-          }),
-        );
+        const nextConfig = normalizeConfig(response.data);
         setConfig(nextConfig);
         setGameEndingDaysInput(String(nextConfig.game_ending_days_before));
         setInactiveFrequencyInput(String(nextConfig.inactive_relaunch_frequency_days));
