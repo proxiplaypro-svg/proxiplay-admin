@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
+import { isAllowedAdminEmail } from "./adminAccess";
 import { auth } from "./auth";
-
-export const ADMIN_EMAILS = ["proxiplay.pro@gmail.com"];
 
 type UseAdminAuthResult = {
   loading: boolean;
@@ -26,12 +25,7 @@ export function useAdminAuth(): UseAdminAuthResult {
   }, []);
 
   const isAdmin = useMemo(() => {
-    const email = user?.email?.toLowerCase();
-    if (!email) {
-      return false;
-    }
-
-    return ADMIN_EMAILS.map((item) => item.toLowerCase()).includes(email);
+    return isAllowedAdminEmail(user?.email);
   }, [user]);
 
   return { loading, isAdmin, user };

@@ -10,6 +10,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
+import { auth } from "./auth";
 import { db } from "./client-app";
 import { functionsClient } from "./functions";
 import type { AdminFollowUpChannel, AdminFollowUpStatus } from "./adminQueries";
@@ -400,10 +401,18 @@ export async function markPlayersAsContactedAction(payload: MarkPlayersAsContact
 export async function markPrizesAsRetiredAction(
   payload: MarkPrizesAsRetiredPayload,
 ): Promise<MarkPrizesAsRetiredResult> {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser) {
+    throw new Error("Connexion admin requise pour marquer ce lot comme retire.");
+  }
+
+  const idToken = await currentUser.getIdToken(true);
   const response = await fetch("/api/admin/winners/retire", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
     },
     body: JSON.stringify(payload),
   });
