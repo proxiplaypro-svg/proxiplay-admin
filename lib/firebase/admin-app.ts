@@ -1,6 +1,6 @@
-import { applicationDefault, cert, getApps, initializeApp, type App, type ServiceAccount } from "../../functions/node_modules/firebase-admin/lib/app";
-import { getAuth } from "../../functions/node_modules/firebase-admin/lib/auth";
-import { getFirestore } from "../../functions/node_modules/firebase-admin/lib/firestore";
+import { applicationDefault, cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
 
 function readServiceAccountFromEnv(): ServiceAccount | null {
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
