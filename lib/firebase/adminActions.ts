@@ -120,6 +120,14 @@ export type SendBulkReminderResult = {
   remindedMerchantIds: string[];
 };
 
+export type MarkPrizesAsRetiredPayload = {
+  prizeIds: string[];
+};
+
+export type MarkPrizesAsRetiredResult = {
+  updatedCount: number;
+};
+
 export type DuplicateGamePayload = {
   gameId: string;
   collectionName: "games" | "jeux";
@@ -225,6 +233,14 @@ export function getAdminFollowUpErrorMessage(error: unknown) {
   }
 
   return "La mise a jour du suivi de relance a echoue.";
+}
+
+export function getMarkPrizesAsRetiredErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Impossible de marquer ce ou ces lots comme retires.";
 }
 
 function normalizeFollowUpNote(value: string | undefined) {
@@ -379,6 +395,28 @@ export async function markPlayersAsContactedAction(payload: MarkPlayersAsContact
       ),
     ),
   );
+}
+
+export async function markPrizesAsRetiredAction(
+  payload: MarkPrizesAsRetiredPayload,
+): Promise<MarkPrizesAsRetiredResult> {
+  const response = await fetch("/api/admin/winners/retire", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const result = (await response.json()) as { error?: string; updatedCount?: number };
+
+  if (!response.ok) {
+    throw new Error(result.error || "Impossible de marquer ce ou ces lots comme retires.");
+  }
+
+  return {
+    updatedCount: result.updatedCount ?? 0,
+  };
 }
 
 export async function sendBulkReminder(): Promise<SendBulkReminderResult> {

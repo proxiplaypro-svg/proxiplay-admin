@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/client-app";
 import {
   getAdminFollowUpErrorMessage,
+  getMarkPrizesAsRetiredErrorMessage,
+  markPrizesAsRetiredAction,
   markPlayersAsContactedAction,
 } from "@/lib/firebase/adminActions";
 import { getWinnersList, type AdminWinnerListItem } from "@/lib/firebase/adminQueries";
@@ -312,28 +312,18 @@ export default function AdminWinnersPage() {
     );
 
     try {
-      await Promise.all(
-        winnerIds.map((winnerId) =>
-          updateDoc(doc(db, "prizes", winnerId), {
-            status: "retiré",
-            redeemed_at: serverTimestamp(),
-            retiredAt: serverTimestamp(),
-          }),
-        ),
-      );
+      const result = await markPrizesAsRetiredAction({ prizeIds: winnerIds });
 
       setSelection((current) => {
         const next = new Set(current);
         winnerIds.forEach((id) => next.delete(id));
         return next;
       });
-      setActionFeedback(
-        `${winnerIds.length} lot(s) marque(s) comme retires dans Firestore.`,
-      );
+      setActionFeedback(`${result.updatedCount} lot(s) marque(s) comme retires dans Firestore.`);
     } catch (markError) {
       console.error(markError);
       setWinners(previousWinners);
-      setActionFeedback("Impossible de marquer ce ou ces lots comme retires.");
+      setActionFeedback(getMarkPrizesAsRetiredErrorMessage(markError));
     } finally {
       setMarkingIds((current) => {
         const next = new Set(current);
