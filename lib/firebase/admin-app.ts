@@ -1,25 +1,23 @@
-import { applicationDefault, cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
+import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
-function readServiceAccountFromEnv(): ServiceAccount | null {
-  const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
+let cachedAdminApp: App | null = null;
 
-  if (rawJson) {
-    const parsed = JSON.parse(rawJson) as ServiceAccount;
-    return {
-      projectId: parsed.projectId,
-      clientEmail: parsed.clientEmail,
-      privateKey: parsed.privateKey?.replace(/\\n/g, "\n"),
-    };
-  }
-
-  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID?.trim();
-  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL?.trim();
-  const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n").trim();
+function readAdminServiceAccount() {
+  const projectId = process.env.FIREBASE_PROJECT_ID?.trim() || "";
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim() || "";
+  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
 
   if (!projectId || !clientEmail || !privateKey) {
-    return null;
+    console.error("[FIREBASE_ADMIN_INIT_MISSING_ENV]", {
+      hasProjectId: Boolean(projectId),
+      hasClientEmail: Boolean(clientEmail),
+      hasPrivateKey: Boolean(privateKey),
+    });
+    throw new Error(
+      "Firebase Admin env vars are incomplete. Expected FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.",
+    );
   }
 
   return {
@@ -29,33 +27,38 @@ function readServiceAccountFromEnv(): ServiceAccount | null {
   };
 }
 
-function createAdminApp(): App {
+export function getAdminApp(): App {
+  if (cachedAdminApp) {
+    return cachedAdminApp;
+  }
+
   const existingApp = getApps()[0];
 
   if (existingApp) {
+    cachedAdminApp = existingApp;
     return existingApp;
   }
 
-  const serviceAccount = readServiceAccountFromEnv();
+  console.info("[FIREBASE_ADMIN_INIT_START]");
 
-  if (serviceAccount) {
-    return initializeApp({
-      credential: cert(serviceAccount),
-      projectId: serviceAccount.projectId,
-    });
-  }
+  const serviceAccount = readAdminServiceAccount();
 
-  const projectId =
-    process.env.FIREBASE_ADMIN_PROJECT_ID?.trim() ||
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim();
-
-  return initializeApp({
-    credential: applicationDefault(),
-    projectId,
+  cachedAdminApp = initializeApp({
+    credential: cert(serviceAccount),
+    projectId: serviceAccount.projectId,
   });
+
+  console.info("[FIREBASE_ADMIN_INIT_SUCCESS]", {
+    projectId: serviceAccount.projectId,
+  });
+
+  return cachedAdminApp;
 }
 
-const adminApp = createAdminApp();
+export function getAdminAuth() {
+  return getAuth(getAdminApp());
+}
 
-export const adminAuth = getAuth(adminApp);
-export const adminDb = getFirestore(adminApp);
+export function getAdminDb() {
+  return getFirestore(getAdminApp());
+}
