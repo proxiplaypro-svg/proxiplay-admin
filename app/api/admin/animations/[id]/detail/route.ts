@@ -106,6 +106,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY?.trim();
     const { id } = await params;
     const animationId = id.trim();
 
@@ -116,8 +117,12 @@ export async function GET(
       );
     }
 
-    const gamesUrl = `${FIRESTORE_REST_BASE}/games?pageSize=50&orderBy=animation_id`;
-    const winnerUrl = `${FIRESTORE_REST_BASE}/animations/${encodeURIComponent(animationId)}/winner/current`;
+    if (!apiKey) {
+      throw new Error("NEXT_PUBLIC_FIREBASE_API_KEY is missing.");
+    }
+
+    const gamesUrl = `${FIRESTORE_REST_BASE}/games?key=${encodeURIComponent(apiKey)}&pageSize=50&orderBy=animation_id`;
+    const winnerUrl = `${FIRESTORE_REST_BASE}/animations/${encodeURIComponent(animationId)}/winner/current?key=${encodeURIComponent(apiKey)}`;
 
     const [gamesResponse, winnerResponse] = await Promise.all([
       fetchFirestoreJson<FirestoreListResponse>(gamesUrl),
