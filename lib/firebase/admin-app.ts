@@ -49,6 +49,14 @@ function readAdminServiceAccount() {
       ? readProductionServiceAccount()
       : readDevelopmentServiceAccount() || readProductionServiceAccount();
 
+  console.info("[FIREBASE_ADMIN_INIT_CONFIG]", {
+    hasProjectId: Boolean(serviceAccount.projectId),
+    hasClientEmail: Boolean(serviceAccount.clientEmail),
+    hasPrivateKey: Boolean(serviceAccount.privateKey),
+    privateKeyStartsWithBegin: serviceAccount.privateKey.startsWith("-----BEGIN PRIVATE KEY-----"),
+    privateKeyHasEnd: serviceAccount.privateKey.includes("-----END PRIVATE KEY-----"),
+  });
+
   if (!serviceAccount.projectId || !serviceAccount.clientEmail || !serviceAccount.privateKey) {
     throw new Error("Firebase Admin credentials are incomplete.");
   }
