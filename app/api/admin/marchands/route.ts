@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { adminAuth, adminDb } from "@/lib/firebase/admin-app";
+import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin-app";
 
 type CreateMerchantBody = {
   email?: string;
@@ -37,6 +37,8 @@ export async function POST(request: Request) {
   let createdUid: string | null = null;
 
   try {
+    const adminAuth = getAdminAuth();
+    const adminDb = getAdminDb();
     const body = (await request.json()) as CreateMerchantBody;
     const email = body.email?.trim().toLowerCase() ?? "";
     const name = body.name?.trim() ?? "";
@@ -77,9 +79,11 @@ export async function POST(request: Request) {
       name,
     });
   } catch (error) {
+    const adminAuth = createdUid ? getAdminAuth() : null;
+
     if (createdUid) {
       try {
-        await adminAuth.deleteUser(createdUid);
+        await adminAuth?.deleteUser(createdUid);
       } catch (cleanupError) {
         console.error("Merchant auth cleanup failed", cleanupError);
       }

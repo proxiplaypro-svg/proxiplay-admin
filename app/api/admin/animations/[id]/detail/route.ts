@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase/admin-app";
+import { getAdminDb } from "@/lib/firebase/admin-app";
 
 type FirestoreGameDocument = {
   name?: string;
@@ -140,6 +140,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const adminDb = getAdminDb();
     const { id } = await params;
     const animationId = id.trim();
 

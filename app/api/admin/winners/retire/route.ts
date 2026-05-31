@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getConfiguredAdminEmails, isAllowedAdminEmail } from "@/lib/firebase/adminAccess";
-import { adminAuth, adminDb } from "@/lib/firebase/admin-app";
+import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin-app";
 
 type MarkWinnersAsRetiredBody = {
   prizeIds?: string[];
@@ -19,7 +19,7 @@ async function assertIsAdminRequest(request: Request) {
     throw new Error("UNAUTHENTICATED");
   }
 
-  const decodedToken = await adminAuth.verifyIdToken(token);
+  const decodedToken = await getAdminAuth().verifyIdToken(token);
   const adminEmails = getConfiguredAdminEmails();
 
   if (!isAllowedAdminEmail(decodedToken.email, adminEmails)) {
@@ -32,6 +32,7 @@ async function assertIsAdminRequest(request: Request) {
 export async function POST(request: Request) {
   try {
     const decodedToken = await assertIsAdminRequest(request);
+    const adminDb = getAdminDb();
     const body = (await request.json()) as MarkWinnersAsRetiredBody;
     const prizeIds = normalizePrizeIds(body.prizeIds);
 
