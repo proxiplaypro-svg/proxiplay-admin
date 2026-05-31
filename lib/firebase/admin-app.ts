@@ -4,22 +4,63 @@ import { getFirestore } from "firebase-admin/firestore";
 
 let cachedAdminApp: App | null = null;
 
+function normalizePrivateKey(privateKey: string) {
+  return privateKey.replace(/^"|"$/g, "").replace(/\\n/g, "\n").trim();
+}
+
 function readAdminServiceAccount() {
-  const projectId = process.env.FIREBASE_PROJECT_ID?.trim() || "";
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim() || "";
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "")
-  	.replace(/^"|"$/g, "")
-  	.replace(/\\n/g, "\n")
-  	.trim();
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim() || "";
+  const hasServiceAccountJson = Boolean(serviceAccountJson);
+
+  let projectId = "";
+  let clientEmail = "";
+  let privateKey = "";
+
+  if (serviceAccountJson) {
+    try {
+      const parsedServiceAccount = JSON.parse(serviceAccountJson) as {
+        project_id?: string;
+        client_email?: string;
+        private_key?: string;
+      };
+
+      projectId = parsedServiceAccount.project_id?.trim() || "";
+      clientEmail = parsedServiceAccount.client_email?.trim() || "";
+      privateKey = normalizePrivateKey(parsedServiceAccount.private_key || "");
+    } catch (error) {
+      console.error("[FIREBASE_ADMIN_INIT_INVALID_SERVICE_ACCOUNT_JSON]", {
+        hasServiceAccountJson,
+      });
+      throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is not valid JSON.", {
+        cause: error,
+      });
+    }
+  }
+
+  if (!projectId || !clientEmail || !privateKey) {
+    projectId = projectId || process.env.FIREBASE_PROJECT_ID?.trim() || "";
+    clientEmail = clientEmail || process.env.FIREBASE_CLIENT_EMAIL?.trim() || "";
+    privateKey =
+      privateKey || normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY || "");
+  }
+
+  const adminInitLog = {
+    hasServiceAccountJson,
+    projectId,
+    hasClientEmail: Boolean(clientEmail),
+    hasPrivateKey: Boolean(privateKey),
+    privateKeyStartsWithBegin: privateKey.startsWith("-----BEGIN PRIVATE KEY-----"),
+    privateKeyHasEnd: privateKey.includes("-----END PRIVATE KEY-----"),
+  };
+
+  console.info("[FIREBASE_ADMIN_INIT_CONFIG]", adminInitLog);
 
   if (!projectId || !clientEmail || !privateKey) {
     console.error("[FIREBASE_ADMIN_INIT_MISSING_ENV]", {
-      hasProjectId: Boolean(projectId),
-      hasClientEmail: Boolean(clientEmail),
-      hasPrivateKey: Boolean(privateKey),
+      ...adminInitLog,
     });
     throw new Error(
-      "Firebase Admin env vars are incomplete. Expected FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.",
+      "Firebase Admin env vars are incomplete. Expected FIREBASE_SERVICE_ACCOUNT_KEY or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.",
     );
   }
 
@@ -47,7 +88,11 @@ export function getAdminApp(): App {
   const serviceAccount = readAdminServiceAccount();
 
   cachedAdminApp = initializeApp({
-    credential: cert(serviceAccount),
+    credential: cert({
+      projectId: serviceAccount.projectId,
+      clientEmail: serviceAccount.clientEmail,
+      privateKey: serviceAccount.privateKey,
+    }),
     projectId: serviceAccount.projectId,
   });
 
