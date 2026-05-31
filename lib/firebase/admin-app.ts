@@ -37,9 +37,9 @@ function readDevelopmentServiceAccount(): AdminServiceAccount | null {
 
 function readProductionServiceAccount(): AdminServiceAccount {
   return {
-    projectId: process.env.FIREBASE_ADMIN_PROJECT_ID || "proxi-play-odzp2e",
-    clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL?.trim() || "",
-    privateKey: normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY || ""),
+    projectId: process.env.FIREBASE_PROJECT_ID || "proxi-play-odzp2e",
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.trim() || "",
+    privateKey: normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY || ""),
   };
 }
 
