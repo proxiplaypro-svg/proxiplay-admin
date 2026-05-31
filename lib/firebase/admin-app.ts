@@ -1,74 +1,59 @@
+import { readFileSync } from "node:fs";
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
 let cachedAdminApp: App | null = null;
 
+type AdminServiceAccount = {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+};
+
 function normalizePrivateKey(privateKey: string) {
-  return privateKey.replace(/^"|"$/g, "").replace(/\\n/g, "\n").trim();
+  return privateKey.replace(/\\n/g, "\n").replace(/^"|"$/g, "").trim();
+}
+
+function readDevelopmentServiceAccount(): AdminServiceAccount | null {
+  const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
+
+  if (!credentialsPath) {
+    return null;
+  }
+
+  const serviceAccount = JSON.parse(readFileSync(credentialsPath, "utf8")) as {
+    project_id?: string;
+    client_email?: string;
+    private_key?: string;
+  };
+
+  return {
+    projectId: serviceAccount.project_id?.trim() || "proxi-play-odzp2e",
+    clientEmail: serviceAccount.client_email?.trim() || "",
+    privateKey: normalizePrivateKey(serviceAccount.private_key || ""),
+  };
+}
+
+function readProductionServiceAccount(): AdminServiceAccount {
+  return {
+    projectId: process.env.FIREBASE_ADMIN_PROJECT_ID || "proxi-play-odzp2e",
+    clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL?.trim() || "",
+    privateKey: normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY || ""),
+  };
 }
 
 function readAdminServiceAccount() {
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim() || "";
-  const hasServiceAccountJson = Boolean(serviceAccountJson);
+  const serviceAccount =
+    process.env.NODE_ENV === "production"
+      ? readProductionServiceAccount()
+      : readDevelopmentServiceAccount() || readProductionServiceAccount();
 
-  let projectId = "";
-  let clientEmail = "";
-  let privateKey = "";
-
-  if (serviceAccountJson) {
-    try {
-      const parsedServiceAccount = JSON.parse(serviceAccountJson) as {
-        project_id?: string;
-        client_email?: string;
-        private_key?: string;
-      };
-
-      projectId = parsedServiceAccount.project_id?.trim() || "";
-      clientEmail = parsedServiceAccount.client_email?.trim() || "";
-      privateKey = normalizePrivateKey(parsedServiceAccount.private_key || "");
-    } catch (error) {
-      console.error("[FIREBASE_ADMIN_INIT_INVALID_SERVICE_ACCOUNT_JSON]", {
-        hasServiceAccountJson,
-      });
-      throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is not valid JSON.", {
-        cause: error,
-      });
-    }
+  if (!serviceAccount.projectId || !serviceAccount.clientEmail || !serviceAccount.privateKey) {
+    throw new Error("Firebase Admin credentials are incomplete.");
   }
 
-  if (!projectId || !clientEmail || !privateKey) {
-    projectId = projectId || process.env.FIREBASE_PROJECT_ID?.trim() || "";
-    clientEmail = clientEmail || process.env.FIREBASE_CLIENT_EMAIL?.trim() || "";
-    privateKey =
-      privateKey || normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY || "");
-  }
-
-  const adminInitLog = {
-    hasServiceAccountJson,
-    projectId,
-    hasClientEmail: Boolean(clientEmail),
-    hasPrivateKey: Boolean(privateKey),
-    privateKeyStartsWithBegin: privateKey.startsWith("-----BEGIN PRIVATE KEY-----"),
-    privateKeyHasEnd: privateKey.includes("-----END PRIVATE KEY-----"),
-  };
-
-  console.info("[FIREBASE_ADMIN_INIT_CONFIG]", adminInitLog);
-
-  if (!projectId || !clientEmail || !privateKey) {
-    console.error("[FIREBASE_ADMIN_INIT_MISSING_ENV]", {
-      ...adminInitLog,
-    });
-    throw new Error(
-      "Firebase Admin env vars are incomplete. Expected FIREBASE_SERVICE_ACCOUNT_KEY or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.",
-    );
-  }
-
-  return {
-    projectId,
-    clientEmail,
-    privateKey,
-  };
+  return serviceAccount;
 }
 
 export function getAdminApp(): App {
@@ -88,11 +73,7 @@ export function getAdminApp(): App {
   const serviceAccount = readAdminServiceAccount();
 
   cachedAdminApp = initializeApp({
-    credential: cert({
-      projectId: serviceAccount.projectId,
-      clientEmail: serviceAccount.clientEmail,
-      privateKey: serviceAccount.privateKey,
-    }),
+    credential: cert(serviceAccount),
     projectId: serviceAccount.projectId,
   });
 
