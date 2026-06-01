@@ -163,7 +163,8 @@ export default function AdminWinnersPage() {
         normalizeString(winner.winnerEmail).includes(normalizedSearch) ||
         normalizeString(winner.gameName).includes(normalizedSearch) ||
         normalizeString(winner.merchantName).includes(normalizedSearch) ||
-        normalizeString(winner.prizeLabel).includes(normalizedSearch);
+        normalizeString(winner.prizeLabel).includes(normalizedSearch) ||
+        normalizeString(winner.prizeCode).includes(normalizedSearch);
       const matchesMerchant = merchantFilter === "tous" || winner.merchantName === merchantFilter;
       const matchesStatus =
         statusFilter === "tous" ||
@@ -522,7 +523,7 @@ export default function AdminWinnersPage() {
 
         <input
           type="search"
-          placeholder="Gagnant, email, jeu, lot..."
+          placeholder="Gagnant, email, jeu, lot, code..."
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           className="h-[40px] flex-1 rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[12.5px] text-[#1A1A1A] outline-none placeholder:text-[#999999]"

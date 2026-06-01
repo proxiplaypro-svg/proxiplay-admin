@@ -115,6 +115,10 @@ type FirestorePrizeDocument = {
   prize_type?: string;
   value?: number | string;
   prize_value?: number | string;
+  claim_code?: string;
+  claimCode?: string;
+  code?: string;
+  unique_code?: string;
 };
 
 type FirestoreReferralDocument = {
@@ -170,6 +174,7 @@ export type AdminWinnerListItem = {
   merchantId: string | null;
   merchantName: string;
   prizeLabel: string;
+  prizeCode: string;
   prizeTypeLabel: string;
   prizeValueLabel: string;
   wonAtLabel: string;
@@ -633,6 +638,15 @@ function readPrizeLabel(prize: FirestorePrizeDocument) {
       prize.title,
     ) ?? "Lot non renseigne"
   );
+}
+
+function readPrizeCode(prize: FirestorePrizeDocument) {
+  return readOptionalText(
+    prize.claim_code,
+    prize.claimCode,
+    prize.code,
+    prize.unique_code,
+  ) ?? "";
 }
 
 function readPrizeTypeLabel(prize: FirestorePrizeDocument) {
@@ -1658,6 +1672,7 @@ export async function getWinnersList(): Promise<AdminWinnerListItem[]> {
       merchantId,
       merchantName: readDisplayText(game?.enseigne_name ?? merchant?.name, "Enseigne inconnue"),
       prizeLabel: readPrizeLabel(prize),
+      prizeCode: readPrizeCode(prize),
       prizeTypeLabel: readPrizeTypeLabel(prize),
       prizeValueLabel: readPrizeValueLabel(prize, game),
       wonAtLabel: wonAt ? formatDateTime(wonAt.toDate()) : "Date non renseignee",
