@@ -151,11 +151,11 @@ export async function GET(
       );
     }
 
-    const [gamesSnapshot, prizesSnapshot, qualifiedProgressSnapshot, winnerSnapshot] =
+    const [gamesSnapshot, prizesSnapshot, animationProgressSnapshot, winnerSnapshot] =
       await Promise.all([
         adminDb.collection("games").where("animation_id", "==", animationId).get(),
         adminDb.collection("prizes").where("animation_id", "==", animationId).get(),
-        adminDb.collectionGroup("animations").where("qualified", "==", true).get(),
+        adminDb.collectionGroup("animations").get(),
         adminDb.doc(`animations/${animationId}/winner/current`).get(),
       ]);
 
@@ -174,9 +174,15 @@ export async function GET(
 
     const gameById = new Map(games.map((game) => [game.id, game]));
 
-    const qualifiedProgress = qualifiedProgressSnapshot.docs.filter((snapshot) => {
+    const qualifiedProgress = animationProgressSnapshot.docs.filter((snapshot) => {
       const uid = snapshot.ref.parent.parent?.id;
-      return snapshot.id === animationId && typeof uid === "string";
+      const progressData = (snapshot.data() as FirestoreProgressDocument | undefined) ?? {};
+
+      return (
+        snapshot.id === animationId &&
+        progressData.qualified === true &&
+        typeof uid === "string"
+      );
     });
 
     const qualifiedUserIds = qualifiedProgress
