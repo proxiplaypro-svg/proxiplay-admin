@@ -472,6 +472,25 @@ function toErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function buildGameDeepLinkUrl(game: {
+  id: string;
+  campaignId: string | null;
+  merchantId: string | null;
+}) {
+  const params = new URLSearchParams();
+
+  if (game.campaignId) {
+    params.set("animationId", game.campaignId);
+  }
+
+  if (game.merchantId) {
+    params.set("merchantId", game.merchantId);
+  }
+
+  const queryString = params.toString();
+  return `https://proxiplay.fr/j/${game.id}${queryString ? `?${queryString}` : ""}`;
+}
+
 async function uploadCampaignImage(
   campaignId: string,
   file: File,
@@ -786,7 +805,7 @@ export default function AdminCampaignsPage() {
         const entries = await Promise.all(
           linkedCampaignGames.map(async (game) => [
             game.id,
-            await QRCode.toDataURL(`https://proxiplay.fr/j/${game.id}`, {
+            await QRCode.toDataURL(buildGameDeepLinkUrl(game), {
               width: 200,
               margin: 1,
             }),
@@ -910,7 +929,7 @@ export default function AdminCampaignsPage() {
       pdf.addImage(qrCodeUrls[game.id], "PNG", qrX, 150, qrSize, qrSize);
 
       pdf.setFontSize(11);
-      pdf.text(`proxiplay.fr/j/${game.id}`, pageWidth / 2, 382, { align: "center" });
+      pdf.text(buildGameDeepLinkUrl(game), pageWidth / 2, 382, { align: "center" });
     });
 
     pdf.save(`proxiplay-${sanitizeFileName(selectedCampaign.name)}-qr-codes.pdf`);
