@@ -481,10 +481,12 @@ function buildGameDeepLinkUrl(game: {
 
   if (game.campaignId) {
     params.set("animationId", game.campaignId);
+    params.set("animation_id", game.campaignId);
   }
 
   if (game.merchantId) {
     params.set("merchantId", game.merchantId);
+    params.set("merchant_id", game.merchantId);
   }
 
   const queryString = params.toString();

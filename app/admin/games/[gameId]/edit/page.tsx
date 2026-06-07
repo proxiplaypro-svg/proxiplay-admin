@@ -406,6 +406,7 @@ export default function EditGamePage({ params }: GameEditPageProps) {
     try {
       const gameRef = doc(db, "games", game.id);
       const prizeValue = form.mainPrizeValue.trim() ? Number(form.mainPrizeValue) : null;
+      const hasMainPrize = prizeValue !== null && Number.isFinite(prizeValue) && prizeValue > 0;
 
       await updateDoc(gameRef, {
         name: form.name.trim(),
@@ -413,9 +414,8 @@ export default function EditGamePage({ params }: GameEditPageProps) {
         start_date: form.startDate ? Timestamp.fromDate(new Date(form.startDate)) : deleteField(),
         end_date: form.endDate ? Timestamp.fromDate(new Date(form.endDate)) : deleteField(),
         visible_public: form.status !== "brouillon",
-        prize_value:
-          prizeValue !== null && Number.isFinite(prizeValue) ? prizeValue : deleteField(),
-        hasMainPrize: prizeValue !== null && Number.isFinite(prizeValue) && prizeValue > 0,
+        prize_value: hasMainPrize ? prizeValue : deleteField(),
+        hasMainPrize,
         photo: form.scratchImage.trim(),
       });
 

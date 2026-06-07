@@ -105,10 +105,12 @@ function buildWebGameUrl(
 
   if (options?.animationId) {
     params.set("animationId", options.animationId);
+    params.set("animation_id", options.animationId);
   }
 
   if (options?.merchantId) {
     params.set("merchantId", options.merchantId);
+    params.set("merchant_id", options.merchantId);
   }
 
   const queryString = params.toString();
@@ -186,23 +188,31 @@ export default async function JoinGamePage({
   searchParams,
 }: {
   params: Promise<{ gameId: string }>;
-  searchParams: Promise<{ animationId?: string; merchantId?: string }>;
+  searchParams: Promise<{
+    animationId?: string;
+    merchantId?: string;
+    animation_id?: string;
+    merchant_id?: string;
+  }>;
 }) {
   const { gameId } = await params;
-  const { animationId, merchantId } = await searchParams;
+  const { animationId, merchantId, animation_id, merchant_id } = await searchParams;
   const game = await getPublicGame(gameId);
 
   if (!game) {
     notFound();
   }
 
+  const resolvedAnimationId = animationId?.trim() || animation_id?.trim() || null;
+  const resolvedMerchantId = merchantId?.trim() || merchant_id?.trim() || null;
+
   const webUrl = buildWebGameUrl(game.id, {
-    animationId: animationId?.trim() || null,
-    merchantId: merchantId?.trim() || null,
+    animationId: resolvedAnimationId,
+    merchantId: resolvedMerchantId,
   });
   const androidIntentUrl = buildAndroidIntentUrl(game.id, {
-    animationId: animationId?.trim() || null,
-    merchantId: merchantId?.trim() || null,
+    animationId: resolvedAnimationId,
+    merchantId: resolvedMerchantId,
   });
   const dateRangeLabel = buildDateRange(game.startDateValue, game.endDateValue);
 

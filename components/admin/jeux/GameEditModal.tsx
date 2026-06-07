@@ -4,13 +4,20 @@ import { FirebaseError } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { firebaseApp } from "@/lib/firebase/client-app";
-import type { Game, GameMerchantOption, GameSecondaryPrize, GameStatus } from "@/types/dashboard";
+import type {
+  AnimationOption,
+  Game,
+  GameMerchantOption,
+  GameSecondaryPrize,
+  GameStatus,
+} from "@/types/dashboard";
 
 type SavePayload = {
   title: string;
   description: string;
   merchantId: string | null;
   merchantName: string;
+  animationId: string | null;
   startDate: string | null;
   endDate: string | null;
   status: GameStatus;
@@ -29,6 +36,7 @@ type SavePayload = {
 type GameEditModalProps = {
   game: Game | null;
   merchants: GameMerchantOption[];
+  animations: AnimationOption[];
   open: boolean;
   saving: boolean;
   submitLabel?: string;
@@ -43,6 +51,7 @@ type GeneralFormState = {
   title: string;
   description: string;
   merchantId: string;
+  animationId: string;
   startDate: string;
   endDate: string;
   status: GameStatus;
@@ -130,6 +139,7 @@ function buildInitialGeneralForm(game: Game | null): GeneralFormState {
     title: game?.title ?? "",
     description: game?.description ?? "",
     merchantId: game?.merchantId ?? "",
+    animationId: game?.animationId ?? "",
     startDate: toInputDate(game?.startDate ?? null),
     endDate: toInputDate(game?.endDate ?? null),
     status: game?.status ?? "brouillon",
@@ -277,6 +287,7 @@ function ImageInputCard({ label, previewUrl, emptyLabel, emptyHint, onFileSelect
 export function GameEditModal({
   game,
   merchants,
+  animations,
   open,
   saving,
   submitLabel = "Enregistrer",
@@ -320,6 +331,7 @@ export function GameEditModal({
 
   const merchantName = merchants.find((merchant) => merchant.id === generalForm.merchantId)?.name ?? "Marchand inconnu";
   const hasMissingImage = !generalForm.imageUrl && !generalForm.imageFile;
+  const isAnimationGame = generalForm.animationId.trim().length > 0;
 
   const updateGeneralForm = <T extends keyof GeneralFormState>(key: T, value: GeneralFormState[T]) => {
     setGeneralForm((current) => ({ ...current, [key]: value }));
@@ -433,6 +445,20 @@ export function GameEditModal({
       }
     }
 
+    if (isAnimationGame) {
+      if (!generalForm.imageUrl && !generalForm.imageFile) {
+        setValidationError("Une image est obligatoire pour un jeu d'animation.");
+        return;
+      }
+      const hasValidSecondaryPrize = secondaryPrizes.some(
+        (prize) => prize.name.trim().length > 0
+      );
+      if (!hasValidSecondaryPrize) {
+        setValidationError("Au moins un lot secondaire est obligatoire pour un jeu d'animation.");
+        return;
+      }
+    }
+
     setValidationError(null);
 
     const filteredSecondaryPrizes = secondaryPrizes.filter((prize) => !isSecondaryPrizeEmpty(prize));
@@ -442,6 +468,7 @@ export function GameEditModal({
       description: generalForm.description.trim(),
       merchantId: generalForm.merchantId || null,
       merchantName,
+      animationId: generalForm.animationId || null,
       startDate: normalizeDate(generalForm.startDate),
       endDate: normalizeDate(generalForm.endDate),
       status: generalForm.status,
@@ -554,6 +581,20 @@ export function GameEditModal({
                   </label>
                 </div>
 
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Animation associee</span>
+                  <select
+                    className={inputClassName}
+                    value={generalForm.animationId}
+                    onChange={(event) => updateGeneralForm("animationId", event.target.value)}
+                  >
+                    <option value="">Aucune</option>
+                    {animations.map((animation) => (
+                      <option key={animation.id} value={animation.id}>{animation.name}</option>
+                    ))}
+                  </select>
+                </label>
+
                 <ImageInputCard
                   label="Image du jeu"
                   previewUrl={coverPreviewUrl}
@@ -562,6 +603,11 @@ export function GameEditModal({
                   onFileSelect={(file) => applyFile(file, (nextFile) => updateGeneralForm("imageFile", nextFile))}
                   disabled={saving}
                 />
+                {isAnimationGame && !coverPreviewUrl ? (
+                  <p className="text-[12px] text-[#A32D2D]">
+                    Obligatoire pour un jeu d'animation
+                  </p>
+                ) : null}
 
                 {/* Toggle : Interdire aux mineurs */}
                 <label className="flex items-center justify-between gap-3 rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-3">
@@ -634,8 +680,16 @@ export function GameEditModal({
 
               <div className="flex flex-col gap-3">
                 {secondaryPrizes.length === 0 ? (
-                  <div className="rounded-[8px] border border-dashed border-[#E8E8E4] bg-[#F7F7F5] px-4 py-5 text-[12px] text-[#666666]">
-                    Aucun lot secondaire pour le moment. Utilise le bouton ci-dessus pour en ajouter.
+                  <div
+                    className={`rounded-[8px] border border-dashed px-4 py-5 text-[12px] ${
+                      isAnimationGame
+                        ? "border-[#F09595] bg-[#FCEBEB] text-[#A32D2D]"
+                        : "border-[#E8E8E4] bg-[#F7F7F5] text-[#666666]"
+                    }`}
+                  >
+                    {isAnimationGame
+                      ? "Obligatoire pour un jeu d'animation — ajoute au moins un lot."
+                      : "Aucun lot secondaire pour le moment. Utilise le bouton ci-dessus pour en ajouter."}
                   </div>
                 ) : null}
 

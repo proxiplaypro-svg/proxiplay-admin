@@ -5,6 +5,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   addDoc,
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -35,6 +36,8 @@ type FirestoreGameDocument = {
   name?: string;
   description?: string;
   conditions?: string;
+  animation_id?: string | null;
+  campaign_id?: string | null;
   merchantId?: string;
   merchant_id?: string;
   enseigne_name?: string;
@@ -102,6 +105,7 @@ export type UpdateGameInput = {
   description: string;
   merchantId: string | null;
   merchantName: string;
+  animationId: string | null;
   startDate: string | null;
   endDate: string | null;
   status: GameStatus;
@@ -404,6 +408,7 @@ function mapGameDocument(
     description,
     merchantId,
     merchantName,
+    animationId: readNullableText(game.animation_id, game.campaign_id),
     startDate: toDateString(startTimestamp),
     endDate: toDateString(endTimestamp),
     startDateValue: startTimestamp?.toMillis() ?? null,
@@ -510,6 +515,10 @@ function buildGamePatch(
     }))
     .filter((prize) => prize.name || prize.description || prize.count > 0 || prize.image);
 
+  if (hasMainPrize && mainPrizeValue === null) {
+    throw new Error("La valeur du lot principal doit etre un nombre valide.");
+  }
+
   return {
     title: input.title.trim(),
     name: input.title.trim(),
@@ -522,6 +531,9 @@ function buildGamePatch(
     enseigne_name: input.merchantName.trim(),
     enseigne_id: merchantRef,
     merchantRef,
+    ...(input.animationId
+      ? { animation_id: input.animationId }
+      : { animation_id: deleteField() }),
     startDate: startDate ?? null,
     start_date: startDate ?? null,
     endDate: endDate ?? null,
@@ -534,7 +546,9 @@ function buildGamePatch(
     hasMainPrize,
     main_prize_title: hasMainPrize ? input.mainPrizeTitle.trim() : "",
     main_prize_description: hasMainPrize ? input.mainPrizeDescription.trim() : "",
-    prize_value: hasMainPrize ? mainPrizeValue : null,
+    ...(hasMainPrize
+      ? { prize_value: mainPrizeValue }
+      : { prize_value: deleteField() }),
     main_prize_image: hasMainPrize ? input.mainPrizeImage?.trim() || "" : "",
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
@@ -711,6 +725,14 @@ export async function duplicateGameDocument(
     );
   }
 
+  const duplicatedPrizeValue = original.hasMainPrize
+    ? normalizePrizeValue(original.mainPrizeValue)
+    : null;
+
+  if (original.hasMainPrize && duplicatedPrizeValue === null) {
+    throw new Error("Le jeu source a un lot principal sans prize_value numerique valide.");
+  }
+
   const payload = {
     // Pas de préfixe [Copie] — titre identique à l'original
     title: original.title,
@@ -738,7 +760,7 @@ export async function duplicateGameDocument(
     hasMainPrize: original.hasMainPrize,
     main_prize_title: original.mainPrizeTitle,
     main_prize_description: original.mainPrizeDescription,
-    prize_value: normalizePrizeValue(original.mainPrizeValue),
+    ...(original.hasMainPrize ? { prize_value: duplicatedPrizeValue } : {}),
     main_prize_image: original.mainPrizeImage ?? "",
     secondary_prizes: original.secondaryPrizes.map((prize) => ({
       name: prize.name,
@@ -760,6 +782,7 @@ export async function duplicateGameDocument(
       description: payload.description,
       merchantId: original.merchantId,
       merchantName: original.merchantName,
+      animationId: original.animationId,
       startDate: now.toISOString(),
       endDate: endDate.toISOString(),
       startDateValue: now.getTime(),

@@ -13,6 +13,7 @@ import {
   query,
   startAfter,
   Timestamp,
+  where,
   type DocumentData,
   type DocumentReference,
   type QueryDocumentSnapshot,
@@ -32,7 +33,12 @@ import {
   updateGame,
   updateGameStatus,
 } from "@/lib/firebase/gamesQueries";
-import type { Game, GameMerchantOption, GameSecondaryPrize } from "@/types/dashboard";
+import type {
+  AnimationOption,
+  Game,
+  GameMerchantOption,
+  GameSecondaryPrize,
+} from "@/types/dashboard";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -42,6 +48,8 @@ type FirestoreGameDocument = {
   name?: string;
   description?: string;
   conditions?: string;
+  animation_id?: string | null;
+  campaign_id?: string | null;
   merchantId?: string;
   merchant_id?: string;
   enseigne_name?: string;
@@ -80,6 +88,11 @@ type FirestoreMerchantDocument = {
   name?: string;
   title?: string;
   merchantName?: string;
+};
+
+type FirestoreAnimationDocument = {
+  name?: string;
+  status?: string;
 };
 
 function readText(...values: Array<string | null | undefined>) {
@@ -254,6 +267,17 @@ function mapMerchantOption(
   };
 }
 
+function mapAnimationOption(
+  snapshot: QueryDocumentSnapshot<DocumentData>,
+): AnimationOption {
+  const animation = snapshot.data() as FirestoreAnimationDocument;
+
+  return {
+    id: snapshot.id,
+    name: readText(animation.name, "Animation sans nom"),
+  };
+}
+
 async function tryReadMerchantCollection(collectionName: MerchantCollectionName) {
   const snapshot = await getDocs(query(collection(db, collectionName), limit(100)));
 
@@ -314,6 +338,7 @@ function mapGameDocument(
     description,
     merchantId,
     merchantName,
+    animationId: readNullableText(game.animation_id, game.campaign_id),
     startDate: startTimestamp ? startTimestamp.toDate().toISOString() : null,
     endDate: endTimestamp ? endTimestamp.toDate().toISOString() : null,
     startDateValue: startTimestamp?.toMillis() ?? null,
@@ -409,6 +434,7 @@ function AdminGamesPageInner() {
   const searchParams = useSearchParams();
   const [games, setGames] = useState<Game[]>([]);
   const [merchants, setMerchants] = useState<GameMerchantOption[]>([]);
+  const [animations, setAnimations] = useState<AnimationOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -456,8 +482,16 @@ function AdminGamesPageInner() {
         const [
           { gameCollection, finalSnapshot },
           { merchantCollectionName: resolvedMerchantCollectionName, merchantOptions },
-        ] = await Promise.all([fetchGames(), loadMerchantOptions()]);
+          activeAnimationsSnapshot,
+        ] = await Promise.all([
+          fetchGames(),
+          loadMerchantOptions(),
+          getDocs(query(collection(db, "animations"), where("status", "==", "active"))),
+        ]);
         const merchantsById = new Map(merchantOptions.map((merchant) => [merchant.id, merchant]));
+        const activeAnimations = activeAnimationsSnapshot.docs
+          .map((snapshot) => mapAnimationOption(snapshot))
+          .sort((left, right) => left.name.localeCompare(right.name, "fr"));
         const gameItems = (await buildGamesWithRealParticipantCounts(
           finalSnapshot.docs,
           gameCollection,
@@ -474,6 +508,7 @@ function AdminGamesPageInner() {
         setHasMore(finalSnapshot.docs.length === 30);
         setGames(gameItems);
         setMerchants(merchantOptions);
+        setAnimations(activeAnimations);
         setMerchantCollectionName(resolvedMerchantCollectionName);
       } catch (loadError) {
         console.error(loadError);
@@ -613,6 +648,7 @@ function AdminGamesPageInner() {
     description: string;
     merchantId: string | null;
     merchantName: string;
+    animationId: string | null;
     startDate: string | null;
     endDate: string | null;
     status: Game["status"];
@@ -652,6 +688,7 @@ function AdminGamesPageInner() {
         description: payload.description,
         merchantId: payload.merchantId,
         merchantName: payload.merchantName,
+        animationId: payload.animationId,
         startDate: payload.startDate,
         endDate: payload.endDate,
         startDateValue: payload.startDate ? new Date(payload.startDate).getTime() : null,
@@ -846,6 +883,7 @@ function AdminGamesPageInner() {
       <GameEditModal
         game={selectedGame}
         merchants={merchants}
+        animations={animations}
         open={selectedGame !== null}
         saving={modalSaving}
         submitLabel={modalMode === "duplicate" ? "Relancer le jeu" : "Enregistrer"}

@@ -120,6 +120,7 @@ export interface Game {
   description: string;
   merchantId: string | null;
   merchantName: string;
+  animationId: string | null;
   startDate: string | null;
   endDate: string | null;
   startDateValue: number | null;
@@ -143,6 +144,11 @@ export interface GameMerchantOption {
   id: string;
   name: string;
   collectionName: "enseignes" | "merchants";
+}
+
+export interface AnimationOption {
+  id: string;
+  name: string;
 }
 
 export type MerchantPilotageStatus = "actif" | "a_relancer" | "inactif";
