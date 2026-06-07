@@ -76,6 +76,7 @@ type CampaignMerchantRow = {
   merchantName: string;
   merchantCity: string;
   secondaryPrize: string;
+  secondaryPrizeDescription: string;
   prizeCount: string;
   gameEndDate: string;
   gameImageUrl: string;
@@ -455,6 +456,23 @@ function buildPlayerLabel(data: FirestoreUserDocument, fallbackEmail: string) {
   return fallbackEmail || "Joueur inconnu";
 }
 
+function getPlayerFirstName(label: string, email: string) {
+  const normalizedLabel = label.trim();
+  if (normalizedLabel) {
+    const [firstName] = normalizedLabel.split(/\s+/);
+    if (firstName) {
+      return firstName;
+    }
+  }
+
+  const fallbackEmail = email.trim();
+  if (fallbackEmail) {
+    return fallbackEmail.split("@")[0] || fallbackEmail;
+  }
+
+  return "Joueur";
+}
+
 function normalizeStatusValue(value: string) {
   return value
     .trim()
@@ -575,8 +593,6 @@ export default function AdminCampaignsPage() {
     prizes: [],
     prizesError: null,
   });
-  const [drawLoading, setDrawLoading] = useState(false);
-  const [drawFeedback, setDrawFeedback] = useState<string | null>(null);
   const [prizeStatusFilter, setPrizeStatusFilter] =
     useState<CampaignPrizeStatusFilter>("tous");
   const [prizeActionLoadingIds, setPrizeActionLoadingIds] = useState<Set<string>>(
@@ -782,7 +798,6 @@ export default function AdminCampaignsPage() {
       setFormState(buildFormState(selectedCampaign));
       setFormFeedback(null);
       setFormFeedbackTone(null);
-      setDrawFeedback(null);
       return;
     }
 
@@ -1089,7 +1104,6 @@ export default function AdminCampaignsPage() {
     setFormState(buildInitialFormState());
     setFormFeedback(null);
     setFormFeedbackTone(null);
-    setDrawFeedback(null);
   };
 
   const handleEditCampaign = (campaignId: string) => {
@@ -1120,6 +1134,7 @@ export default function AdminCampaignsPage() {
         merchantName: merchant.name,
         merchantCity: merchant.city,
         secondaryPrize: "",
+        secondaryPrizeDescription: "",
         prizeCount: "1",
         gameEndDate: formState.endDate,
         gameImageUrl: "",
@@ -1131,7 +1146,7 @@ export default function AdminCampaignsPage() {
 
   const updateParticipantMerchant = (
     merchantId: string,
-    field: "secondaryPrize" | "prizeCount" | "gameEndDate",
+    field: "secondaryPrize" | "secondaryPrizeDescription" | "prizeCount" | "gameEndDate",
     value: string,
   ) => {
     setParticipantMerchants((current) =>
@@ -1295,6 +1310,7 @@ export default function AdminCampaignsPage() {
             enseigne_name: merchant.merchantName,
             merchant_id: merchant.merchantId,
             prize_description: merchant.secondaryPrize.trim(),
+            prize_presentation: merchant.secondaryPrizeDescription.trim(),
             prize_count: prizeCount,
             ...(photoUrl ? { photo: photoUrl } : {}),
             end_date: gameEndDate,
@@ -1304,6 +1320,50 @@ export default function AdminCampaignsPage() {
 
           if (existingGame) {
             await updateDoc(gameRef, gamePayload);
+
+            try {
+              const instantWinnersRef = collection(gameRef, "instant_winners");
+              const existingInstantWinnersSnapshot = await getDocs(
+                query(instantWinnersRef, where("hasWinner", "==", false)),
+              );
+              const existingCount = existingInstantWinnersSnapshot.size;
+
+              if (existingCount < prizeCount) {
+                const missingCount = prizeCount - existingCount;
+                const nowMs = Date.now();
+                const endMs = gameEndDate.toMillis();
+                const safeEndMs = Math.max(nowMs, endMs);
+                const intervalMs =
+                  prizeCount > 0 ? (safeEndMs - nowMs) / prizeCount : 0;
+                const batch = writeBatch(db);
+
+                for (let index = 0; index < missingCount; index += 1) {
+                  const position = existingCount + index;
+                  const winnerDateMs = Math.min(
+                    safeEndMs,
+                    Math.round(nowMs + position * intervalMs),
+                  );
+                  const instantWinnerRef = doc(instantWinnersRef);
+
+                  batch.set(instantWinnerRef, {
+                    hasWinner: false,
+                    date: Timestamp.fromMillis(winnerDateMs),
+                    secondary_prize_name: merchant.secondaryPrize.trim(),
+                    secondary_prize_presentation:
+                      merchant.secondaryPrizeDescription.trim(),
+                  });
+                }
+
+                await batch.commit();
+              }
+            } catch (error) {
+              console.error("Impossible de generer les instant_winners du jeu.", {
+                gameId: gameRef.id,
+                merchantId: merchant.merchantId,
+                error,
+              });
+            }
+
             return {
               ...existingGame,
               title: gamePayload.name,
@@ -1322,6 +1382,49 @@ export default function AdminCampaignsPage() {
             ...gamePayload,
             created_at: serverTimestamp(),
           });
+
+          try {
+            const instantWinnersRef = collection(gameRef, "instant_winners");
+            const existingInstantWinnersSnapshot = await getDocs(
+              query(instantWinnersRef, where("hasWinner", "==", false)),
+            );
+            const existingCount = existingInstantWinnersSnapshot.size;
+
+            if (existingCount < prizeCount) {
+              const missingCount = prizeCount - existingCount;
+              const nowMs = Date.now();
+              const endMs = gameEndDate.toMillis();
+              const safeEndMs = Math.max(nowMs, endMs);
+              const intervalMs =
+                prizeCount > 0 ? (safeEndMs - nowMs) / prizeCount : 0;
+              const batch = writeBatch(db);
+
+              for (let index = 0; index < missingCount; index += 1) {
+                const position = existingCount + index;
+                const winnerDateMs = Math.min(
+                  safeEndMs,
+                  Math.round(nowMs + position * intervalMs),
+                );
+                const instantWinnerRef = doc(instantWinnersRef);
+
+                batch.set(instantWinnerRef, {
+                  hasWinner: false,
+                  date: Timestamp.fromMillis(winnerDateMs),
+                  secondary_prize_name: merchant.secondaryPrize.trim(),
+                  secondary_prize_presentation:
+                    merchant.secondaryPrizeDescription.trim(),
+                });
+              }
+
+              await batch.commit();
+            }
+          } catch (error) {
+            console.error("Impossible de generer les instant_winners du jeu.", {
+              gameId: gameRef.id,
+              merchantId: merchant.merchantId,
+              error,
+            });
+          }
 
           return {
             id: gameRef.id,
@@ -1412,49 +1515,6 @@ export default function AdminCampaignsPage() {
       window.alert(toErrorMessage(error, "Impossible de supprimer cette animation."));
     } finally {
       setDeleteActionLoadingId(null);
-    }
-  };
-
-  const handleDraw = async () => {
-    if (!selectedCampaignId) {
-      return;
-    }
-
-    setDrawLoading(true);
-    setDrawFeedback(null);
-
-    try {
-      if (detailState.qualifiedPlayers.length === 0) {
-        throw new Error("Aucun joueur qualifie pour cette animation.");
-      }
-
-      const winner =
-        detailState.qualifiedPlayers[
-          Math.floor(Math.random() * detailState.qualifiedPlayers.length)
-        ];
-
-      await setDoc(doc(db, "animations", selectedCampaignId, "winner", "current"), {
-        uid: winner.uid,
-        label: winner.label,
-        email: winner.email,
-        selected_at: serverTimestamp(),
-      });
-
-      setDetailState((current) => ({
-        ...current,
-        winner: {
-          uid: winner.uid,
-          label: winner.label,
-          email: winner.email,
-          selectedAtLabel: "A l instant",
-        },
-      }));
-      setDrawFeedback(`Gagnant selectionne : ${winner.label}`);
-    } catch (error) {
-      console.error(error);
-      setDrawFeedback(toErrorMessage(error, "Impossible de lancer le tirage."));
-    } finally {
-      setDrawLoading(false);
     }
   };
 
@@ -1887,6 +1947,24 @@ export default function AdminCampaignsPage() {
 
                       <label className="grid gap-2">
                         <span className="text-[12px] font-medium text-[#666666]">
+                          Description du lot (facultatif)
+                        </span>
+                        <textarea
+                          className={`${inputClassName} min-h-[96px] resize-y`}
+                          value={merchant.secondaryPrizeDescription}
+                          onChange={(event) =>
+                            updateParticipantMerchant(
+                              merchant.merchantId,
+                              "secondaryPrizeDescription",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Precisions a afficher pour presenter le lot"
+                        />
+                      </label>
+
+                      <label className="grid gap-2">
+                        <span className="text-[12px] font-medium text-[#666666]">
                           Nombre de lots disponibles
                         </span>
                         <input
@@ -2081,21 +2159,7 @@ export default function AdminCampaignsPage() {
                       {detailState.qualifiedPlayers.length} joueur(s) qualifies pour le tirage.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    className={buttonPrimaryClassName}
-                    disabled={drawLoading || detailState.qualifiedPlayers.length === 0}
-                    onClick={() => void handleDraw()}
-                  >
-                    {drawLoading ? "Tirage..." : "Lancer le tirage"}
-                  </button>
                 </div>
-
-                {drawFeedback ? (
-                  <div className="mt-4 rounded-[10px] border border-[#C0DD97] bg-[#EAF3DE] px-4 py-3 text-[12px] text-[#3B6D11]">
-                    {drawFeedback}
-                  </div>
-                ) : null}
 
                 {detailState.winner ? (
                   <div className="mt-4 rounded-[10px] border border-[#E8E8E4] bg-[#FAFAF8] px-4 py-3">
@@ -2103,7 +2167,7 @@ export default function AdminCampaignsPage() {
                       Gagnant actuel
                     </p>
                     <p className="mt-2 text-[14px] font-medium text-[#1A1A1A]">
-                      {detailState.winner.label}
+                      {getPlayerFirstName(detailState.winner.label, detailState.winner.email)}
                     </p>
                     <p className="mt-1 text-[12px] text-[#666666]">
                       {detailState.winner.email}
