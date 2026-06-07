@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FirebaseError } from "firebase/app";
 import {
-  addDoc,
   collection,
   collectionGroup,
   doc,
@@ -79,6 +78,8 @@ type CampaignMerchantRow = {
   secondaryPrize: string;
   prizeCount: string;
   gameEndDate: string;
+  gameImageUrl: string;
+  gameImageFile: File | null;
 };
 
 type QualifiedPlayer = {
@@ -519,7 +520,30 @@ async function uploadCampaignImage(
   return payload.url;
 }
 
+async function uploadGameImage(merchantId: string, file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("path", `games/${merchantId}/cover.${extension}`);
+
+  const response = await fetch("/api/admin/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { url?: string; error?: string }
+    | null;
+
+  if (!response.ok || !payload?.url) {
+    throw new Error(payload?.error?.trim() || "Impossible d uploader l image du jeu.");
+  }
+
+  return payload.url;
+}
+
 export default function AdminCampaignsPage() {
+  const formSectionRef = useRef<HTMLElement | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
   const [campaignsError, setCampaignsError] = useState<string | null>(null);
@@ -562,6 +586,7 @@ export default function AdminCampaignsPage() {
   const [qrCodeUrls, setQrCodeUrls] = useState<Record<string, string>>({});
   const [qrCodesLoading, setQrCodesLoading] = useState(false);
   const [qrCodesError, setQrCodesError] = useState<string | null>(null);
+  const [merchantImagePreviewUrls, setMerchantImagePreviewUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const campaignsQuery = query(collection(db, "animations"), orderBy("start_date", "desc"));
@@ -765,6 +790,7 @@ export default function AdminCampaignsPage() {
       setFormState(buildInitialFormState());
       setParticipantMerchants([]);
       setMerchantSearch("");
+      setMerchantImagePreviewUrls({});
     }
   }, [selectedCampaign, selectedCampaignId]);
 
@@ -784,10 +810,22 @@ export default function AdminCampaignsPage() {
         secondaryPrize: game.secondaryPrize,
         prizeCount: String(game.prizeCount > 0 ? game.prizeCount : 1),
         gameEndDate: formatInputDate(game.endDate) || formState.endDate,
+        gameImageUrl: game.photo ?? "",
+        gameImageFile: null,
       })),
     );
     setMerchantSearch("");
   }, [formState.endDate, games, merchants, selectedCampaignId]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(merchantImagePreviewUrls).forEach((previewUrl) => {
+        if (previewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(previewUrl);
+        }
+      });
+    };
+  }, [merchantImagePreviewUrls]);
 
   useEffect(() => {
     if (!selectedCampaignId || linkedCampaignGames.length === 0) {
@@ -1042,10 +1080,26 @@ export default function AdminCampaignsPage() {
     setSelectedCampaignId(null);
     setParticipantMerchants([]);
     setMerchantSearch("");
+    Object.values(merchantImagePreviewUrls).forEach((previewUrl) => {
+      if (previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    });
+    setMerchantImagePreviewUrls({});
     setFormState(buildInitialFormState());
     setFormFeedback(null);
     setFormFeedbackTone(null);
     setDrawFeedback(null);
+  };
+
+  const handleEditCampaign = (campaignId: string) => {
+    setSelectedCampaignId(campaignId);
+    window.requestAnimationFrame(() => {
+      formSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
   };
 
   const handleFileChange = (
@@ -1068,6 +1122,8 @@ export default function AdminCampaignsPage() {
         secondaryPrize: "",
         prizeCount: "1",
         gameEndDate: formState.endDate,
+        gameImageUrl: "",
+        gameImageFile: null,
       },
     ]);
     setMerchantSearch("");
@@ -1085,10 +1141,55 @@ export default function AdminCampaignsPage() {
     );
   };
 
-  const removeParticipantMerchant = (merchantId: string) => {
+  const handleParticipantMerchantImageChange = (
+    merchantId: string,
+    file: File | null,
+  ) => {
     setParticipantMerchants((current) =>
-      current.filter((merchant) => merchant.merchantId !== merchantId),
+      current.map((merchant) => {
+        if (merchant.merchantId !== merchantId) {
+          return merchant;
+        }
+
+        setMerchantImagePreviewUrls((currentPreviews) => {
+          const previousPreviewUrl = currentPreviews[merchantId];
+          if (previousPreviewUrl?.startsWith("blob:")) {
+            URL.revokeObjectURL(previousPreviewUrl);
+          }
+
+          if (!file) {
+            const { [merchantId]: _removed, ...rest } = currentPreviews;
+            return rest;
+          }
+
+          return {
+            ...currentPreviews,
+            [merchantId]: URL.createObjectURL(file),
+          };
+        });
+
+        return {
+          ...merchant,
+          gameImageFile: file,
+        };
+      }),
     );
+  };
+
+  const removeParticipantMerchant = (merchantId: string) => {
+    setMerchantImagePreviewUrls((current) => {
+      const previewUrl = current[merchantId];
+      if (previewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+
+      const { [merchantId]: _removed, ...rest } = current;
+      return rest;
+    });
+
+    setParticipantMerchants((current) => {
+      return current.filter((merchant) => merchant.merchantId !== merchantId);
+    });
   };
 
   const handleSaveCampaign = async () => {
@@ -1118,6 +1219,14 @@ export default function AdminCampaignsPage() {
 
       if (merchantIds.length === 0) {
         throw new Error("Ajoute au moins un commerce participant avant de creer l animation.");
+      }
+
+      const merchantWithoutImage = participantMerchants.find(
+        (merchant) => !merchant.gameImageFile && !merchant.gameImageUrl.trim(),
+      );
+
+      if (merchantWithoutImage) {
+        throw new Error("L image du jeu est obligatoire pour chaque commerce participant.");
       }
 
       const basePayload = {
@@ -1170,6 +1279,13 @@ export default function AdminCampaignsPage() {
         participantMerchants.map(async (merchant) => {
           const prizeCount = Math.max(1, Number.parseInt(merchant.prizeCount || "1", 10) || 1);
           const gameEndDate = parseDateInput(merchant.gameEndDate) ?? endDate;
+          const existingGame = existingGamesByMerchantId.get(merchant.merchantId);
+          const gameRef = existingGame
+            ? doc(db, "games", existingGame.id)
+            : doc(collection(db, "games"));
+          const photoUrl = merchant.gameImageFile
+            ? await uploadGameImage(merchant.merchantId, merchant.gameImageFile)
+            : merchant.gameImageUrl.trim();
           const gamePayload = {
             name: `${merchant.merchantName} — ${trimmedName}`,
             type: "animation",
@@ -1180,14 +1296,14 @@ export default function AdminCampaignsPage() {
             merchant_id: merchant.merchantId,
             prize_description: merchant.secondaryPrize.trim(),
             prize_count: prizeCount,
+            ...(photoUrl ? { photo: photoUrl } : {}),
             end_date: gameEndDate,
             status: "active",
             updated_at: serverTimestamp(),
           };
 
-          const existingGame = existingGamesByMerchantId.get(merchant.merchantId);
           if (existingGame) {
-            await updateDoc(doc(db, "games", existingGame.id), gamePayload);
+            await updateDoc(gameRef, gamePayload);
             return {
               ...existingGame,
               title: gamePayload.name,
@@ -1196,25 +1312,26 @@ export default function AdminCampaignsPage() {
               merchantCity: merchant.merchantCity,
               campaignId,
               endDate: gameEndDate.toDate().toISOString(),
+              photo: photoUrl || null,
               secondaryPrize: merchant.secondaryPrize.trim(),
               prizeCount,
             } satisfies CampaignGameOption;
           }
 
-          const newGameRef = await addDoc(collection(db, "games"), {
+          await setDoc(gameRef, {
             ...gamePayload,
             created_at: serverTimestamp(),
           });
 
           return {
-            id: newGameRef.id,
+            id: gameRef.id,
             title: gamePayload.name,
             merchantId: merchant.merchantId,
             merchantName: merchant.merchantName,
             merchantCity: merchant.merchantCity,
             startDate: null,
             endDate: gameEndDate.toDate().toISOString(),
-            photo: null,
+            photo: photoUrl || null,
             campaignId,
             secondaryPrize: merchant.secondaryPrize.trim(),
             prizeCount,
@@ -1436,6 +1553,13 @@ export default function AdminCampaignsPage() {
                         </button>
                         <button
                           type="button"
+                          className={buttonSecondaryClassName}
+                          onClick={() => handleEditCampaign(campaign.id)}
+                        >
+                          Modifier
+                        </button>
+                        <button
+                          type="button"
                           className={buttonPrimaryClassName}
                           disabled={
                             statusActionLoadingId === campaign.id ||
@@ -1472,7 +1596,7 @@ export default function AdminCampaignsPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
-        <div className={cardClassName}>
+        <div ref={formSectionRef} className={cardClassName}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-[16px] font-medium text-[#1A1A1A]">
@@ -1797,6 +1921,39 @@ export default function AdminCampaignsPage() {
                           }
                         />
                       </label>
+                    </div>
+
+                    <div className="mt-4 rounded-[10px] border border-[#E8E8E4] bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[12px] font-medium text-[#666666]">
+                          Image du jeu
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(event) =>
+                            handleParticipantMerchantImageChange(
+                              merchant.merchantId,
+                              event.target.files?.[0] ?? null,
+                            )
+                          }
+                          className="block max-w-[180px] text-[11px] text-[#666666]"
+                        />
+                      </div>
+                      <div className="mt-3 overflow-hidden rounded-[10px] border border-[#E8E8E4] bg-[#FAFAF8]">
+                        {merchantImagePreviewUrls[merchant.merchantId] || merchant.gameImageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={merchantImagePreviewUrls[merchant.merchantId] || merchant.gameImageUrl}
+                            alt={`Jeu ${merchant.merchantName}`}
+                            className="h-[150px] w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-[150px] items-center justify-center text-[12px] text-[#A32D2D]">
+                            Image obligatoire pour ce jeu d animation
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
