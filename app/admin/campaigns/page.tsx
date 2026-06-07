@@ -543,7 +543,7 @@ async function uploadGameImage(merchantId: string, file: File) {
 }
 
 export default function AdminCampaignsPage() {
-  const formSectionRef = useRef<HTMLElement | null>(null);
+  const formSectionRef = useRef<HTMLDivElement | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
   const [campaignsError, setCampaignsError] = useState<string | null>(null);
