@@ -823,6 +823,7 @@ export default function AdminCampaignsPage() {
         merchantName: game.merchantName,
         merchantCity: merchantCityById.get(game.merchantId ?? "") ?? "",
         secondaryPrize: game.secondaryPrize,
+        secondaryPrizeDescription: "",
         prizeCount: String(game.prizeCount > 0 ? game.prizeCount : 1),
         gameEndDate: formatInputDate(game.endDate) || formState.endDate,
         gameImageUrl: game.photo ?? "",
