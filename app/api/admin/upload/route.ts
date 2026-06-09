@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+<<<<<<< HEAD
 import { getStorage } from "firebase-admin/storage";
 import { getAdminApp } from "@/lib/firebase/admin-app";
 
 export const runtime = "nodejs";
+=======
+import "@/lib/firebase/admin-app";
+import { getStorage } from "../../../../functions/node_modules/firebase-admin/lib/storage";
+>>>>>>> 5d9a10e (campaigns: fix schéma jeux animation + dates instant_winners)
 
 function buildStorageError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -47,7 +52,11 @@ export async function POST(request: Request) {
       return buildStorageError("La configuration Firebase Storage est incomplete.", 500);
     }
 
+<<<<<<< HEAD
     const bucket = getStorage(getAdminApp()).bucket(bucketName);
+=======
+    const bucket = getStorage().bucket(bucketName);
+>>>>>>> 5d9a10e (campaigns: fix schéma jeux animation + dates instant_winners)
     const bucketFile = bucket.file(storagePath);
     const downloadToken = randomUUID();
     const arrayBuffer = await file.arrayBuffer();

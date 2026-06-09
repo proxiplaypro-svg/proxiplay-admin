@@ -12,12 +12,22 @@ import {
   searchNotificationUsers,
 } from "@/lib/firebase/notificationsQueries";
 
-const SEGMENT_OPTIONS: Array<{ id: NotificationSegmentId; label: string; description: string }> = [
+const SEGMENT_OPTIONS: Array<{
+  id: NotificationSegmentId;
+  label: string;
+  description: string;
+  disabled?: boolean;
+}> = [
   { id: "ios_inactifs_j7", label: "iOS inactifs J7", description: "users iOS sans activite J7" },
   { id: "inactifs_j30", label: "Inactifs J30", description: "users sans activite 30j" },
   { id: "nouveaux_j7", label: "Nouveaux J7", description: "users crees cette semaine" },
   { id: "ambassadeurs", label: "Ambassadeurs", description: "users avec 5+ referrals" },
-  { id: "commercants", label: "Commercants", description: "tous les comptes commercants actifs" },
+  {
+    id: "commercants",
+    label: "Commercants",
+    description: "segment suspendu le temps de corriger le ciblage par jeu actif",
+    disabled: true,
+  },
 ];
 
 function formatCount(value: number) {
@@ -52,6 +62,10 @@ function initialsColor(platform: string) {
 
 function getAudienceEntityLabel(segmentId?: NotificationSegmentId) {
   return segmentId === "commercants" ? "commercants" : "joueurs";
+}
+
+function isSegmentDisabled(segmentId: NotificationSegmentId) {
+  return SEGMENT_OPTIONS.some((option) => option.id === segmentId && option.disabled);
 }
 
 export default function NewNotificationPage() {
@@ -176,6 +190,14 @@ export default function NewNotificationPage() {
 
     if (scheduleMode === "later" && !scheduledAt) {
       setFeedback({ tone: "error", text: "Choisis une date et une heure de programmation." });
+      return;
+    }
+
+    if (audienceMode === "segment" && isSegmentDisabled(segmentId)) {
+      setFeedback({
+        tone: "error",
+        text: "Le segment commercants est temporairement suspendu tant que le ciblage par jeu actif n est pas corrige.",
+      });
       return;
     }
 
@@ -326,7 +348,7 @@ export default function NewNotificationPage() {
                     className="min-h-[44px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1A1A1A] outline-none transition focus:border-[#C0DD97] focus:bg-white"
                   >
                     {SEGMENT_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>
+                      <option key={option.id} value={option.id} disabled={option.disabled}>
                         {option.label}
                       </option>
                     ))}
@@ -335,6 +357,11 @@ export default function NewNotificationPage() {
                 <div className="rounded-[10px] border border-[#F0F0EC] bg-[#FCFCFB] p-4 text-[13px] text-[#666666]">
                   <p className="font-medium text-[#1A1A1A]">{selectedSegment?.label}</p>
                   <p className="mt-1">{selectedSegment?.description}</p>
+                  {selectedSegment?.disabled ? (
+                    <p className="mt-2 text-[#A32D2D]">
+                      Envoi bloque jusqu a la correction du ciblage des commercants avec jeu actif.
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-[#999999]">
                     {loadingAudience
                       ? "Estimation en cours..."

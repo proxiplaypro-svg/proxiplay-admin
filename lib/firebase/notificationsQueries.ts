@@ -334,6 +334,12 @@ export async function createPushNotification(input: CreatePushNotificationInput)
     throw new Error("Titre et message sont obligatoires.");
   }
 
+  if (isMerchantSegment) {
+    throw new Error(
+      "Le segment commercants est temporairement suspendu tant que le ciblage par jeu actif n est pas corrige.",
+    );
+  }
+
   const notificationRef = await addDoc(collection(db, "ff_push_notifications"), {
     created_at: serverTimestamp(),
     created_by: doc(db, "users", user.uid),
@@ -345,16 +351,8 @@ export async function createPushNotification(input: CreatePushNotificationInput)
     parameter_data: input.parameterData.trim(),
     scheduled_time: input.scheduledAt ? Timestamp.fromDate(input.scheduledAt) : serverTimestamp(),
     status: input.scheduledAt ? "scheduled" : "pending",
-    target_audience: isMerchantSegment
-      ? "All"
-      : input.audienceMode === "segment"
-        ? input.segmentId
-        : "All",
-    target_user_group: isMerchantSegment
-      ? "Professionals"
-      : input.audienceMode === "segment"
-        ? input.segmentId
-        : "All",
+    target_audience: input.audienceMode === "segment" ? input.segmentId : "All",
+    target_user_group: input.audienceMode === "segment" ? input.segmentId : "All",
     user_refs: input.audienceMode === "single" ? input.userUid.trim() : "",
   });
 

@@ -1,10 +1,14 @@
+<<<<<<< HEAD
 import { readFileSync } from "node:fs";
+=======
+>>>>>>> 5d9a10e (campaigns: fix schéma jeux animation + dates instant_winners)
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
 let cachedAdminApp: App | null = null;
 
+<<<<<<< HEAD
 type AdminServiceAccount = {
   projectId: string;
   clientEmail: string;
@@ -20,6 +24,17 @@ function readDevelopmentServiceAccount(): AdminServiceAccount | null {
 
   if (!credentialsPath) {
     return null;
+=======
+function readAdminServiceAccount() {
+  const projectId = process.env.FIREBASE_PROJECT_ID?.trim() || "";
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim() || "";
+  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
+
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error(
+      "Firebase Admin env vars are incomplete. Expected FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.",
+    );
+>>>>>>> 5d9a10e (campaigns: fix schéma jeux animation + dates instant_winners)
   }
 
   const serviceAccount = JSON.parse(readFileSync(credentialsPath, "utf8")) as {
@@ -35,6 +50,7 @@ function readDevelopmentServiceAccount(): AdminServiceAccount | null {
   };
 }
 
+<<<<<<< HEAD
 function readProductionServiceAccount(): AdminServiceAccount {
   return {
     projectId: process.env.FIREBASE_PROJECT_ID || "proxi-play-odzp2e",
@@ -64,6 +80,8 @@ function readAdminServiceAccount() {
   return serviceAccount;
 }
 
+=======
+>>>>>>> 5d9a10e (campaigns: fix schéma jeux animation + dates instant_winners)
 export function getAdminApp(): App {
   if (cachedAdminApp) {
     return cachedAdminApp;
@@ -76,19 +94,27 @@ export function getAdminApp(): App {
     return existingApp;
   }
 
+<<<<<<< HEAD
   console.info("[FIREBASE_ADMIN_INIT_START]");
 
   const serviceAccount = readAdminServiceAccount();
 
+=======
+  const serviceAccount = readAdminServiceAccount();
+
+>>>>>>> 5d9a10e (campaigns: fix schéma jeux animation + dates instant_winners)
   cachedAdminApp = initializeApp({
     credential: cert(serviceAccount),
     projectId: serviceAccount.projectId,
   });
 
+<<<<<<< HEAD
   console.info("[FIREBASE_ADMIN_INIT_SUCCESS]", {
     projectId: serviceAccount.projectId,
   });
 
+=======
+>>>>>>> 5d9a10e (campaigns: fix schéma jeux animation + dates instant_winners)
   return cachedAdminApp;
 }
 

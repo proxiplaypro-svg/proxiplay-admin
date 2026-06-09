@@ -21,17 +21,9 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
+import { auth } from "@/lib/firebase/auth";
 import { db } from "@/lib/firebase/client-app";
-
-const QRCode = require("qrcode") as {
-  toDataURL: (
-    text: string,
-    options?: {
-      width?: number;
-      margin?: number;
-    },
-  ) => Promise<string>;
-};
 
 type CampaignStatus = "draft" | "active" | "ended";
 
@@ -512,6 +504,101 @@ function buildGameDeepLinkUrl(game: {
   return `https://proxiplay.fr/j/${game.id}${queryString ? `?${queryString}` : ""}`;
 }
 
+function buildAnimationGameStatus(status: CampaignStatus) {
+  switch (status) {
+    case "active":
+      return "actif";
+    case "ended":
+      return "expire";
+    default:
+      return "brouillon";
+  }
+}
+
+function buildAnimationSecondaryPrizes(
+  merchant: CampaignMerchantRow,
+  prizeCount: number,
+) {
+  const name = merchant.secondaryPrize.trim();
+  const description = merchant.secondaryPrizeDescription.trim();
+
+  if (!name && !description && prizeCount <= 0) {
+    return [];
+  }
+
+  return [
+    {
+      name: name || "Lot secondaire",
+      description,
+      count: prizeCount,
+    },
+  ];
+}
+
+async function ensureGameInstantWinners(params: {
+  gameRef: DocumentReference;
+  prizeCount: number;
+  gameStartDate: Timestamp;
+  gameEndDate: Timestamp;
+  secondaryPrizeName: string;
+  secondaryPrizeDescription: string;
+  merchantId: string;
+}) {
+  const {
+    gameRef,
+    prizeCount,
+    gameStartDate,
+    gameEndDate,
+    secondaryPrizeName,
+    secondaryPrizeDescription,
+    merchantId,
+  } = params;
+
+  const instantWinnersRef = collection(gameRef, "instant_winners");
+  const existingInstantWinnersSnapshot = await getDocs(
+    query(instantWinnersRef, where("hasWinner", "==", false)),
+  );
+  const existingCount = existingInstantWinnersSnapshot.size;
+
+  if (existingCount >= prizeCount) {
+    return;
+  }
+
+  const missingCount = prizeCount - existingCount;
+  const gameStartMs = gameStartDate.toMillis();
+  const gameEndMs = gameEndDate.toMillis();
+  const rangeMs = gameEndMs - gameStartMs;
+
+  if (rangeMs <= 0) {
+    return;
+  }
+
+  const batch = writeBatch(db);
+
+  for (let index = 0; index < missingCount; index += 1) {
+    const randomOffset = Math.random() * rangeMs;
+    const winnerDateMs = Math.round(gameStartMs + randomOffset);
+    const instantWinnerRef = doc(instantWinnersRef);
+
+    batch.set(instantWinnerRef, {
+      hasWinner: false,
+      date: Timestamp.fromMillis(winnerDateMs),
+      secondary_prize_name: secondaryPrizeName,
+      secondary_prize_presentation: secondaryPrizeDescription,
+    });
+  }
+
+  await batch.commit();
+
+  console.info("instant_winners generated for animation game", {
+    gameId: gameRef.id,
+    merchantId,
+    createdCount: missingCount,
+    totalCount: prizeCount,
+    startAt: new Date(gameStartMs).toISOString(),
+    endAt: new Date(gameEndMs).toISOString(),
+  });
+}
 async function uploadCampaignImage(
   campaignId: string,
   file: File,
@@ -1290,32 +1377,68 @@ export default function AdminCampaignsPage() {
           .filter((game) => game.campaignId === campaignId && game.merchantId)
           .map((game) => [game.merchantId as string, game]),
       );
+      const createdByValue = auth.currentUser
+        ? doc(db, "users", auth.currentUser.uid)
+        : "admin/web";
+      const gameStatus = buildAnimationGameStatus(formState.status);
+      const isPublicGame = formState.status === "active";
 
       const syncedGames = await Promise.all(
         participantMerchants.map(async (merchant) => {
           const prizeCount = Math.max(1, Number.parseInt(merchant.prizeCount || "1", 10) || 1);
+          const gameStartDate = startDate;
           const gameEndDate = parseDateInput(merchant.gameEndDate) ?? endDate;
           const existingGame = existingGamesByMerchantId.get(merchant.merchantId);
           const gameRef = existingGame
             ? doc(db, "games", existingGame.id)
             : doc(collection(db, "games"));
+          const merchantRef = doc(db, "enseignes", merchant.merchantId);
           const photoUrl = merchant.gameImageFile
             ? await uploadGameImage(merchant.merchantId, merchant.gameImageFile)
             : merchant.gameImageUrl.trim();
+          const secondaryPrizes = buildAnimationSecondaryPrizes(merchant, prizeCount);
+          const gameName = `${merchant.merchantName} — ${trimmedName}`;
           const gamePayload = {
-            name: `${merchant.merchantName} — ${trimmedName}`,
+            title: gameName,
+            name: gameName,
+            create_by: createdByValue,
+            description: formState.description.trim(),
+            conditions: formState.description.trim(),
             type: "animation",
+            game_type: "animation",
             access_mode: "qr_only",
             animation_id: campaignId,
-            enseigne_ref: doc(db, "enseignes", merchant.merchantId),
-            enseigne_name: merchant.merchantName,
+            campaign_id: campaignId,
+            merchantId: merchant.merchantId,
             merchant_id: merchant.merchantId,
+            merchantName: merchant.merchantName,
+            enseigne_name: merchant.merchantName,
+            enseigne_id: merchantRef,
+            merchantRef,
+            enseigne_ref: merchantRef,
+            startDate: gameStartDate,
+            start_date: gameStartDate,
+            endDate: gameEndDate,
+            end_date: gameEndDate,
+            visible_public: isPublicGame,
+            isPrivate: false,
+            private: false,
+            status: gameStatus,
             prize_description: merchant.secondaryPrize.trim(),
             prize_presentation: merchant.secondaryPrizeDescription.trim(),
             prize_count: prizeCount,
-            ...(photoUrl ? { photo: photoUrl } : {}),
-            end_date: gameEndDate,
-            status: "active",
+            secondary_prizes: secondaryPrizes,
+            hasMainPrize: false,
+            hasWinner: false,
+            prohibited_for_minors: false,
+            restrictedToAdults: false,
+            ...(photoUrl
+              ? {
+                  imageUrl: photoUrl,
+                  photo: photoUrl,
+                  coverUrl: photoUrl,
+                }
+              : {}),
             updated_at: serverTimestamp(),
           };
 
@@ -1323,40 +1446,15 @@ export default function AdminCampaignsPage() {
             await updateDoc(gameRef, gamePayload);
 
             try {
-              const instantWinnersRef = collection(gameRef, "instant_winners");
-              const existingInstantWinnersSnapshot = await getDocs(
-                query(instantWinnersRef, where("hasWinner", "==", false)),
-              );
-              const existingCount = existingInstantWinnersSnapshot.size;
-
-              if (existingCount < prizeCount) {
-                const missingCount = prizeCount - existingCount;
-                const nowMs = Date.now();
-                const endMs = gameEndDate.toMillis();
-                const safeEndMs = Math.max(nowMs, endMs);
-                const intervalMs =
-                  prizeCount > 0 ? (safeEndMs - nowMs) / prizeCount : 0;
-                const batch = writeBatch(db);
-
-                for (let index = 0; index < missingCount; index += 1) {
-                  const position = existingCount + index;
-                  const winnerDateMs = Math.min(
-                    safeEndMs,
-                    Math.round(nowMs + position * intervalMs),
-                  );
-                  const instantWinnerRef = doc(instantWinnersRef);
-
-                  batch.set(instantWinnerRef, {
-                    hasWinner: false,
-                    date: Timestamp.fromMillis(winnerDateMs),
-                    secondary_prize_name: merchant.secondaryPrize.trim(),
-                    secondary_prize_presentation:
-                      merchant.secondaryPrizeDescription.trim(),
-                  });
-                }
-
-                await batch.commit();
-              }
+              await ensureGameInstantWinners({
+                gameRef,
+                prizeCount,
+                gameStartDate,
+                gameEndDate,
+                secondaryPrizeName: merchant.secondaryPrize.trim(),
+                secondaryPrizeDescription: merchant.secondaryPrizeDescription.trim(),
+                merchantId: merchant.merchantId,
+              });
             } catch (error) {
               console.error("Impossible de generer les instant_winners du jeu.", {
                 gameId: gameRef.id,
@@ -1372,6 +1470,7 @@ export default function AdminCampaignsPage() {
               merchantName: merchant.merchantName,
               merchantCity: merchant.merchantCity,
               campaignId,
+              startDate: gameStartDate.toDate().toISOString(),
               endDate: gameEndDate.toDate().toISOString(),
               photo: photoUrl || null,
               secondaryPrize: merchant.secondaryPrize.trim(),
@@ -1385,40 +1484,15 @@ export default function AdminCampaignsPage() {
           });
 
           try {
-            const instantWinnersRef = collection(gameRef, "instant_winners");
-            const existingInstantWinnersSnapshot = await getDocs(
-              query(instantWinnersRef, where("hasWinner", "==", false)),
-            );
-            const existingCount = existingInstantWinnersSnapshot.size;
-
-            if (existingCount < prizeCount) {
-              const missingCount = prizeCount - existingCount;
-              const nowMs = Date.now();
-              const endMs = gameEndDate.toMillis();
-              const safeEndMs = Math.max(nowMs, endMs);
-              const intervalMs =
-                prizeCount > 0 ? (safeEndMs - nowMs) / prizeCount : 0;
-              const batch = writeBatch(db);
-
-              for (let index = 0; index < missingCount; index += 1) {
-                const position = existingCount + index;
-                const winnerDateMs = Math.min(
-                  safeEndMs,
-                  Math.round(nowMs + position * intervalMs),
-                );
-                const instantWinnerRef = doc(instantWinnersRef);
-
-                batch.set(instantWinnerRef, {
-                  hasWinner: false,
-                  date: Timestamp.fromMillis(winnerDateMs),
-                  secondary_prize_name: merchant.secondaryPrize.trim(),
-                  secondary_prize_presentation:
-                    merchant.secondaryPrizeDescription.trim(),
-                });
-              }
-
-              await batch.commit();
-            }
+            await ensureGameInstantWinners({
+              gameRef,
+              prizeCount,
+              gameStartDate,
+              gameEndDate,
+              secondaryPrizeName: merchant.secondaryPrize.trim(),
+              secondaryPrizeDescription: merchant.secondaryPrizeDescription.trim(),
+              merchantId: merchant.merchantId,
+            });
           } catch (error) {
             console.error("Impossible de generer les instant_winners du jeu.", {
               gameId: gameRef.id,
@@ -1433,7 +1507,7 @@ export default function AdminCampaignsPage() {
             merchantId: merchant.merchantId,
             merchantName: merchant.merchantName,
             merchantCity: merchant.merchantCity,
-            startDate: null,
+            startDate: gameStartDate.toDate().toISOString(),
             endDate: gameEndDate.toDate().toISOString(),
             photo: photoUrl || null,
             campaignId,

@@ -97,7 +97,7 @@ function buildSections(counts: {
               ? { count: counts.gamesToFix, tone: "red" }
               : undefined,
         },
-        { href: "/admin/campaigns", label: "Campagnes", icon: "◨" },
+        { href: "/admin/campaigns", label: "Animations", icon: "◨" },
         {
           href: "/admin/commercants",
           label: "Commercants",
