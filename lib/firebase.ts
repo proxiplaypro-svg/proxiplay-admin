@@ -13,7 +13,7 @@ const missingKeys = Object.entries(rawFirebaseConfig)
 
 if (missingKeys.length > 0 && typeof window !== "undefined") {
   throw new Error(
-    `Firebase configuration is incomplete. Missing: ${missingKeys.join(", ")}. Check proxiplay-admin/.env.local and restart the Next.js dev server.`,
+    `Firebase configuration is incomplete. Missing: ${missingKeys.join(", ")}. Check .env.local and restart the Next.js dev server.`,
   );
 }
 
