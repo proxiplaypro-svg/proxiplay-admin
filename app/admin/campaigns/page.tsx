@@ -534,7 +534,6 @@ function buildAnimationSecondaryPrizes(
     },
   ];
 }
-
 async function ensureGameInstantWinners(params: {
   gameRef: DocumentReference;
   prizeCount: number;
