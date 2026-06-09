@@ -554,6 +554,10 @@ async function ensureGameInstantWinners(params: {
     merchantId,
   } = params;
 
+  if (prizeCount <= 0) {
+    return;
+  }
+
   const instantWinnersRef = collection(gameRef, "instant_winners");
   const existingInstantWinnersSnapshot = await getDocs(
     query(instantWinnersRef, where("hasWinner", "==", false)),
@@ -1448,22 +1452,24 @@ export default function AdminCampaignsPage() {
           if (existingGame) {
             await updateDoc(gameRef, gamePayload);
 
-            try {
-              await ensureGameInstantWinners({
-                gameRef,
-                prizeCount,
-                gameStartDate,
-                gameEndDate,
-                secondaryPrizeName: merchant.secondaryPrize.trim(),
-                secondaryPrizeDescription: merchant.secondaryPrizeDescription.trim(),
-                merchantId: merchant.merchantId,
-              });
-            } catch (error) {
-              console.error("Impossible de generer les instant_winners du jeu.", {
-                gameId: gameRef.id,
-                merchantId: merchant.merchantId,
-                error,
-              });
+            if (prizeCount > 0) {
+              try {
+                await ensureGameInstantWinners({
+                  gameRef,
+                  prizeCount,
+                  gameStartDate,
+                  gameEndDate,
+                  secondaryPrizeName: merchant.secondaryPrize.trim(),
+                  secondaryPrizeDescription: merchant.secondaryPrizeDescription.trim(),
+                  merchantId: merchant.merchantId,
+                });
+              } catch (error) {
+                console.error("Impossible de generer les instant_winners du jeu.", {
+                  gameId: gameRef.id,
+                  merchantId: merchant.merchantId,
+                  error,
+                });
+              }
             }
 
             return {
@@ -1486,22 +1492,24 @@ export default function AdminCampaignsPage() {
             created_at: serverTimestamp(),
           });
 
-          try {
-            await ensureGameInstantWinners({
-              gameRef,
-              prizeCount,
-              gameStartDate,
-              gameEndDate,
-              secondaryPrizeName: merchant.secondaryPrize.trim(),
-              secondaryPrizeDescription: merchant.secondaryPrizeDescription.trim(),
-              merchantId: merchant.merchantId,
-            });
-          } catch (error) {
-            console.error("Impossible de generer les instant_winners du jeu.", {
-              gameId: gameRef.id,
-              merchantId: merchant.merchantId,
-              error,
-            });
+          if (prizeCount > 0) {
+            try {
+              await ensureGameInstantWinners({
+                gameRef,
+                prizeCount,
+                gameStartDate,
+                gameEndDate,
+                secondaryPrizeName: merchant.secondaryPrize.trim(),
+                secondaryPrizeDescription: merchant.secondaryPrizeDescription.trim(),
+                merchantId: merchant.merchantId,
+              });
+            } catch (error) {
+              console.error("Impossible de generer les instant_winners du jeu.", {
+                gameId: gameRef.id,
+                merchantId: merchant.merchantId,
+                error,
+              });
+            }
           }
 
           return {
