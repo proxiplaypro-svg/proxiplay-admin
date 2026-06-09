@@ -522,7 +522,7 @@ function buildAnimationSecondaryPrizes(
   const name = merchant.secondaryPrize.trim();
   const description = merchant.secondaryPrizeDescription.trim();
 
-  if (!name && !description && prizeCount <= 0) {
+  if (prizeCount <= 0) {
     return [];
   }
 
@@ -911,7 +911,7 @@ export default function AdminCampaignsPage() {
         merchantCity: merchantCityById.get(game.merchantId ?? "") ?? "",
         secondaryPrize: game.secondaryPrize,
         secondaryPrizeDescription: "",
-        prizeCount: String(game.prizeCount > 0 ? game.prizeCount : 1),
+        prizeCount: String(Math.max(0, game.prizeCount)),
         gameEndDate: formatInputDate(game.endDate) || formState.endDate,
         gameImageUrl: game.photo ?? "",
         gameImageFile: null,
@@ -1223,7 +1223,7 @@ export default function AdminCampaignsPage() {
         merchantCity: merchant.city,
         secondaryPrize: "",
         secondaryPrizeDescription: "",
-        prizeCount: "1",
+        prizeCount: "0",
         gameEndDate: formState.endDate,
         gameImageUrl: "",
         gameImageFile: null,
@@ -1385,7 +1385,10 @@ export default function AdminCampaignsPage() {
 
       const syncedGames = await Promise.all(
         participantMerchants.map(async (merchant) => {
-          const prizeCount = Math.max(1, Number.parseInt(merchant.prizeCount || "1", 10) || 1);
+          const parsedPrizeCount = Number.parseInt(merchant.prizeCount || "0", 10);
+          const prizeCount = Number.isNaN(parsedPrizeCount)
+            ? 0
+            : Math.max(0, parsedPrizeCount);
           const gameStartDate = startDate;
           const gameEndDate = parseDateInput(merchant.gameEndDate) ?? endDate;
           const existingGame = existingGamesByMerchantId.get(merchant.merchantId);
@@ -2044,7 +2047,7 @@ export default function AdminCampaignsPage() {
                         </span>
                         <input
                           type="number"
-                          min={1}
+                          min={0}
                           className={inputClassName}
                           value={merchant.prizeCount}
                           onChange={(event) =>
