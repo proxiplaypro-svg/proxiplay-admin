@@ -63,7 +63,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
   const printWindow = window.open("", "_blank");
 
   if (!printWindow) {
-    throw new Error("Impossible d’ouvrir la fenêtre d’impression.");
+    throw new Error("Impossible d'ouvrir la fenetre d'impression.");
   }
 
   printWindow.document.open();
@@ -71,7 +71,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <title>Préparation de l’affiche...</title>
+    <title>Pr&eacute;paration de l&rsquo;affiche...</title>
     <style>
       html, body {
         margin: 0;
@@ -107,8 +107,8 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
   </head>
   <body>
     <div class="loading-card">
-      <h1 class="loading-title">Préparation de l’affiche</h1>
-      <p class="loading-text">Le visuel premium est en cours de génération...</p>
+      <h1 class="loading-title">Pr&eacute;paration de l&rsquo;affiche</h1>
+      <p class="loading-text">Le visuel premium est en cours de g&eacute;n&eacute;ration...</p>
     </div>
   </body>
 </html>`);
@@ -128,7 +128,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     const qrCodeUrl = await QRCode.toDataURL(deepLink, qrCodeOptions);
 
     const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
-    const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commerçant");
+    const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commercant");
     const safeDescription = escapeHtml(game.description.trim());
     const safeDates = escapeHtml(`${game.startDateLabel} au ${game.endDateLabel}`);
     const safeMainPrize = escapeHtml(game.mainPrizeLabel?.trim() || "");
@@ -175,13 +175,13 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         width: 210mm;
         height: 297mm;
         --brand-navy: #29286A;
+        --brand-intro: #2B285F;
         --brand-frame: #A0134D;
         --brand-pink: #B2145A;
         --brand-orange: #F27B3D;
         --brand-green: #6EC12B;
         --brand-yellow: #FFF12B;
         --brand-blue: #90A6D8;
-        --paper: #fbf8f3;
         background:
           radial-gradient(circle at top left, rgba(160, 19, 77, 0.14), transparent 26%),
           radial-gradient(circle at bottom right, rgba(110, 193, 43, 0.14), transparent 30%),
@@ -253,7 +253,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         border-radius: 5mm;
         padding: 5.5mm 6mm;
         background:
-          linear-gradient(135deg, var(--brand-navy) 0%, #3f378f 34%, var(--brand-frame) 74%, var(--brand-orange) 100%);
+          linear-gradient(135deg, var(--brand-intro) 0%, var(--brand-navy) 58%, var(--brand-frame) 100%);
         color: #ffffff;
         display: grid;
         grid-template-columns: 1fr 44mm;
@@ -494,7 +494,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         <div class="intro-copy">
           <div class="eyebrow">Scannez, jouez, gagnez</div>
           <h1 class="intro-title">Tentez votre chance</h1>
-          <div class="intro-subtitle">Un jeu instantané à découvrir directement chez votre commerçant ProxiPlay.</div>
+          <div class="intro-subtitle">Un jeu instantan&eacute; &agrave; d&eacute;couvrir directement chez votre commer&ccedil;ant ProxiPlay.</div>
         </div>
         <aside class="scan-panel">
           <img src="${qrCodeUrl}" alt="QR code ${safeTitle}" />
@@ -509,13 +509,13 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
           ${descriptionBlock}
           <div class="section-copy">
             <div class="section-kicker">Comment jouer</div>
-            <p class="description">Scannez le QR code, ouvrez le jeu sur votre téléphone et jouez en quelques secondes pour tenter de remporter les lots proposés.</p>
+            <p class="description">Scannez le QR code, ouvrez le jeu sur votre t&eacute;l&eacute;phone et jouez en quelques secondes pour tenter de remporter les lots propos&eacute;s.</p>
           </div>
         </div>
       </section>
       <section class="meta-card">
-        <div class="meta-row"><span class="meta-label">Période</span><span class="meta-value">${safeDates}</span></div>
-        <div class="meta-row"><span class="meta-label">Commerçant</span><span class="meta-value">${safeMerchantName}</span></div>
+        <div class="meta-row"><span class="meta-label">P&eacute;riode</span><span class="meta-value">${safeDates}</span></div>
+        <div class="meta-row"><span class="meta-label">Commer&ccedil;ant</span><span class="meta-value">${safeMerchantName}</span></div>
         ${mainPrizeBlock}
         ${secondaryPrizeBlock}
       </section>
@@ -536,7 +536,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     const message =
       error instanceof Error && error.message.trim()
         ? escapeHtml(error.message)
-        : "Impossible de générer l’affiche.";
+        : "Impossible de generer l'affiche.";
 
     printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html>
