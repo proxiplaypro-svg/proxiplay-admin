@@ -17,18 +17,32 @@ export type PrintableGamePosterData = {
   secondaryPrizeSummary?: string | null;
 };
 
-const PROXIPLAY_LOGO_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ProxiPlay">
-  <rect width="64" height="64" rx="10" fill="#FFFFFF"/>
-  <path d="M22 20c-4.5 0-8-3-8-7s3.5-7 8-7c5.6 0 10 5.5 10 11v3h-3c-5.7 0-7-6.5-7-9.5 0-1.2.2-2.2.6-3.2-2.5.7-4.6 3-4.6 6 0 2.6 1.9 4.7 4 4.7z" fill="#FFFFFF" stroke="#29286A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M42 20c4.5 0 8-3 8-7s-3.5-7-8-7c-5.6 0-10 5.5-10 11v3h3c5.7 0 7-6.5 7-9.5 0-1.2.2-2.2.6-3.2 2.5.7 4.6 3 4.6 6 0 2.6-1.9 4.7-4 4.7z" fill="#FFFFFF" stroke="#29286A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="10" y="20" width="44" height="34" rx="8" fill="#FFFFFF" stroke="#29286A" stroke-width="4"/>
-  <rect x="18" y="28" width="28" height="18" rx="3" fill="#29286A"/>
-  <path d="M18 28h10v18H18z" fill="#B2145A"/>
-  <path d="M46 28H36v18h10z" fill="#F27B3D"/>
-  <path d="M18 46h18L27 37z" fill="#90A6D8"/>
-  <path d="M46 46H36l-9-9 9-9z" fill="#6EC12B"/>
-  <rect x="27.5" y="31.5" width="9" height="9" rx="1.5" transform="rotate(45 32 36)" fill="#FFF12B"/>
+const PROXIPLAY_WORDMARK_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 150" role="img" aria-label="ProxiPlay">
+  <g transform="translate(6 6)">
+    <rect width="138" height="138" rx="30" fill="#FFFFFF"/>
+    <path d="M47 40c-13.6 0-24.2-8.8-24.2-20.8S33.4-1.6 47-1.6c17 0 30.2 16.8 30.2 33.8v8.8h-8.8c-17.2 0-21.2-19.8-21.2-28.8 0-3.6.6-6.8 1.8-9.8-7.6 2.2-13.8 9.2-13.8 18.2 0 7.8 5.8 14.2 11.8 14.2z" fill="#FFFFFF" stroke="#29286A" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M91 40c13.6 0 24.2-8.8 24.2-20.8S104.6-1.6 91-1.6c-17 0-30.2 16.8-30.2 33.8v8.8h8.8c17.2 0 21.2-19.8 21.2-28.8 0-3.6-.6-6.8-1.8-9.8 7.6 2.2 13.8 9.2 13.8 18.2 0 7.8-5.8 14.2-11.8 14.2z" fill="#FFFFFF" stroke="#29286A" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="4" y="40" width="130" height="98" rx="22" fill="#FFFFFF" stroke="#29286A" stroke-width="11"/>
+    <rect x="28" y="64" width="82" height="50" rx="8" fill="#29286A"/>
+    <path d="M28 64h30v50H28z" fill="#B2145A"/>
+    <path d="M110 64H80v50h30z" fill="#F27B3D"/>
+    <path d="M28 114h54L55 87z" fill="#90A6D8"/>
+    <path d="M110 114H80L55 89l25-25z" fill="#6EC12B"/>
+    <rect x="55" y="75" width="25" height="25" rx="4" transform="rotate(45 67.5 87.5)" fill="#FFF12B"/>
+  </g>
+  <text
+    x="178"
+    y="106"
+    font-family="Arial Rounded MT Bold, Trebuchet MS, Verdana, sans-serif"
+    font-size="112"
+    font-weight="900"
+    fill="#FFFFFF"
+    stroke="#29286A"
+    stroke-width="18"
+    paint-order="stroke fill"
+    stroke-linejoin="round"
+  >ProxiPlay</text>
 </svg>
 `;
 
@@ -174,7 +188,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     <style>
       @page {
         size: A4 portrait;
-        margin: 12mm;
+        margin: 0;
       }
       * {
         box-sizing: border-box;
@@ -182,6 +196,8 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       html, body {
         margin: 0;
         padding: 0;
+        width: 210mm;
+        min-height: 297mm;
         --brand-navy: #29286A;
         --brand-pink: #B2145A;
         --brand-orange: #F27B3D;
@@ -198,12 +214,17 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         font-family: Georgia, "Times New Roman", serif;
       }
       body {
-        padding: 8mm 0;
+        position: relative;
+      }
+      .sheet {
+        width: 210mm;
+        min-height: 297mm;
+        padding: 12mm;
       }
       .poster {
-        width: 186mm;
+        width: 100%;
         min-height: 273mm;
-        margin: 0 auto;
+        margin: 0;
         display: grid;
         grid-template-rows: auto auto auto 1fr;
         gap: 6mm;
@@ -220,45 +241,14 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         align-items: center;
         padding: 8mm 10mm 0;
       }
-      .brand-lockup {
-        display: flex;
-        align-items: center;
-        gap: 4mm;
+      .brand-wordmark {
+        width: 94mm;
+        max-width: 100%;
       }
-      .brand-logo {
-        width: 24mm;
-        height: 24mm;
-        display: grid;
-        place-items: center;
-        border-radius: 5mm;
-        background: #ffffff;
-        border: 1px solid rgba(41, 40, 106, 0.12);
-        box-shadow: 0 10px 24px rgba(41, 40, 106, 0.08);
-      }
-      .brand-logo svg {
-        width: 17mm;
-        height: 17mm;
+      .brand-wordmark svg {
         display: block;
-      }
-      .brand-copy {
-        display: flex;
-        flex-direction: column;
-        gap: 1mm;
-      }
-      .brand-name {
-        font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 17pt;
-        font-weight: 800;
-        letter-spacing: -0.04em;
-        color: #1a1a1a;
-      }
-      .brand-tagline {
-        font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 8.5pt;
-        font-weight: 700;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: var(--brand-navy);
+        width: 100%;
+        height: auto;
       }
       .badge {
         display: inline-flex;
@@ -473,12 +463,20 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       @media print {
         body {
           background: #ffffff;
+          width: 210mm;
+          min-height: 297mm;
+        }
+        .sheet {
+          width: 210mm;
+          min-height: 297mm;
+          padding: 12mm;
         }
         .poster {
-          width: auto;
-          min-height: auto;
+          width: 100%;
+          min-height: 273mm;
           border: 0;
           border-radius: 0;
+          box-shadow: none;
         }
         .print-tools {
           display: none;
@@ -491,14 +489,11 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       <button class="download-button" onclick="window.print()">Imprimer</button>
       <button class="print-button" onclick="window.close()">Fermer</button>
     </div>
+    <div class="sheet">
     <main class="poster">
       <header class="header">
-        <div class="brand-lockup">
-          <div class="brand-logo" aria-hidden="true">${PROXIPLAY_LOGO_SVG}</div>
-          <div class="brand-copy">
-            <div class="brand-name">ProxiPlay</div>
-            <div class="brand-tagline">Animation en boutique</div>
-          </div>
+        <div class="brand-wordmark" aria-hidden="true">
+          ${PROXIPLAY_WORDMARK_SVG}
         </div>
         ${adultBadge}
       </header>
@@ -532,6 +527,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         ${secondaryPrizeBlock}
       </section>
     </main>
+    </div>
     <script>
       window.addEventListener("load", () => {
         document.title = "affiche-${safeFileName}";
