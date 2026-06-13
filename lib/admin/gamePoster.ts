@@ -17,34 +17,7 @@ export type PrintableGamePosterData = {
   secondaryPrizeSummary?: string | null;
 };
 
-const PROXIPLAY_WORDMARK_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 150" role="img" aria-label="ProxiPlay">
-  <g transform="translate(6 6)">
-    <rect width="138" height="138" rx="30" fill="#FFFFFF"/>
-    <path d="M47 40c-13.6 0-24.2-8.8-24.2-20.8S33.4-1.6 47-1.6c17 0 30.2 16.8 30.2 33.8v8.8h-8.8c-17.2 0-21.2-19.8-21.2-28.8 0-3.6.6-6.8 1.8-9.8-7.6 2.2-13.8 9.2-13.8 18.2 0 7.8 5.8 14.2 11.8 14.2z" fill="#FFFFFF" stroke="#29286A" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M91 40c13.6 0 24.2-8.8 24.2-20.8S104.6-1.6 91-1.6c-17 0-30.2 16.8-30.2 33.8v8.8h8.8c17.2 0 21.2-19.8 21.2-28.8 0-3.6-.6-6.8-1.8-9.8 7.6 2.2 13.8 9.2 13.8 18.2 0 7.8-5.8 14.2-11.8 14.2z" fill="#FFFFFF" stroke="#29286A" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="4" y="40" width="130" height="98" rx="22" fill="#FFFFFF" stroke="#29286A" stroke-width="11"/>
-    <rect x="28" y="64" width="82" height="50" rx="8" fill="#29286A"/>
-    <path d="M28 64h30v50H28z" fill="#B2145A"/>
-    <path d="M110 64H80v50h30z" fill="#F27B3D"/>
-    <path d="M28 114h54L55 87z" fill="#90A6D8"/>
-    <path d="M110 114H80L55 89l25-25z" fill="#6EC12B"/>
-    <rect x="55" y="75" width="25" height="25" rx="4" transform="rotate(45 67.5 87.5)" fill="#FFF12B"/>
-  </g>
-  <text
-    x="178"
-    y="106"
-    font-family="Arial Rounded MT Bold, Trebuchet MS, Verdana, sans-serif"
-    font-size="112"
-    font-weight="900"
-    fill="#FFFFFF"
-    stroke="#29286A"
-    stroke-width="18"
-    paint-order="stroke fill"
-    stroke-linejoin="round"
-  >ProxiPlay</text>
-</svg>
-`;
+const PROXIPLAY_WORDMARK_PATH = "/proxiplay-wordmark.png";
 
 function escapeHtml(value: string) {
   return value
@@ -162,6 +135,9 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     const safeSecondaryPrizes = escapeHtml(game.secondaryPrizeSummary?.trim() || "");
     const safeImageUrl = game.imageUrl ? escapeHtml(game.imageUrl) : null;
     const safeFileName = sanitizeFileName(`${game.merchantName}-${game.title}`) || game.id;
+    const safeWordmarkUrl = escapeHtml(
+      new URL(PROXIPLAY_WORDMARK_PATH, window.location.origin).toString(),
+    );
     const adultBadge = game.restrictedToAdults
       ? '<span class="badge badge-danger">18+</span>'
       : "";
@@ -242,10 +218,10 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         padding: 8mm 10mm 0;
       }
       .brand-wordmark {
-        width: 94mm;
+        width: 100mm;
         max-width: 100%;
       }
-      .brand-wordmark svg {
+      .brand-wordmark img {
         display: block;
         width: 100%;
         height: auto;
@@ -492,8 +468,8 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     <div class="sheet">
     <main class="poster">
       <header class="header">
-        <div class="brand-wordmark" aria-hidden="true">
-          ${PROXIPLAY_WORDMARK_SVG}
+        <div class="brand-wordmark">
+          <img src="${safeWordmarkUrl}" alt="ProxiPlay" />
         </div>
         ${adultBadge}
       </header>
