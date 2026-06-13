@@ -77,6 +77,7 @@ type FirestoreGameDocument = {
   main_prize_image?: string;
   secondary_prizes?: Array<{
     name?: string;
+    presentation?: string;
     description?: string;
     count?: number | string;
     image?: string;
@@ -164,10 +165,13 @@ function mapSecondaryPrize(
   prize: NonNullable<FirestoreGameDocument["secondary_prizes"]>[number],
   index: number,
 ): GameSecondaryPrize {
+  const presentation = readText(prize?.presentation, prize?.description);
+
   return {
     id: buildSecondaryPrizeId(index),
     name: readText(prize?.name),
-    description: readText(prize?.description),
+    description: presentation,
+    presentation,
     count:
       prize?.count === undefined || prize.count === null
         ? ""

@@ -71,6 +71,7 @@ type FirestoreGameDocument = {
 
 type FirestoreSecondaryPrizeDocument = {
   name?: string;
+  presentation?: string;
   description?: string;
   count?: number | string;
   image?: string;
@@ -249,10 +250,13 @@ function mapSecondaryPrize(
   prize: FirestoreSecondaryPrizeDocument,
   index: number,
 ): GameSecondaryPrize {
+  const presentation = readText(prize.presentation, prize.description);
+
   return {
     id: buildSecondaryPrizeId(index),
     name: readText(prize.name),
-    description: readText(prize.description),
+    description: presentation,
+    presentation,
     count:
       prize.count === undefined || prize.count === null
         ? ""
@@ -508,6 +512,7 @@ function buildGamePatch(
   const mainPrizeValue = hasMainPrize ? normalizePrizeValue(input.mainPrizeValue) : null;
   const secondaryPrizes = input.secondaryPrizes
     .map((prize) => ({
+      presentation: prize.description.trim(),
       name: prize.name.trim(),
       description: prize.description.trim(),
       count: readNumber(prize.count, 0),
@@ -764,6 +769,7 @@ export async function duplicateGameDocument(
     main_prize_image: original.mainPrizeImage ?? "",
     secondary_prizes: original.secondaryPrizes.map((prize) => ({
       name: prize.name,
+      presentation: prize.description,
       description: prize.description,
       count: readNumber(prize.count, 0),
       image: prize.image ?? "",

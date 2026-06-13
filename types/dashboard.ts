@@ -110,6 +110,7 @@ export interface GameSecondaryPrize {
   id: string;
   name: string;
   description: string;
+  presentation?: string;
   count: string;
   image: string | null;
 }

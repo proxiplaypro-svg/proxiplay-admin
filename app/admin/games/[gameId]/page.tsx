@@ -49,7 +49,12 @@ type FirestoreGameDetailsDocument = {
   sessionCount?: number;
   partiesCount?: number;
   participations?: number;
-  secondary_prizes?: Array<{ name?: string; count?: number; description?: string }> | null;
+  secondary_prizes?: Array<{
+    name?: string;
+    count?: number;
+    presentation?: string;
+    description?: string;
+  }> | null;
   main_prize_title?: string;
   main_prize_description?: string;
 };
@@ -79,7 +84,7 @@ type AdminGameDetails = {
   hasMainPrize: boolean;
   mainPrizeValue: number | null;
   mainPrizeDescription: string;
-  secondaryPrizes: Array<{ name: string; count: number; description: string }>;
+  secondaryPrizes: Array<{ name: string; count: number; description: string; presentation?: string }>;
   restrictedToAdults: boolean;
 };
 
@@ -183,9 +188,10 @@ function buildDetails(
   const imageUrl = game.imageUrl ?? game.photo ?? null;
   const secondaryPrizes = Array.isArray(game.secondary_prizes)
     ? game.secondary_prizes.map((p) => ({
+        presentation: p.presentation?.trim() || p.description?.trim() || "",
         name: p.name?.trim() || "Lot sans nom",
         count: typeof p.count === "number" ? p.count : 0,
-        description: p.description?.trim() || "",
+        description: p.presentation?.trim() || p.description?.trim() || "",
       }))
     : [];
 

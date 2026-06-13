@@ -529,6 +529,7 @@ function buildAnimationSecondaryPrizes(
   return [
     {
       name: name || "Lot secondaire",
+      presentation: description,
       description,
       count: prizeCount,
     },
