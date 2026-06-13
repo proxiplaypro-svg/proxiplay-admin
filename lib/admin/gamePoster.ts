@@ -58,52 +58,101 @@ export function buildGamePosterDeepLink(game: {
 }
 
 export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
-  const printWindow = window.open("", "_blank", "noopener,noreferrer");
+  const printWindow = window.open("", "_blank");
 
   if (!printWindow) {
     throw new Error("Impossible d ouvrir la fenetre d impression.");
   }
 
-  const qrCodeOptions = {
-    width: 720,
-    margin: 0,
-    color: {
-      dark: "#1A1A1A",
-      light: "#FFFFFF",
-    },
-  } as Parameters<typeof QRCode.toDataURL>[1];
-
-  const deepLink = buildGamePosterDeepLink(game);
-  const logoUrl = `${window.location.origin}/proxiplay-favicon.svg`;
-  const qrCodeUrl = await QRCode.toDataURL(deepLink, qrCodeOptions);
-
-  const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
-  const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commercant");
-  const safeDescription = escapeHtml(game.description.trim());
-  const safeDates = escapeHtml(`${game.startDateLabel} au ${game.endDateLabel}`);
-  const safeMainPrize = escapeHtml(game.mainPrizeLabel?.trim() || "");
-  const safeSecondaryPrizes = escapeHtml(game.secondaryPrizeSummary?.trim() || "");
-  const safeImageUrl = game.imageUrl ? escapeHtml(game.imageUrl) : null;
-  const safeFileName = sanitizeFileName(`${game.merchantName}-${game.title}`) || game.id;
-  const adultBadge = game.restrictedToAdults
-    ? '<span class="badge badge-danger">18+</span>'
-    : "";
-  const mainPrizeBlock = safeMainPrize
-    ? `<div class="meta-row"><span class="meta-label">Lot principal</span><span class="meta-value">${safeMainPrize}</span></div>`
-    : "";
-  const secondaryPrizeBlock = safeSecondaryPrizes
-    ? `<div class="meta-row"><span class="meta-label">Lots secondaires</span><span class="meta-value">${safeSecondaryPrizes}</span></div>`
-    : "";
-  const descriptionBlock = safeDescription
-    ? `<div class="section-copy"><div class="section-kicker">Description</div><p class="description">${safeDescription}</p></div>`
-    : "";
-  const coverBlock = safeImageUrl
-    ? `<img class="hero-image" src="${safeImageUrl}" alt="${safeTitle}" />`
-    : `<div class="hero-fallback">Affiche ProxiPlay</div>`;
-  const merchantBlock = `<div class="merchant-chip">${safeMerchantName}</div>`;
-
   printWindow.document.open();
   printWindow.document.write(`<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Preparation de l affiche...</title>
+    <style>
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: #f7f7f5;
+        color: #1a1a1a;
+        font-family: "Segoe UI", Arial, sans-serif;
+      }
+      body {
+        display: grid;
+        place-items: center;
+      }
+      .loading-card {
+        width: min(92vw, 420px);
+        padding: 28px 24px;
+        border: 1px solid #e8e8e4;
+        border-radius: 20px;
+        background: #ffffff;
+        text-align: center;
+        box-shadow: 0 20px 50px rgba(26, 26, 26, 0.08);
+      }
+      .loading-title {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 800;
+      }
+      .loading-text {
+        margin: 10px 0 0;
+        color: #666666;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="loading-card">
+      <h1 class="loading-title">Preparation de l affiche</h1>
+      <p class="loading-text">Le visuel premium est en cours de generation...</p>
+    </div>
+  </body>
+</html>`);
+  printWindow.document.close();
+
+  try {
+    const qrCodeOptions = {
+      width: 720,
+      margin: 0,
+      color: {
+        dark: "#1A1A1A",
+        light: "#FFFFFF",
+      },
+    } as Parameters<typeof QRCode.toDataURL>[1];
+
+    const deepLink = buildGamePosterDeepLink(game);
+    const logoUrl = `${window.location.origin}/proxiplay-favicon.svg`;
+    const qrCodeUrl = await QRCode.toDataURL(deepLink, qrCodeOptions);
+
+    const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
+    const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commercant");
+    const safeDescription = escapeHtml(game.description.trim());
+    const safeDates = escapeHtml(`${game.startDateLabel} au ${game.endDateLabel}`);
+    const safeMainPrize = escapeHtml(game.mainPrizeLabel?.trim() || "");
+    const safeSecondaryPrizes = escapeHtml(game.secondaryPrizeSummary?.trim() || "");
+    const safeImageUrl = game.imageUrl ? escapeHtml(game.imageUrl) : null;
+    const safeFileName = sanitizeFileName(`${game.merchantName}-${game.title}`) || game.id;
+    const adultBadge = game.restrictedToAdults
+      ? '<span class="badge badge-danger">18+</span>'
+      : "";
+    const mainPrizeBlock = safeMainPrize
+      ? `<div class="meta-row"><span class="meta-label">Lot principal</span><span class="meta-value">${safeMainPrize}</span></div>`
+      : "";
+    const secondaryPrizeBlock = safeSecondaryPrizes
+      ? `<div class="meta-row"><span class="meta-label">Lots secondaires</span><span class="meta-value">${safeSecondaryPrizes}</span></div>`
+      : "";
+    const descriptionBlock = safeDescription
+      ? `<div class="section-copy"><div class="section-kicker">Description</div><p class="description">${safeDescription}</p></div>`
+      : "";
+    const coverBlock = safeImageUrl
+      ? `<img class="hero-image" src="${safeImageUrl}" alt="${safeTitle}" />`
+      : `<div class="hero-fallback">Affiche ProxiPlay</div>`;
+    const merchantBlock = `<div class="merchant-chip">${safeMerchantName}</div>`;
+
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
@@ -463,5 +512,60 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     </script>
   </body>
 </html>`);
-  printWindow.document.close();
+    printWindow.document.close();
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message.trim()
+        ? escapeHtml(error.message)
+        : "Impossible de generer l affiche.";
+
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Erreur affiche</title>
+    <style>
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: #fff7f7;
+        color: #1a1a1a;
+        font-family: "Segoe UI", Arial, sans-serif;
+      }
+      body {
+        display: grid;
+        place-items: center;
+      }
+      .error-card {
+        width: min(92vw, 460px);
+        padding: 28px 24px;
+        border: 1px solid #f1c4c4;
+        border-radius: 20px;
+        background: #ffffff;
+        box-shadow: 0 20px 50px rgba(26, 26, 26, 0.08);
+      }
+      .error-title {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 800;
+        color: #a32d2d;
+      }
+      .error-text {
+        margin: 12px 0 0;
+        color: #666666;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="error-card">
+      <h1 class="error-title">Affiche indisponible</h1>
+      <p class="error-text">${message}</p>
+    </div>
+  </body>
+</html>`);
+    printWindow.document.close();
+    throw error;
+  }
 }
