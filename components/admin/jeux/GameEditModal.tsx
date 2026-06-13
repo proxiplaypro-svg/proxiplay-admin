@@ -427,12 +427,16 @@ export function GameEditModal({
         prizeSummary.secondaryPreview ??
         prizeSummary.secondaryCountLabel ??
         null;
+      const lotDescription =
+        mainPrizeForm.description.trim() ||
+        secondaryPrizes.find((prize) => prize.description.trim())?.description.trim() ||
+        generalForm.description.trim();
 
       await openGamePosterPrintWindow({
         id: game.id,
         title: generalForm.title.trim() || game.title,
         merchantName,
-        description: generalForm.description.trim(),
+        description: lotDescription,
         imageUrl: coverPreviewUrl || null,
         startDateLabel: generalForm.startDate || "Date a definir",
         endDateLabel: generalForm.endDate || "Date a definir",

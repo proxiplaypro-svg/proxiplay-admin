@@ -78,7 +78,8 @@ type AdminGameDetails = {
   imageUrl: string | null;
   hasMainPrize: boolean;
   mainPrizeValue: number | null;
-  secondaryPrizes: Array<{ name: string; count: number }>;
+  mainPrizeDescription: string;
+  secondaryPrizes: Array<{ name: string; count: number; description: string }>;
   restrictedToAdults: boolean;
 };
 
@@ -181,7 +182,11 @@ function buildDetails(
   const endDate = game.end_date?.toDate() ?? null;
   const imageUrl = game.imageUrl ?? game.photo ?? null;
   const secondaryPrizes = Array.isArray(game.secondary_prizes)
-    ? game.secondary_prizes.map((p) => ({ name: p.name?.trim() || "Lot sans nom", count: typeof p.count === "number" ? p.count : 0 }))
+    ? game.secondary_prizes.map((p) => ({
+        name: p.name?.trim() || "Lot sans nom",
+        count: typeof p.count === "number" ? p.count : 0,
+        description: p.description?.trim() || "",
+      }))
     : [];
 
   return {
@@ -204,6 +209,7 @@ function buildDetails(
     imageUrl,
     hasMainPrize: game.hasMainPrize === true,
     mainPrizeValue: typeof game.prize_value === "number" ? game.prize_value : null,
+    mainPrizeDescription: game.main_prize_description?.trim() || "",
     secondaryPrizes,
     restrictedToAdults: game.prohibited_for_minors === true || game.restrictedToAdults === true,
   };
@@ -324,12 +330,16 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
             .map((prize) => `${prize.name} (${prize.count})`)
             .join(", ")
         : null;
+    const lotDescription =
+      game.mainPrizeDescription ||
+      game.secondaryPrizes.find((prize) => prize.description)?.description ||
+      game.description;
 
     await openGamePosterPrintWindow({
       id: game.id,
       title: game.name,
       merchantName: game.merchantName,
-      description: game.description,
+      description: lotDescription,
       imageUrl: game.imageUrl,
       startDateLabel: game.startDateLabel,
       endDateLabel: game.endDateLabel,

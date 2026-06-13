@@ -182,11 +182,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         --brand-green: #6EC12B;
         --brand-yellow: #FFF12B;
         --brand-blue: #90A6D8;
-        background:
-          radial-gradient(circle at top left, rgba(160, 19, 77, 0.14), transparent 26%),
-          radial-gradient(circle at bottom right, rgba(110, 193, 43, 0.14), transparent 30%),
-          radial-gradient(circle at 82% 16%, rgba(242, 123, 61, 0.13), transparent 16%),
-          linear-gradient(180deg, #fcfaf7 0%, #f4efe7 100%);
+        background: #f4efe7;
         color: #191919;
         font-family: Georgia, "Times New Roman", serif;
       }
@@ -206,10 +202,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         display: grid;
         grid-template-rows: auto auto 1fr auto;
         gap: 4mm;
-        background:
-          radial-gradient(circle at top right, rgba(255, 241, 43, 0.18), transparent 18%),
-          radial-gradient(circle at bottom left, rgba(144, 166, 216, 0.12), transparent 22%),
-          linear-gradient(180deg, rgba(255,255,255,0.99) 0%, rgba(248,244,238,0.99) 100%);
+        background: #fffdf9;
         border: 2.2mm solid var(--brand-frame);
         border-radius: 7mm;
         overflow: hidden;
@@ -252,8 +245,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         margin: 0 7mm;
         border-radius: 5mm;
         padding: 5.5mm 6mm;
-        background:
-          linear-gradient(135deg, var(--brand-intro) 0%, var(--brand-navy) 58%, var(--brand-frame) 100%);
+        background: var(--brand-intro);
         color: #ffffff;
         display: grid;
         grid-template-columns: 1fr 44mm;
@@ -289,7 +281,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       }
       .scan-panel {
         border-radius: 4.5mm;
-        background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.08));
+        background: rgba(255,255,255,0.14);
         border: 1px solid rgba(255,255,255,0.24);
         padding: 3mm;
         text-align: center;
@@ -322,7 +314,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         max-height: 118mm;
         border-radius: 5mm;
         overflow: hidden;
-        background: linear-gradient(180deg, rgba(144,166,216,0.12), rgba(255,255,255,0.5));
+        background: #eef0fa;
         border: 1px solid rgba(41, 40, 106, 0.08);
         box-shadow:
           0 10px 25px rgba(41, 40, 106, 0.08),
@@ -346,10 +338,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         font-size: 21pt;
         font-weight: 800;
         color: var(--brand-navy);
-        background:
-          radial-gradient(circle at top left, rgba(160, 19, 77, 0.18), transparent 42%),
-          radial-gradient(circle at bottom right, rgba(110, 193, 43, 0.16), transparent 38%),
-          linear-gradient(160deg, #faf8ff 0%, #eef4ff 100%);
+        background: #f3f2fb;
       }
       .hero-copy {
         display: flex;
@@ -361,7 +350,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         align-self: flex-start;
         border-radius: 999px;
         padding: 1.6mm 3.3mm;
-        background: linear-gradient(180deg, rgba(255, 241, 43, 0.3), rgba(255, 255, 255, 0.92));
+        background: #fff7b8;
         color: var(--brand-frame);
         border: 1px solid rgba(160, 19, 77, 0.18);
         font-family: "Segoe UI", Arial, sans-serif;
@@ -400,8 +389,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         margin: 0 7mm 7mm;
         border: 1px solid rgba(160, 19, 77, 0.14);
         border-radius: 5mm;
-        background:
-          linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,247,242,0.98));
+        background: #fffdf9;
         padding: 4.5mm;
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -415,8 +403,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         align-items: start;
         border-radius: 3.6mm;
         padding: 3.2mm;
-        background:
-          linear-gradient(180deg, rgba(255, 241, 43, 0.16) 0%, rgba(255,255,255,0.94) 36%, rgba(144, 166, 216, 0.1) 100%);
+        background: #fff8de;
       }
       .meta-label {
         font-family: "Segoe UI", Arial, sans-serif;
