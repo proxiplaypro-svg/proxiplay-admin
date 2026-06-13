@@ -64,16 +64,18 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     throw new Error("Impossible d ouvrir la fenetre d impression.");
   }
 
-  const deepLink = buildGamePosterDeepLink(game);
-  const logoUrl = `${window.location.origin}/proxiplay-favicon.svg`;
-  const qrCodeUrl = await QRCode.toDataURL(deepLink, {
+  const qrCodeOptions = {
     width: 720,
     margin: 0,
     color: {
       dark: "#1A1A1A",
       light: "#FFFFFF",
     },
-  });
+  } as Parameters<typeof QRCode.toDataURL>[1];
+
+  const deepLink = buildGamePosterDeepLink(game);
+  const logoUrl = `${window.location.origin}/proxiplay-favicon.svg`;
+  const qrCodeUrl = await QRCode.toDataURL(deepLink, qrCodeOptions);
 
   const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
   const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commercant");
