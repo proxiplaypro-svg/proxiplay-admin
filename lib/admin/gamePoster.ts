@@ -63,7 +63,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
   const printWindow = window.open("", "_blank");
 
   if (!printWindow) {
-    throw new Error("Impossible d ouvrir la fenetre d impression.");
+    throw new Error("Impossible d’ouvrir la fenêtre d’impression.");
   }
 
   printWindow.document.open();
@@ -71,7 +71,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <title>Preparation de l affiche...</title>
+    <title>Préparation de l’affiche...</title>
     <style>
       html, body {
         margin: 0;
@@ -107,8 +107,8 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
   </head>
   <body>
     <div class="loading-card">
-      <h1 class="loading-title">Preparation de l affiche</h1>
-      <p class="loading-text">Le visuel premium est en cours de generation...</p>
+      <h1 class="loading-title">Préparation de l’affiche</h1>
+      <p class="loading-text">Le visuel premium est en cours de génération...</p>
     </div>
   </body>
 </html>`);
@@ -128,7 +128,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     const qrCodeUrl = await QRCode.toDataURL(deepLink, qrCodeOptions);
 
     const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
-    const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commercant");
+    const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commerçant");
     const safeDescription = escapeHtml(game.description.trim());
     const safeDates = escapeHtml(`${game.startDateLabel} au ${game.endDateLabel}`);
     const safeMainPrize = escapeHtml(game.mainPrizeLabel?.trim() || "");
@@ -173,52 +173,58 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         margin: 0;
         padding: 0;
         width: 210mm;
-        min-height: 297mm;
+        height: 297mm;
         --brand-navy: #29286A;
+        --brand-frame: #A0134D;
         --brand-pink: #B2145A;
         --brand-orange: #F27B3D;
         --brand-green: #6EC12B;
         --brand-yellow: #FFF12B;
         --brand-blue: #90A6D8;
-        --paper: #f6f3ee;
+        --paper: #fbf8f3;
         background:
-          radial-gradient(circle at top left, rgba(178, 20, 90, 0.12), transparent 24%),
-          radial-gradient(circle at bottom right, rgba(110, 193, 43, 0.16), transparent 30%),
-          radial-gradient(circle at 85% 18%, rgba(36, 40, 106, 0.1), transparent 18%),
-          #f3f1ed;
-        color: #1a1a1a;
+          radial-gradient(circle at top left, rgba(160, 19, 77, 0.14), transparent 26%),
+          radial-gradient(circle at bottom right, rgba(110, 193, 43, 0.14), transparent 30%),
+          radial-gradient(circle at 82% 16%, rgba(242, 123, 61, 0.13), transparent 16%),
+          linear-gradient(180deg, #fcfaf7 0%, #f4efe7 100%);
+        color: #191919;
         font-family: Georgia, "Times New Roman", serif;
       }
       body {
         position: relative;
+        overflow: hidden;
       }
       .sheet {
         width: 210mm;
-        min-height: 297mm;
-        padding: 12mm;
+        height: 297mm;
+        padding: 8mm;
       }
       .poster {
         width: 100%;
-        min-height: 273mm;
+        height: 281mm;
         margin: 0;
         display: grid;
-        grid-template-rows: auto auto auto 1fr;
-        gap: 6mm;
+        grid-template-rows: auto auto 1fr auto;
+        gap: 4mm;
         background:
-          linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(246,243,238,0.98) 100%);
-        border: 1px solid #dfd9cd;
-        border-radius: 8mm;
+          radial-gradient(circle at top right, rgba(255, 241, 43, 0.18), transparent 18%),
+          radial-gradient(circle at bottom left, rgba(144, 166, 216, 0.12), transparent 22%),
+          linear-gradient(180deg, rgba(255,255,255,0.99) 0%, rgba(248,244,238,0.99) 100%);
+        border: 2.2mm solid var(--brand-frame);
+        border-radius: 7mm;
         overflow: hidden;
-        box-shadow: 0 18px 60px rgba(26, 26, 26, 0.08);
+        box-shadow:
+          0 20px 60px rgba(41, 40, 106, 0.1),
+          inset 0 0 0 1.2mm rgba(255, 255, 255, 0.72);
       }
       .header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 8mm 10mm 0;
+        padding: 6mm 7mm 0;
       }
       .brand-wordmark {
-        width: 100mm;
+        width: 92mm;
         max-width: 100%;
       }
       .brand-wordmark img {
@@ -233,34 +239,35 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         padding: 2.2mm 4.2mm;
         font-size: 10pt;
         font-weight: 700;
-        border: 1px solid #e1b5b5;
-        background: #ffffff;
+        border: 1px solid rgba(160, 19, 77, 0.18);
+        background: rgba(255, 255, 255, 0.9);
         font-family: "Segoe UI", Arial, sans-serif;
       }
       .badge-danger {
-        color: #a32d2d;
-        background: #fcebeb;
-        border-color: #f1c4c4;
+        color: var(--brand-frame);
+        background: rgba(160, 19, 77, 0.08);
+        border-color: rgba(160, 19, 77, 0.2);
       }
       .intro-band {
-        margin: 0 10mm;
-        border-radius: 6mm;
-        padding: 7mm 8mm;
+        margin: 0 7mm;
+        border-radius: 5mm;
+        padding: 5.5mm 6mm;
         background:
-          linear-gradient(135deg, var(--brand-navy) 0%, #3b368a 32%, var(--brand-pink) 100%);
+          linear-gradient(135deg, var(--brand-navy) 0%, #3f378f 34%, var(--brand-frame) 74%, var(--brand-orange) 100%);
         color: #ffffff;
         display: grid;
-        grid-template-columns: 1fr 50mm;
-        gap: 8mm;
+        grid-template-columns: 1fr 44mm;
+        gap: 6mm;
         align-items: center;
+        box-shadow: inset 0 0 0 0.4mm rgba(255, 255, 255, 0.16);
       }
       .intro-copy {
         display: grid;
-        gap: 2.5mm;
+        gap: 1.8mm;
       }
       .eyebrow {
         font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 9pt;
+        font-size: 8.5pt;
         font-weight: 700;
         letter-spacing: 0.18em;
         text-transform: uppercase;
@@ -268,53 +275,58 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       }
       .intro-title {
         margin: 0;
-        font-size: 29pt;
-        line-height: 0.98;
+        font-size: 24pt;
+        line-height: 0.96;
         font-weight: 800;
+        text-wrap: balance;
       }
       .intro-subtitle {
         font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 12pt;
-        line-height: 1.5;
-        max-width: 92mm;
+        font-size: 10.5pt;
+        line-height: 1.38;
+        max-width: 82mm;
         opacity: 0.96;
       }
       .scan-panel {
-        border-radius: 5mm;
-        background: rgba(255,255,255,0.12);
+        border-radius: 4.5mm;
+        background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.08));
         border: 1px solid rgba(255,255,255,0.24);
-        padding: 4mm;
+        padding: 3mm;
         text-align: center;
+        box-shadow: inset 0 0 0 0.4mm rgba(255,255,255,0.08);
       }
       .scan-panel img {
-        width: 40mm;
-        height: 40mm;
+        width: 34mm;
+        height: 34mm;
         display: block;
         margin: 0 auto;
-        border-radius: 4mm;
+        border-radius: 3.2mm;
         background: #ffffff;
-        padding: 2mm;
+        padding: 1.7mm;
       }
       .scan-label {
-        margin-top: 2mm;
+        margin-top: 1.4mm;
         font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 9.5pt;
+        font-size: 8.7pt;
         font-weight: 700;
       }
       .hero {
         display: grid;
         grid-template-columns: 1.08fr 0.92fr;
-        gap: 8mm;
-        padding: 0 10mm 0;
+        gap: 6mm;
+        padding: 0 7mm;
         align-items: start;
       }
       .hero-visual {
-        min-height: 116mm;
-        border-radius: 6mm;
+        min-height: 104mm;
+        max-height: 118mm;
+        border-radius: 5mm;
         overflow: hidden;
-        background: #f4f2fb;
+        background: linear-gradient(180deg, rgba(144,166,216,0.12), rgba(255,255,255,0.5));
         border: 1px solid rgba(41, 40, 106, 0.08);
-        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
+        box-shadow:
+          0 10px 25px rgba(41, 40, 106, 0.08),
+          inset 0 0 0 1px rgba(255,255,255,0.25);
       }
       .hero-image {
         width: 100%;
@@ -325,92 +337,99 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       .hero-fallback {
         width: 100%;
         height: 100%;
-        min-height: 116mm;
+        min-height: 104mm;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 10mm;
+        padding: 8mm;
         text-align: center;
-        font-size: 24pt;
+        font-size: 21pt;
         font-weight: 800;
         color: var(--brand-navy);
         background:
-          radial-gradient(circle at top left, rgba(178, 20, 90, 0.16), transparent 42%),
-          radial-gradient(circle at bottom right, rgba(110, 193, 43, 0.18), transparent 38%),
+          radial-gradient(circle at top left, rgba(160, 19, 77, 0.18), transparent 42%),
+          radial-gradient(circle at bottom right, rgba(110, 193, 43, 0.16), transparent 38%),
           linear-gradient(160deg, #faf8ff 0%, #eef4ff 100%);
       }
       .hero-copy {
         display: flex;
         flex-direction: column;
-        gap: 4mm;
+        gap: 2.7mm;
+        min-width: 0;
       }
       .merchant-chip {
         align-self: flex-start;
         border-radius: 999px;
-        padding: 2mm 4mm;
-        background: rgba(144, 166, 216, 0.18);
-        color: var(--brand-navy);
-        border: 1px solid rgba(144, 166, 216, 0.5);
+        padding: 1.6mm 3.3mm;
+        background: linear-gradient(180deg, rgba(255, 241, 43, 0.3), rgba(255, 255, 255, 0.92));
+        color: var(--brand-frame);
+        border: 1px solid rgba(160, 19, 77, 0.18);
         font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 9pt;
+        font-size: 8.3pt;
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
       .title {
         margin: 0;
-        font-size: 25pt;
-        line-height: 1.02;
+        font-size: 21pt;
+        line-height: 1;
         font-weight: 800;
+        color: var(--brand-navy);
+        text-wrap: balance;
       }
       .section-copy {
         display: grid;
-        gap: 2mm;
+        gap: 1.4mm;
       }
       .section-kicker {
         font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 8.5pt;
+        font-size: 8pt;
         font-weight: 700;
         letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: var(--brand-pink);
+        color: var(--brand-frame);
       }
       .description {
         margin: 0;
-        font-size: 12pt;
-        line-height: 1.62;
-        color: #555555;
+        font-size: 10.6pt;
+        line-height: 1.46;
+        color: #514d58;
       }
       .meta-card {
-        margin: 0 10mm 10mm;
-        border: 1px solid #e8e4dc;
+        margin: 0 7mm 7mm;
+        border: 1px solid rgba(160, 19, 77, 0.14);
         border-radius: 5mm;
-        background: #ffffff;
-        padding: 6mm;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,247,242,0.98));
+        padding: 4.5mm;
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 4mm 6mm;
+        gap: 3mm 4mm;
+        box-shadow: inset 0 0 0 0.6mm rgba(255, 255, 255, 0.6);
       }
       .meta-row {
         display: grid;
         grid-template-columns: 1fr;
-        gap: 1.2mm;
+        gap: 0.8mm;
         align-items: start;
-        border-radius: 4mm;
-        padding: 4mm;
-        background: linear-gradient(180deg, rgba(255, 241, 43, 0.12) 0%, rgba(255,255,255,0.92) 100%);
+        border-radius: 3.6mm;
+        padding: 3.2mm;
+        background:
+          linear-gradient(180deg, rgba(255, 241, 43, 0.16) 0%, rgba(255,255,255,0.94) 36%, rgba(144, 166, 216, 0.1) 100%);
       }
       .meta-label {
         font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 8.5pt;
+        font-size: 7.8pt;
         font-weight: 700;
         color: #7b7b7b;
         text-transform: uppercase;
         letter-spacing: 0.12em;
       }
       .meta-value {
-        font-size: 12pt;
-        line-height: 1.4;
+        font-size: 10.3pt;
+        line-height: 1.35;
+        color: #2b2a38;
       }
       .print-tools {
         position: fixed;
@@ -440,18 +459,16 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         body {
           background: #ffffff;
           width: 210mm;
-          min-height: 297mm;
+          height: 297mm;
         }
         .sheet {
           width: 210mm;
-          min-height: 297mm;
-          padding: 12mm;
+          height: 297mm;
+          padding: 8mm;
         }
         .poster {
           width: 100%;
-          min-height: 273mm;
-          border: 0;
-          border-radius: 0;
+          height: 281mm;
           box-shadow: none;
         }
         .print-tools {
@@ -477,7 +494,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         <div class="intro-copy">
           <div class="eyebrow">Scannez, jouez, gagnez</div>
           <h1 class="intro-title">Tentez votre chance</h1>
-          <div class="intro-subtitle">Un jeu instantane a decouvrir directement chez votre commercant ProxiPlay.</div>
+          <div class="intro-subtitle">Un jeu instantané à découvrir directement chez votre commerçant ProxiPlay.</div>
         </div>
         <aside class="scan-panel">
           <img src="${qrCodeUrl}" alt="QR code ${safeTitle}" />
@@ -492,13 +509,13 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
           ${descriptionBlock}
           <div class="section-copy">
             <div class="section-kicker">Comment jouer</div>
-            <p class="description">Scannez le QR code, ouvrez le jeu sur votre telephone et jouez en quelques secondes pour tenter de remporter les lots proposes.</p>
+            <p class="description">Scannez le QR code, ouvrez le jeu sur votre téléphone et jouez en quelques secondes pour tenter de remporter les lots proposés.</p>
           </div>
         </div>
       </section>
       <section class="meta-card">
-        <div class="meta-row"><span class="meta-label">Periode</span><span class="meta-value">${safeDates}</span></div>
-        <div class="meta-row"><span class="meta-label">Commercant</span><span class="meta-value">${safeMerchantName}</span></div>
+        <div class="meta-row"><span class="meta-label">Période</span><span class="meta-value">${safeDates}</span></div>
+        <div class="meta-row"><span class="meta-label">Commerçant</span><span class="meta-value">${safeMerchantName}</span></div>
         ${mainPrizeBlock}
         ${secondaryPrizeBlock}
       </section>
@@ -519,7 +536,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     const message =
       error instanceof Error && error.message.trim()
         ? escapeHtml(error.message)
-        : "Impossible de generer l affiche.";
+        : "Impossible de générer l’affiche.";
 
     printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html>
