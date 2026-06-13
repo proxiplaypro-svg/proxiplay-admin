@@ -17,6 +17,21 @@ export type PrintableGamePosterData = {
   secondaryPrizeSummary?: string | null;
 };
 
+const PROXIPLAY_LOGO_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ProxiPlay">
+  <rect width="64" height="64" rx="10" fill="#FFFFFF"/>
+  <path d="M22 20c-4.5 0-8-3-8-7s3.5-7 8-7c5.6 0 10 5.5 10 11v3h-3c-5.7 0-7-6.5-7-9.5 0-1.2.2-2.2.6-3.2-2.5.7-4.6 3-4.6 6 0 2.6 1.9 4.7 4 4.7z" fill="#FFFFFF" stroke="#29286A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M42 20c4.5 0 8-3 8-7s-3.5-7-8-7c-5.6 0-10 5.5-10 11v3h3c5.7 0 7-6.5 7-9.5 0-1.2.2-2.2.6-3.2 2.5.7 4.6 3 4.6 6 0 2.6-1.9 4.7-4 4.7z" fill="#FFFFFF" stroke="#29286A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="10" y="20" width="44" height="34" rx="8" fill="#FFFFFF" stroke="#29286A" stroke-width="4"/>
+  <rect x="18" y="28" width="28" height="18" rx="3" fill="#29286A"/>
+  <path d="M18 28h10v18H18z" fill="#B2145A"/>
+  <path d="M46 28H36v18h10z" fill="#F27B3D"/>
+  <path d="M18 46h18L27 37z" fill="#90A6D8"/>
+  <path d="M46 46H36l-9-9 9-9z" fill="#6EC12B"/>
+  <rect x="27.5" y="31.5" width="9" height="9" rx="1.5" transform="rotate(45 32 36)" fill="#FFF12B"/>
+</svg>
+`;
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -123,7 +138,6 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     } as Parameters<typeof QRCode.toDataURL>[1];
 
     const deepLink = buildGamePosterDeepLink(game);
-    const logoUrl = `${window.location.origin}/proxiplay-favicon.svg`;
     const qrCodeUrl = await QRCode.toDataURL(deepLink, qrCodeOptions);
 
     const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
@@ -168,9 +182,17 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       html, body {
         margin: 0;
         padding: 0;
+        --brand-navy: #29286A;
+        --brand-pink: #B2145A;
+        --brand-orange: #F27B3D;
+        --brand-green: #6EC12B;
+        --brand-yellow: #FFF12B;
+        --brand-blue: #90A6D8;
+        --paper: #f6f3ee;
         background:
-          radial-gradient(circle at top left, rgba(99, 153, 34, 0.14), transparent 24%),
-          radial-gradient(circle at bottom right, rgba(24, 95, 165, 0.12), transparent 28%),
+          radial-gradient(circle at top left, rgba(178, 20, 90, 0.12), transparent 24%),
+          radial-gradient(circle at bottom right, rgba(110, 193, 43, 0.16), transparent 30%),
+          radial-gradient(circle at 85% 18%, rgba(36, 40, 106, 0.1), transparent 18%),
           #f3f1ed;
         color: #1a1a1a;
         font-family: Georgia, "Times New Roman", serif;
@@ -186,7 +208,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         grid-template-rows: auto auto auto 1fr;
         gap: 6mm;
         background:
-          linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,247,243,0.98) 100%);
+          linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(246,243,238,0.98) 100%);
         border: 1px solid #dfd9cd;
         border-radius: 8mm;
         overflow: hidden;
@@ -204,12 +226,19 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         gap: 4mm;
       }
       .brand-logo {
-        width: 16mm;
-        height: 16mm;
-        border-radius: 50%;
-        background: #eef4e5;
-        padding: 2.4mm;
-        border: 1px solid #d9e6c5;
+        width: 24mm;
+        height: 24mm;
+        display: grid;
+        place-items: center;
+        border-radius: 5mm;
+        background: #ffffff;
+        border: 1px solid rgba(41, 40, 106, 0.12);
+        box-shadow: 0 10px 24px rgba(41, 40, 106, 0.08);
+      }
+      .brand-logo svg {
+        width: 17mm;
+        height: 17mm;
+        display: block;
       }
       .brand-copy {
         display: flex;
@@ -229,7 +258,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         font-weight: 700;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: #639922;
+        color: var(--brand-navy);
       }
       .badge {
         display: inline-flex;
@@ -252,7 +281,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         border-radius: 6mm;
         padding: 7mm 8mm;
         background:
-          linear-gradient(135deg, #639922 0%, #7dae2d 100%);
+          linear-gradient(135deg, var(--brand-navy) 0%, #3b368a 32%, var(--brand-pink) 100%);
         color: #ffffff;
         display: grid;
         grid-template-columns: 1fr 50mm;
@@ -286,8 +315,8 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       }
       .scan-panel {
         border-radius: 5mm;
-        background: rgba(255,255,255,0.14);
-        border: 1px solid rgba(255,255,255,0.28);
+        background: rgba(255,255,255,0.12);
+        border: 1px solid rgba(255,255,255,0.24);
         padding: 4mm;
         text-align: center;
       }
@@ -317,8 +346,8 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         min-height: 116mm;
         border-radius: 6mm;
         overflow: hidden;
-        background: #eef4e5;
-        border: 1px solid #dce6d0;
+        background: #f4f2fb;
+        border: 1px solid rgba(41, 40, 106, 0.08);
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
       }
       .hero-image {
@@ -338,10 +367,11 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         text-align: center;
         font-size: 24pt;
         font-weight: 800;
-        color: #3b6d11;
+        color: var(--brand-navy);
         background:
-          radial-gradient(circle at top left, rgba(99, 153, 34, 0.22), transparent 42%),
-          linear-gradient(160deg, #f4f8ed 0%, #e6f1d7 100%);
+          radial-gradient(circle at top left, rgba(178, 20, 90, 0.16), transparent 42%),
+          radial-gradient(circle at bottom right, rgba(110, 193, 43, 0.18), transparent 38%),
+          linear-gradient(160deg, #faf8ff 0%, #eef4ff 100%);
       }
       .hero-copy {
         display: flex;
@@ -352,9 +382,9 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         align-self: flex-start;
         border-radius: 999px;
         padding: 2mm 4mm;
-        background: #eaf3de;
-        color: #3b6d11;
-        border: 1px solid #cfe5af;
+        background: rgba(144, 166, 216, 0.18);
+        color: var(--brand-navy);
+        border: 1px solid rgba(144, 166, 216, 0.5);
         font-family: "Segoe UI", Arial, sans-serif;
         font-size: 9pt;
         font-weight: 700;
@@ -377,7 +407,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         font-weight: 700;
         letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: #7b7b7b;
+        color: var(--brand-pink);
       }
       .description {
         margin: 0;
@@ -402,7 +432,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         align-items: start;
         border-radius: 4mm;
         padding: 4mm;
-        background: #fafaf8;
+        background: linear-gradient(180deg, rgba(255, 241, 43, 0.12) 0%, rgba(255,255,255,0.92) 100%);
       }
       .meta-label {
         font-family: "Segoe UI", Arial, sans-serif;
@@ -464,7 +494,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     <main class="poster">
       <header class="header">
         <div class="brand-lockup">
-          <img class="brand-logo" src="${logoUrl}" alt="Logo ProxiPlay" />
+          <div class="brand-logo" aria-hidden="true">${PROXIPLAY_LOGO_SVG}</div>
           <div class="brand-copy">
             <div class="brand-name">ProxiPlay</div>
             <div class="brand-tagline">Animation en boutique</div>
