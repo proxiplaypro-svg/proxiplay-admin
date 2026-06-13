@@ -1,9 +1,11 @@
 "use client";
 
 import { FirebaseError } from "firebase/app";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { firebaseApp } from "@/lib/firebase/client-app";
+import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
+import { openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
+import { functionsClient } from "@/lib/firebase/functions";
 import type {
   AnimationOption,
   Game,
@@ -103,7 +105,6 @@ const inputClassName =
   "w-full rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-[10px] text-[13px] text-[#1A1A1A] outline-none placeholder:text-[#999999] disabled:bg-[#F0F0EC] disabled:text-[#999999]";
 const sectionClassName =
   "rounded-[10px] border border-[#E8E8E4] bg-white p-4";
-const functionsClient = getFunctions(firebaseApp, "us-central1");
 const backfillInstantWinnersCallable = httpsCallable<
   BackfillInstantWinnersPayload,
   BackfillInstantWinnersResult
@@ -191,11 +192,15 @@ function getBackfillErrorMessage(error: unknown) {
         return "Connexion requise pour lancer le backfill.";
       case "functions/permission-denied":
         return "Seuls les admins autorises peuvent lancer le backfill.";
+      case "functions/internal":
+        return "Le backend a echoue pendant la generation des lots instantanes.";
       case "functions/not-found":
       case "functions/unavailable":
         return "La fonction de backfill n est pas disponible.";
       default:
-        return error.message || "Le backend a retourne une erreur pendant le backfill.";
+        return error.message && error.message !== "internal"
+          ? error.message
+          : "Le backend a retourne une erreur pendant le backfill.";
     }
   }
 
@@ -332,6 +337,13 @@ export function GameEditModal({
   const merchantName = merchants.find((merchant) => merchant.id === generalForm.merchantId)?.name ?? "Marchand inconnu";
   const hasMissingImage = !generalForm.imageUrl && !generalForm.imageFile;
   const isAnimationGame = generalForm.animationId.trim().length > 0;
+  const prizeSummary = buildPrizeSummary({
+    hasMainPrize: mainPrizeForm.hasMainPrize,
+    mainPrizeTitle: mainPrizeForm.title,
+    mainPrizeDescription: mainPrizeForm.description,
+    mainPrizeValue: mainPrizeForm.value,
+    secondaryPrizes,
+  });
 
   const updateGeneralForm = <T extends keyof GeneralFormState>(key: T, value: GeneralFormState[T]) => {
     setGeneralForm((current) => ({ ...current, [key]: value }));
@@ -406,6 +418,36 @@ export function GameEditModal({
       });
     } finally {
       setBackfillLoading(null);
+    }
+  };
+
+  const handlePrintPoster = async () => {
+    try {
+      const secondaryPrizeSummary =
+        prizeSummary.secondaryPreview ??
+        prizeSummary.secondaryCountLabel ??
+        null;
+
+      await openGamePosterPrintWindow({
+        id: game.id,
+        title: generalForm.title.trim() || game.title,
+        merchantName,
+        description: generalForm.description.trim(),
+        imageUrl: coverPreviewUrl || null,
+        startDateLabel: generalForm.startDate || "Date a definir",
+        endDateLabel: generalForm.endDate || "Date a definir",
+        merchantId: generalForm.merchantId || game.merchantId,
+        animationId: generalForm.animationId || game.animationId,
+        restrictedToAdults: generalForm.restrictedToAdults,
+        mainPrizeLabel: prizeSummary.mainPrizeLabel,
+        secondaryPrizeSummary,
+      });
+    } catch (printError) {
+      setValidationError(
+        printError instanceof Error
+          ? printError.message
+          : "Impossible d imprimer l affiche du jeu.",
+      );
     }
   };
 
@@ -506,14 +548,23 @@ export function GameEditModal({
             <h2 id="game-edit-modal-title" className="text-[18px] font-medium text-[#1A1A1A]">Modifier le jeu</h2>
             <p className="mt-1 text-[12px] text-[#666666]">Separe les informations du jeu, le lot principal et les lots secondaires.</p>
             {game && (
-              <a
-                href={`/admin/winners?gameId=${game.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-[#639922] hover:underline"
-              >
-                Voir les gagnants →
-              </a>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <a
+                  href={`/admin/winners?gameId=${game.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[#639922] hover:underline"
+                >
+                  Voir les gagnants →
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void handlePrintPoster()}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[#185FA5] hover:underline"
+                >
+                  Imprimer l affiche
+                </button>
+              </div>
             )}
           </div>
           <button type="button" className="text-[22px] leading-none text-[#999999]" onClick={onClose} aria-label="Fermer">x</button>
@@ -605,7 +656,7 @@ export function GameEditModal({
                 />
                 {isAnimationGame && !coverPreviewUrl ? (
                   <p className="text-[12px] text-[#A32D2D]">
-                    Obligatoire pour un jeu d'animation
+                    Obligatoire pour un jeu d&apos;animation
                   </p>
                 ) : null}
 

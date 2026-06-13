@@ -15,6 +15,7 @@ import {
   type DocumentReference,
   type Timestamp,
 } from "firebase/firestore";
+import { openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { db, firebaseApp } from "@/lib/firebase/client-app";
 
 type GameDetailsPageProps = {
@@ -32,6 +33,8 @@ type FirestoreGameDetailsDocument = {
   enseigne_name?: string;
   merchantName?: string;
   merchantId?: string;
+  animation_id?: string | null;
+  campaign_id?: string | null;
   game_type?: string;
   hasMainPrize?: boolean;
   hasWinner?: boolean;
@@ -60,6 +63,7 @@ type AdminGameDetails = {
   name: string;
   merchantId: string | null;
   merchantName: string;
+  animationId: string | null;
   status: "actif" | "termine" | "brouillon" | "expire" | "prive";
   startDateLabel: string;
   endDateLabel: string;
@@ -135,11 +139,15 @@ function getBackfillErrorMessage(error: unknown) {
         return "Connexion requise pour lancer le backfill.";
       case "functions/permission-denied":
         return "Seuls les admins autorises peuvent lancer le backfill.";
+      case "functions/internal":
+        return "Le backend a echoue pendant la generation des lots instant winners.";
       case "functions/not-found":
       case "functions/unavailable":
         return "La fonction de backfill n est pas disponible.";
       default:
-        return error.message || "Le backend a retourne une erreur pendant le backfill.";
+        return error.message && error.message !== "internal"
+          ? error.message
+          : "Le backend a retourne une erreur pendant le backfill.";
     }
   }
 
@@ -181,6 +189,7 @@ function buildDetails(
     name: (game.title ?? game.name ?? "").trim() || "Jeu sans titre",
     merchantId: game.enseigne_id?.id ?? game.merchantId ?? null,
     merchantName: (game.merchantName ?? game.enseigne_name ?? "").trim() || "Marchand inconnu",
+    animationId: game.animation_id?.trim() || game.campaign_id?.trim() || null,
     status: deriveStatus(game),
     startDateLabel: startDate ? formatDate(startDate) : "—",
     endDateLabel: endDate ? formatDate(endDate) : "—",
@@ -306,6 +315,35 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   const handleDelete = async () => {
     await deleteDoc(doc(db, "games", game.id));
     router.push("/admin/games");
+  };
+
+  const handlePrintPoster = async () => {
+    const secondaryPrizeSummary =
+      game.secondaryPrizes.length > 0
+        ? game.secondaryPrizes
+            .map((prize) => `${prize.name} (${prize.count})`)
+            .join(", ")
+        : null;
+
+    await openGamePosterPrintWindow({
+      id: game.id,
+      title: game.name,
+      merchantName: game.merchantName,
+      description: game.description,
+      imageUrl: game.imageUrl,
+      startDateLabel: game.startDateLabel,
+      endDateLabel: game.endDateLabel,
+      merchantId: game.merchantId,
+      animationId: game.animationId,
+      restrictedToAdults: game.restrictedToAdults,
+      mainPrizeLabel:
+        game.hasMainPrize && game.mainPrizeValue !== null
+          ? `${game.mainPrizeValue} EUR`
+          : game.hasMainPrize
+            ? "Lot principal configure"
+            : null,
+      secondaryPrizeSummary,
+    });
   };
 
   const runBackfillInstantWinners = async (dryRun: boolean) => {
@@ -439,6 +477,13 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
           >
             Voir les gagnants
           </Link>
+          <button
+            type="button"
+            className="rounded-[8px] border border-[#185FA5] bg-white px-3 py-2 text-[12px] font-medium text-[#185FA5] hover:bg-[#F5FAFE]"
+            onClick={() => void handlePrintPoster()}
+          >
+            Imprimer l affiche
+          </button>
         </div>
       </div>
 
