@@ -307,6 +307,38 @@ async function loadMerchantOptions() {
   };
 }
 
+async function loadGamesForMerchant(
+  gameCollection: GameCollectionName,
+  merchantCollectionName: MerchantCollectionName,
+  merchantId: string,
+) {
+  const merchantRef = doc(db, merchantCollectionName, merchantId);
+  const attempts = [
+    query(collection(db, gameCollection), where("enseigne_id", "==", merchantRef)),
+    query(collection(db, gameCollection), where("merchantId", "==", merchantId)),
+    query(collection(db, gameCollection), where("merchant_id", "==", merchantId)),
+  ];
+  const docsById = new Map<string, QueryDocumentSnapshot<DocumentData>>();
+
+  for (const attempt of attempts) {
+    try {
+      const snapshot = await getDocs(attempt);
+
+      snapshot.docs.forEach((entry) => {
+        docsById.set(entry.id, entry);
+      });
+    } catch (error) {
+      console.warn("Unable to query games for merchant with one strategy", {
+        merchantId,
+        gameCollection,
+        error,
+      });
+    }
+  }
+
+  return [...docsById.values()];
+}
+
 function mapGameDocument(
   snapshot: QueryDocumentSnapshot<DocumentData>,
   collectionName: GameCollectionName,
@@ -440,6 +472,7 @@ function AdminGamesPageInner() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<GamesFilterValue>("tous");
   const [merchantFilter, setMerchantFilter] = useState(() => searchParams.get("merchantId") ?? "tous");
+  const [merchantSearch, setMerchantSearch] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<GamesSortValue>("created_desc");
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -456,6 +489,10 @@ function AdminGamesPageInner() {
   const [loadingMore, setLoadingMore] = useState(false);
   const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
   const gameCollectionRef = useRef<GameCollectionName>("games");
+
+  useEffect(() => {
+    setMerchantFilter(searchParams.get("merchantId") ?? "tous");
+  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -492,8 +529,17 @@ function AdminGamesPageInner() {
         const activeAnimations = activeAnimationsSnapshot.docs
           .map((snapshot) => mapAnimationOption(snapshot))
           .sort((left, right) => left.name.localeCompare(right.name, "fr"));
+        const selectedMerchantId = merchantFilter !== "tous" ? merchantFilter.trim() : "";
+        const merchantSpecificDocs =
+          selectedMerchantId.length > 0
+            ? await loadGamesForMerchant(
+                gameCollection,
+                resolvedMerchantCollectionName,
+                selectedMerchantId,
+              )
+            : finalSnapshot.docs;
         const gameItems = (await buildGamesWithRealParticipantCounts(
-          finalSnapshot.docs,
+          merchantSpecificDocs,
           gameCollection,
           merchantsById,
         ))
@@ -504,8 +550,11 @@ function AdminGamesPageInner() {
         }
 
         gameCollectionRef.current = gameCollection;
-        lastDocRef.current = finalSnapshot.docs[finalSnapshot.docs.length - 1] ?? null;
-        setHasMore(finalSnapshot.docs.length === 30);
+        lastDocRef.current =
+          selectedMerchantId.length > 0
+            ? null
+            : finalSnapshot.docs[finalSnapshot.docs.length - 1] ?? null;
+        setHasMore(selectedMerchantId.length === 0 && finalSnapshot.docs.length === 30);
         setGames(gameItems);
         setMerchants(merchantOptions);
         setAnimations(activeAnimations);
@@ -529,17 +578,21 @@ function AdminGamesPageInner() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [merchantFilter]);
 
   const filteredGames = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-    const result = games.filter((game) => {
-      const matchesStatus = statusFilter === "tous" || game.status === statusFilter;
-      const matchesMerchant = merchantFilter === "tous" || game.merchantId === merchantFilter;
-      const matchesSearch =
-        normalizedSearch.length === 0 || game.title.toLowerCase().includes(normalizedSearch);
+      const normalizedSearch = search.trim().toLowerCase();
+      const normalizedMerchantSearch = merchantSearch.trim().toLowerCase();
+      const result = games.filter((game) => {
+        const matchesStatus = statusFilter === "tous" || game.status === statusFilter;
+        const matchesMerchant = merchantFilter === "tous" || game.merchantId === merchantFilter;
+        const matchesMerchantSearch =
+          normalizedMerchantSearch.length === 0 ||
+          game.merchantName.toLowerCase().includes(normalizedMerchantSearch);
+        const matchesSearch =
+          normalizedSearch.length === 0 || game.title.toLowerCase().includes(normalizedSearch);
 
-      return matchesStatus && matchesMerchant && matchesSearch;
+      return matchesStatus && matchesMerchant && matchesMerchantSearch && matchesSearch;
     });
 
     return result.sort((left, right) => {
@@ -556,7 +609,7 @@ function AdminGamesPageInner() {
 
       return sort === "end_desc" ? rightEnd - leftEnd : leftEnd - rightEnd;
     });
-  }, [games, merchantFilter, search, sort, statusFilter]);
+  }, [games, merchantFilter, merchantSearch, search, sort, statusFilter]);
 
   const summary = useMemo(() => {
     const total = games.length;
@@ -791,11 +844,13 @@ function AdminGamesPageInner() {
       <GameFilters
         status={statusFilter}
         merchantId={merchantFilter}
+        merchantSearch={merchantSearch}
         search={search}
         sort={sort}
         merchants={merchants}
         onStatusChange={setStatusFilter}
         onMerchantChange={setMerchantFilter}
+        onMerchantSearchChange={setMerchantSearch}
         onSearchChange={setSearch}
         onSortChange={setSort}
       />
