@@ -476,6 +476,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Jeu introuvable." }, { status: 404 });
     }
 
+    console.log("1. Firestore fetch OK");
+
     const merchantId = readText(game.merchantId) || null;
     const qrCodeUrl = readText(game.qrCodeUrl);
 
@@ -497,11 +499,13 @@ export async function POST(request: Request) {
       },
     } as unknown as Parameters<typeof QRCode.toDataURL>[1];
     const qrCodeDataUrl = await QRCode.toDataURL(qrCodeUrl, qrCodeOptions);
+    console.log("2. QR generated");
 
     const prizeImageUrl = readPrizeImageUrl(game);
     const prizeImageDataUrl = prizeImageUrl
       ? await fetchAsDataUrl(prizeImageUrl, "image/jpeg").catch(() => buildPrizeImageFallbackDataUrl())
       : buildPrizeImageFallbackDataUrl();
+    console.log("3. Image fetched");
 
     const gainHeadline = buildPosterGainHeadline(game);
     const templateData: PosterTemplateData = {
@@ -526,7 +530,9 @@ export async function POST(request: Request) {
       logoDataUrl,
     };
 
+    console.log("4. Building PDF with jsPDF...");
     const pdfBuffer = buildPosterPdf(templateData);
+    console.log("5. PDF generated");
 
     return new NextResponse(pdfBuffer, {
       headers: {
