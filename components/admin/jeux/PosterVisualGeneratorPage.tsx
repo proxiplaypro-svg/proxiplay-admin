@@ -148,7 +148,7 @@ function mapGameData(
         data.description,
       ),
     ) ||
-    "Lot a gagner";
+    readText(data.title, data.name, "Jeu ProxiPlay");
 
   return {
     id: gameId,

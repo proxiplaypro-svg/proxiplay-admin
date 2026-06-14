@@ -427,6 +427,8 @@ export function GameEditModal({
         prizeSummary.secondaryPreview ??
         prizeSummary.secondaryCountLabel ??
         null;
+      const firstSecondaryPrizeTitle =
+        secondaryPrizes.find((prize) => prize.name.trim().length > 0)?.name.trim() || null;
       const lotDescription =
         mainPrizeForm.description.trim() ||
         secondaryPrizes.find((prize) => prize.description.trim())?.description.trim() ||
@@ -444,6 +446,8 @@ export function GameEditModal({
         animationId: generalForm.animationId || game.animationId,
         restrictedToAdults: generalForm.restrictedToAdults,
         mainPrizeLabel: prizeSummary.mainPrizeLabel,
+        mainPrizeTitle: mainPrizeForm.title.trim() || null,
+        secondaryPrizeTitle: firstSecondaryPrizeTitle,
         secondaryPrizeSummary,
       });
     } catch (printError) {

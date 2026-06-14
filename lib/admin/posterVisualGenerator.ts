@@ -216,16 +216,40 @@ function inferCommerceTheme(category: string, merchantName: string) {
   return "commerce de proximite moderne, premium, chaleureux, mobile-first";
 }
 
+function looksGenericPrizeLabel(value: string) {
+  const normalized = normalizeSingleLine(value).toLowerCase();
+
+  return (
+    normalized.length === 0 ||
+    normalized === "lot a gagner" ||
+    normalized === "lot"
+  );
+}
+
+function shouldUseFreeBadge(value: string) {
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes("reduction") ||
+    normalized.includes("réduction") ||
+    normalized.includes("bon") ||
+    normalized.includes("offert") ||
+    normalized.includes("gratu")
+  );
+}
+
 export function getPosterFormatSpec(format: PosterVisualFormat) {
   return FORMAT_SPECS[format];
 }
 
 export function createDefaultOverlayState(gameData: PosterVisualGameData): PosterOverlayState {
-  const prizeUpper = (gameData.prizeLabel || "LOT").trim().toUpperCase();
-  const hasReduction = prizeUpper.includes("REDUCTION");
+  const selectedHeadline = looksGenericPrizeLabel(gameData.prizeLabel)
+    ? normalizeSingleLine(gameData.title) || "JEU PROXIPLAY"
+    : normalizeSingleLine(gameData.prizeLabel);
+  const headlineUpper = selectedHeadline.toUpperCase();
+  const hasReduction = shouldUseFreeBadge(selectedHeadline);
 
   return {
-    headline: hasReduction ? prizeUpper : gameData.title.trim().toUpperCase() || "JEU PROXIPLAY",
+    headline: headlineUpper,
     headlineAccent: "A GAGNER",
     kicker: "Scannez, jouez, gagnez",
     subline: `C'est gratuit. Jouez maintenant chez ${gameData.merchantName}.`,
@@ -380,7 +404,7 @@ function buildA4PosterSvg(
     <rect width="1240" height="1754" rx="44" fill="url(#posterGlow)" />
     <rect x="12" y="12" width="1216" height="1730" rx="36" fill="none" stroke="${BRAND.frame}" stroke-width="8" />
 
-    <image href="${logoUrl}" x="58" y="56" width="370" height="110" preserveAspectRatio="xMinYMin meet" />
+    <image href="${logoUrl}" x="58" y="56" width="296" height="88" preserveAspectRatio="xMinYMin meet" />
     ${adultBadge}
 
     <text x="64" y="238" fill="${BRAND.frame}" font-size="28" font-weight="800" letter-spacing="4" font-family="Segoe UI, Arial, sans-serif" text-transform="uppercase">${escapeXml(overlay.kicker.toUpperCase())}</text>
@@ -402,16 +426,16 @@ function buildA4PosterSvg(
     </g>
 
     <g filter="url(#softShadow)">
-      <rect x="860" y="252" width="310" height="582" rx="34" fill="url(#ctaCard)" />
+      <rect x="836" y="252" width="334" height="622" rx="34" fill="url(#ctaCard)" />
       <text x="1015" y="318" text-anchor="middle" fill="${BRAND.white}" font-size="34" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.ctaTitle)}</text>
-      <rect x="906" y="354" width="218" height="218" rx="22" fill="${BRAND.white}" />
-      <image href="${gameData.qrCodeDataUrl}" x="930" y="378" width="170" height="170" preserveAspectRatio="xMidYMid meet" />
-      <text x="1015" y="636" text-anchor="middle" fill="${BRAND.white}" font-size="28" font-weight="800" font-family="Segoe UI, Arial, sans-serif">JOUEZ MAINTENANT</text>
-      <rect x="892" y="680" width="246" height="64" rx="32" fill="${BRAND.yellow}" />
-      <text x="1015" y="721" text-anchor="middle" fill="${BRAND.navy}" font-size="24" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.ctaButton)}</text>
+      <rect x="874" y="354" width="282" height="282" rx="24" fill="${BRAND.white}" />
+      <image href="${gameData.qrCodeDataUrl}" x="897" y="377" width="236" height="236" preserveAspectRatio="xMidYMid meet" />
+      <text x="1015" y="694" text-anchor="middle" fill="${BRAND.white}" font-size="28" font-weight="800" font-family="Segoe UI, Arial, sans-serif">JOUEZ MAINTENANT</text>
+      <rect x="874" y="730" width="282" height="68" rx="34" fill="${BRAND.yellow}" />
+      <text x="1015" y="773" text-anchor="middle" fill="${BRAND.navy}" font-size="24" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.ctaButton)}</text>
     </g>
 
-    <g transform="translate(846 940)">
+    <g transform="translate(836 968)">
       <g transform="translate(0 0)">
         <circle cx="20" cy="20" r="20" fill="${BRAND.frame}" />
         <text x="20" y="28" text-anchor="middle" fill="${BRAND.white}" font-size="22" font-weight="800" font-family="Segoe UI, Arial, sans-serif">1</text>
@@ -485,7 +509,7 @@ function buildSquarePosterSvg(
     <rect width="1080" height="1080" rx="42" fill="${BRAND.cream}" />
     <image href="${backgroundUrl}" x="0" y="0" width="1080" height="1080" preserveAspectRatio="xMidYMid slice" />
     <rect width="1080" height="1080" rx="42" fill="url(#squareMask)" />
-    <image href="${logoUrl}" x="58" y="50" width="280" height="84" preserveAspectRatio="xMinYMin meet" />
+    <image href="${logoUrl}" x="58" y="50" width="224" height="67" preserveAspectRatio="xMinYMin meet" />
     <text x="58" y="204" fill="${BRAND.frame}" font-size="24" font-weight="800" letter-spacing="3" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.kicker.toUpperCase())}</text>
     <text x="58" y="300" fill="${BRAND.navy}" font-size="70" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.headline.toUpperCase())}</text>
     <text x="58" y="378" fill="${BRAND.pink}" font-size="70" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.headlineAccent.toUpperCase())}</text>
@@ -499,14 +523,14 @@ function buildSquarePosterSvg(
       <text x="0" y="24" text-anchor="middle" fill="${BRAND.white}" font-size="22" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.badgeText.split(" ").slice(1).join(" ") || "GRATUIT")}</text>
     </g>
 
-    <rect x="744" y="206" width="278" height="430" rx="30" fill="${BRAND.navy}" opacity="0.96" />
+    <rect x="718" y="184" width="304" height="470" rx="30" fill="${BRAND.navy}" opacity="0.96" />
     <text x="883" y="256" text-anchor="middle" fill="${BRAND.white}" font-size="28" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.ctaTitle)}</text>
-    <rect x="788" y="286" width="190" height="190" rx="20" fill="${BRAND.white}" />
-    <image href="${gameData.qrCodeDataUrl}" x="808" y="306" width="150" height="150" preserveAspectRatio="xMidYMid meet" />
-    <rect x="774" y="520" width="218" height="56" rx="28" fill="${BRAND.yellow}" />
-    <text x="883" y="556" text-anchor="middle" fill="${BRAND.navy}" font-size="20" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.ctaButton)}</text>
+    <rect x="764" y="286" width="238" height="238" rx="20" fill="${BRAND.white}" />
+    <image href="${gameData.qrCodeDataUrl}" x="782" y="304" width="202" height="202" preserveAspectRatio="xMidYMid meet" />
+    <rect x="752" y="554" width="262" height="58" rx="29" fill="${BRAND.yellow}" />
+    <text x="883" y="592" text-anchor="middle" fill="${BRAND.navy}" font-size="20" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.ctaButton)}</text>
 
-    <g transform="translate(744 704)">
+    <g transform="translate(718 716)">
       <text x="0" y="0" fill="${BRAND.white}" font-size="24" font-weight="800" font-family="Segoe UI, Arial, sans-serif">1. ${escapeXml(overlay.stepOneTitle.toUpperCase())}</text>
       <text x="0" y="28" fill="${BRAND.white}" font-size="18" font-weight="500" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.stepOneText)}</text>
       <text x="0" y="84" fill="${BRAND.white}" font-size="24" font-weight="800" font-family="Segoe UI, Arial, sans-serif">2. ${escapeXml(overlay.stepTwoTitle.toUpperCase())}</text>
@@ -538,7 +562,7 @@ function buildStoryPosterSvg(
     <rect width="1080" height="1920" fill="${BRAND.cream}" />
     <image href="${backgroundUrl}" x="0" y="0" width="1080" height="1920" preserveAspectRatio="xMidYMid slice" />
     <rect width="1080" height="1920" fill="rgba(248,243,234,0.42)" />
-    <image href="${logoUrl}" x="58" y="68" width="280" height="84" preserveAspectRatio="xMinYMin meet" />
+    <image href="${logoUrl}" x="58" y="68" width="224" height="67" preserveAspectRatio="xMinYMin meet" />
     <text x="58" y="248" fill="${BRAND.frame}" font-size="24" font-weight="800" letter-spacing="3" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.kicker.toUpperCase())}</text>
     <text x="58" y="352" fill="${BRAND.navy}" font-size="74" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.headline.toUpperCase())}</text>
     <text x="58" y="434" fill="${BRAND.pink}" font-size="74" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.headlineAccent.toUpperCase())}</text>
@@ -553,12 +577,12 @@ function buildStoryPosterSvg(
       <text x="0" y="26" text-anchor="middle" fill="${BRAND.white}" font-size="24" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.badgeText.split(" ").slice(1).join(" ") || "GRATUIT")}</text>
     </g>
 
-    <rect x="642" y="1112" width="340" height="392" rx="32" fill="${BRAND.navy}" opacity="0.97" />
+    <rect x="616" y="1096" width="366" height="430" rx="32" fill="${BRAND.navy}" opacity="0.97" />
     <text x="812" y="1164" text-anchor="middle" fill="${BRAND.white}" font-size="30" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.ctaTitle)}</text>
-    <rect x="694" y="1196" width="236" height="236" rx="24" fill="${BRAND.white}" />
-    <image href="${gameData.qrCodeDataUrl}" x="720" y="1222" width="184" height="184" preserveAspectRatio="xMidYMid meet" />
-    <rect x="680" y="1454" width="264" height="60" rx="30" fill="${BRAND.yellow}" />
-    <text x="812" y="1494" text-anchor="middle" fill="${BRAND.navy}" font-size="21" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.ctaButton)}</text>
+    <rect x="670" y="1196" width="284" height="284" rx="24" fill="${BRAND.white}" />
+    <image href="${gameData.qrCodeDataUrl}" x="694" y="1220" width="236" height="236" preserveAspectRatio="xMidYMid meet" />
+    <rect x="666" y="1498" width="292" height="62" rx="31" fill="${BRAND.yellow}" />
+    <text x="812" y="1540" text-anchor="middle" fill="${BRAND.navy}" font-size="21" font-weight="900" font-family="Segoe UI, Arial, sans-serif">${escapeXml(overlay.ctaButton)}</text>
 
     <g transform="translate(58 1492)">
       <text x="0" y="0" fill="${BRAND.navy}" font-size="26" font-weight="900" font-family="Segoe UI, Arial, sans-serif">1. ${escapeXml(overlay.stepOneTitle.toUpperCase())}</text>

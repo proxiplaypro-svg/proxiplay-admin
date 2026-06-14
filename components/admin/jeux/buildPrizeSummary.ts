@@ -50,7 +50,17 @@ function truncateListPreview(items: string[], maxLength = 42) {
   return preview;
 }
 
-export function buildPrizeSummary(game: Pick<Game, "hasMainPrize" | "mainPrizeTitle" | "mainPrizeDescription" | "mainPrizeValue" | "secondaryPrizes">): GamePrizeSummary {
+function formatCurrencyLike(value: number | null) {
+  if (value === null) {
+    return "";
+  }
+
+  return `${value} EUR`;
+}
+
+export function buildPrizeSummary(
+  game: Pick<Game, "hasMainPrize" | "mainPrizeTitle" | "mainPrizeDescription" | "mainPrizeValue" | "secondaryPrizes">,
+): GamePrizeSummary {
   const hasMainPrizeFlag = game.hasMainPrize === true;
   const mainPrizeTitle = readText(game.mainPrizeTitle);
   const mainPrizeDescription = readText(game.mainPrizeDescription);
@@ -86,7 +96,7 @@ export function buildPrizeSummary(game: Pick<Game, "hasMainPrize" | "mainPrizeTi
         : "configured"
       : "none",
     mainPrizeLabel: hasUsableMainPrize
-      ? mainPrizeTitle || "Lot principal configuré"
+      ? mainPrizeTitle || mainPrizeDescription || formatCurrencyLike(mainPrizeValue) || null
       : null,
     secondaryCount,
     secondaryCountLabel:

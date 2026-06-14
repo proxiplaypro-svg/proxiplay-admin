@@ -341,6 +341,8 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
             .map((prize) => `${prize.name} (${prize.count})`)
             .join(", ")
         : null;
+    const firstSecondaryPrizeTitle =
+      game.secondaryPrizes.find((prize) => prize.name.trim().length > 0)?.name ?? null;
     const lotDescription =
       game.mainPrizeDescription ||
       game.secondaryPrizes.find((prize) => prize.description)?.description ||
@@ -358,11 +360,11 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
       animationId: game.animationId,
       restrictedToAdults: game.restrictedToAdults,
       mainPrizeLabel:
-        game.hasMainPrize && game.mainPrizeValue !== null
-          ? `${game.mainPrizeValue} EUR`
-          : game.hasMainPrize
-            ? "Lot principal configure"
-            : null,
+        game.mainPrizeTitle ||
+        game.mainPrizeDescription ||
+        (game.hasMainPrize && game.mainPrizeValue !== null ? `${game.mainPrizeValue} EUR` : null),
+      mainPrizeTitle: game.mainPrizeTitle || null,
+      secondaryPrizeTitle: firstSecondaryPrizeTitle,
       secondaryPrizeSummary,
     });
   };

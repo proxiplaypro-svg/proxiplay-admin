@@ -14,6 +14,8 @@ export type PrintableGamePosterData = {
   animationId?: string | null;
   restrictedToAdults?: boolean;
   mainPrizeLabel?: string | null;
+  mainPrizeTitle?: string | null;
+  secondaryPrizeTitle?: string | null;
   secondaryPrizeSummary?: string | null;
 };
 
@@ -96,31 +98,52 @@ function buildFacebookCaption({
   return lines.join("\n\n");
 }
 
-function buildPosterGainHeadline(mainPrizeLabel?: string | null) {
-  const normalized = mainPrizeLabel?.trim() || "";
+function normalizePromotionalCopy(value: string | null | undefined) {
+  return value?.trim().replace(/\s+/g, " ") || "";
+}
 
-  if (!normalized) {
-    return {
-      lead: "LOT",
-      accent: "A GAGNER",
-      badge: "100 % GRATUIT",
-    };
-  }
+function looksGenericPrizeLabel(value: string) {
+  const normalized = value.toLowerCase();
 
-  const upper = normalized.toUpperCase();
+  return (
+    normalized.length === 0 ||
+    normalized === "lot a gagner" ||
+    normalized === "lot principal configure" ||
+    normalized === "lot principal configuré" ||
+    normalized === "lot"
+  );
+}
 
-  if (upper.includes("REDUCTION")) {
-    return {
-      lead: upper,
-      accent: "A GAGNER",
-      badge: "100 % GRATUIT",
-    };
-  }
+function shouldUseFreeBadge(value: string) {
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes("reduction") ||
+    normalized.includes("réduction") ||
+    normalized.includes("bon") ||
+    normalized.includes("offert") ||
+    normalized.includes("gratu")
+  );
+}
+
+function buildPosterGainHeadline(game: {
+  title: string;
+  mainPrizeTitle?: string | null;
+  mainPrizeLabel?: string | null;
+  secondaryPrizeTitle?: string | null;
+}) {
+  const candidates = [
+    normalizePromotionalCopy(game.mainPrizeTitle),
+    normalizePromotionalCopy(game.mainPrizeLabel),
+    normalizePromotionalCopy(game.secondaryPrizeTitle),
+    normalizePromotionalCopy(game.title),
+  ].filter((value) => value.length > 0 && !looksGenericPrizeLabel(value));
+  const selected = candidates[0] || normalizePromotionalCopy(game.title) || "JEU PROXIPLAY";
+  const upper = selected.toUpperCase();
 
   return {
     lead: upper,
     accent: "A GAGNER",
-    badge: "A GAGNER",
+    badge: shouldUseFreeBadge(selected) ? "100 % GRATUIT" : "A GAGNER",
   };
 }
 
@@ -204,7 +227,12 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       new URL(PROXIPLAY_WORDMARK_PATH, window.location.origin).toString(),
     );
     const safeEndDateLabel = escapeHtml(game.endDateLabel.trim() || "Date a definir");
-    const gainHeadline = buildPosterGainHeadline(game.mainPrizeLabel);
+    const gainHeadline = buildPosterGainHeadline({
+      title: game.title,
+      mainPrizeTitle: game.mainPrizeTitle,
+      mainPrizeLabel: game.mainPrizeLabel,
+      secondaryPrizeTitle: game.secondaryPrizeTitle,
+    });
     const safeGainLead = escapeHtml(gainHeadline.lead);
     const safeGainAccent = escapeHtml(gainHeadline.accent);
     const safeGainBadge = escapeHtml(gainHeadline.badge);
@@ -300,7 +328,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         padding: 5.6mm 7mm 3.2mm;
       }
       .brand-wordmark {
-        width: 88mm;
+        width: 70mm;
         max-width: 100%;
       }
       .brand-wordmark img {
@@ -346,13 +374,13 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       }
       .intro-title {
         margin: 0;
-        font-size: 33pt;
-        line-height: 0.88;
+        font-size: 39pt;
+        line-height: 0.86;
         font-weight: 900;
         color: var(--brand-navy);
         letter-spacing: -0.03em;
         text-transform: uppercase;
-        max-width: 124mm;
+        max-width: 132mm;
       }
       .intro-accent {
         color: var(--brand-frame);
@@ -374,12 +402,12 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       }
       .visual-block {
         position: relative;
-        min-height: 106mm;
+        min-height: 112mm;
       }
       .hero-visual {
         position: relative;
-        width: calc(100% - 58mm);
-        min-height: 110mm;
+        width: calc(100% - 66mm);
+        min-height: 114mm;
         border-radius: 0 0 34mm 34mm;
         overflow: hidden;
         background: linear-gradient(180deg, #fff1c9 0%, #f7bd3f 100%);
@@ -419,7 +447,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       .hero-fallback {
         width: 100%;
         height: 100%;
-        min-height: 110mm;
+        min-height: 114mm;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -432,12 +460,12 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       }
       .hero-badge {
         position: absolute;
-        right: 4.5mm;
-        top: 4.5mm;
-        width: 27mm;
-        min-height: 27mm;
+        right: 4mm;
+        top: 4mm;
+        width: 30mm;
+        min-height: 30mm;
         border-radius: 999px;
-        padding: 4.8mm 3mm;
+        padding: 5.2mm 3.2mm;
         background: linear-gradient(180deg, #ffb617 0%, #f39a00 100%);
         color: #ffffff;
         border: 1px solid rgba(255,255,255,0.55);
@@ -446,7 +474,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         align-items: center;
         justify-content: center;
         text-align: center;
-        font-size: 8.6pt;
+        font-size: 9pt;
         font-weight: 900;
         text-transform: uppercase;
         z-index: 2;
@@ -455,7 +483,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         position: absolute;
         right: 0;
         bottom: 2mm;
-        width: 54mm;
+        width: 64mm;
         border-radius: 5mm;
         background: linear-gradient(180deg, #241c63 0%, #2f2870 100%);
         color: #ffffff;
@@ -477,15 +505,15 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         background: #ffffff;
       }
       .scan-frame img {
-        width: 36mm;
-        height: 36mm;
+        width: 42mm;
+        height: 42mm;
         display: block;
         margin: 0 auto;
         border-radius: 2.8mm;
       }
       .scan-label {
         margin-top: 3mm;
-        font-size: 8.8pt;
+        font-size: 9.3pt;
         font-weight: 800;
         text-transform: uppercase;
       }
@@ -504,7 +532,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 4mm;
         align-items: start;
-        margin-top: 1.6mm;
+        margin-top: 2.4mm;
       }
       .step-row {
         display: grid;
