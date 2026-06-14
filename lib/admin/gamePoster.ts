@@ -96,6 +96,34 @@ function buildFacebookCaption({
   return lines.join("\n\n");
 }
 
+function buildPosterGainHeadline(mainPrizeLabel?: string | null) {
+  const normalized = mainPrizeLabel?.trim() || "";
+
+  if (!normalized) {
+    return {
+      lead: "LOT",
+      accent: "A GAGNER",
+      badge: "100 % GRATUIT",
+    };
+  }
+
+  const upper = normalized.toUpperCase();
+
+  if (upper.includes("REDUCTION")) {
+    return {
+      lead: upper,
+      accent: "A GAGNER",
+      badge: "100 % GRATUIT",
+    };
+  }
+
+  return {
+    lead: upper,
+    accent: "A GAGNER",
+    badge: "A GAGNER",
+  };
+}
+
 export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
   const printWindow = window.open("", "_blank");
 
@@ -176,6 +204,10 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       new URL(PROXIPLAY_WORDMARK_PATH, window.location.origin).toString(),
     );
     const safeEndDateLabel = escapeHtml(game.endDateLabel.trim() || "Date a definir");
+    const gainHeadline = buildPosterGainHeadline(game.mainPrizeLabel);
+    const safeGainLead = escapeHtml(gainHeadline.lead);
+    const safeGainAccent = escapeHtml(gainHeadline.accent);
+    const safeGainBadge = escapeHtml(gainHeadline.badge);
     const adultBadge = game.restrictedToAdults
       ? '<span class="badge badge-danger">18+</span>'
       : "";
@@ -188,9 +220,19 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     const coverBlock = safeImageUrl
       ? `<img class="hero-image" src="${safeImageUrl}" alt="${safeTitle}" />`
       : `<div class="hero-fallback">Visuel du jeu</div>`;
-    const imageBadge = safeMainPrize
+    const legacyImageBadge = safeMainPrize
       ? `<div class="hero-badge"><span class="hero-badge-icon">🎁</span><span>${safeMainPrize}</span></div>`
       : `<div class="hero-badge"><span class="hero-badge-icon">🎁</span><span>A gagner</span></div>`;
+    const imageBadge = `<div class="hero-badge"><span>${safeGainBadge}</span></div>`;
+    void mainPrizeBlock;
+    void secondaryPrizeBlock;
+    void legacyImageBadge;
+    const premiumMainPrizeBlock = safeMainPrize
+      ? `<div class="meta-row"><div><span class="meta-label">Lot principal</span><span class="meta-value">${safeMainPrize}</span></div></div>`
+      : "";
+    const premiumSecondaryPrizeBlock = safeSecondaryPrizes
+      ? `<div class="meta-row"><div><span class="meta-label">Lots secondaires</span><span class="meta-value">${safeSecondaryPrizes}</span></div></div>`
+      : "";
 
     printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html>
@@ -283,30 +325,20 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         border-color: rgba(160, 19, 77, 0.2);
       }
       .content {
-        display: grid;
-        grid-template-columns: minmax(0, 1.55fr) 53mm;
-        gap: 5mm;
-        padding: 0 7mm;
-        flex: 1;
-      }
-      .main-column {
-        min-width: 0;
         display: flex;
         flex-direction: column;
-      }
-      .hero-head {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 52mm;
-        gap: 6mm;
-        align-items: start;
+        padding: 0 7mm;
+        gap: 4.6mm;
+        flex: 1;
       }
       .intro-copy {
         display: grid;
-        gap: 2.2mm;
-        padding-top: 2mm;
+        gap: 2.4mm;
+        padding-top: 1.2mm;
+        max-width: 122mm;
       }
       .eyebrow {
-        font-size: 9.4pt;
+        font-size: 8.8pt;
         font-weight: 700;
         letter-spacing: 0.18em;
         text-transform: uppercase;
@@ -314,30 +346,128 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       }
       .intro-title {
         margin: 0;
-        font-size: 31pt;
-        line-height: 0.89;
+        font-size: 33pt;
+        line-height: 0.88;
         font-weight: 900;
         color: var(--brand-navy);
         letter-spacing: -0.03em;
         text-transform: uppercase;
+        max-width: 124mm;
       }
       .intro-accent {
         color: var(--brand-frame);
       }
+      .free-line {
+        font-size: 12pt;
+        font-weight: 700;
+        color: #383552;
+      }
+      .free-line strong {
+        color: var(--brand-frame);
+      }
+      .description {
+        margin: 0;
+        max-width: 122mm;
+        font-size: 10.8pt;
+        line-height: 1.36;
+        color: #33314a;
+      }
+      .visual-block {
+        position: relative;
+        min-height: 106mm;
+      }
+      .hero-visual {
+        position: relative;
+        width: calc(100% - 58mm);
+        min-height: 110mm;
+        border-radius: 0 0 34mm 34mm;
+        overflow: hidden;
+        background: linear-gradient(180deg, #fff1c9 0%, #f7bd3f 100%);
+        border: 1px solid rgba(242, 123, 61, 0.22);
+        box-shadow:
+          0 18px 34px rgba(242, 123, 61, 0.12),
+          inset 0 0 0 1px rgba(255,255,255,0.28);
+      }
+      .hero-visual::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0)),
+          radial-gradient(circle at center, rgba(255,255,255,0) 40%, rgba(0,0,0,0.16) 100%);
+        z-index: 0;
+      }
+      .hero-visual::after {
+        content: "";
+        position: absolute;
+        inset: auto 6% 6% 6%;
+        height: 18mm;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(0,0,0,0.18), transparent 72%);
+        filter: blur(6px);
+        z-index: 0;
+      }
+      .hero-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        position: relative;
+        z-index: 1;
+        filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.14));
+      }
+      .hero-fallback {
+        width: 100%;
+        height: 100%;
+        min-height: 110mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8mm;
+        text-align: center;
+        font-size: 22pt;
+        font-weight: 800;
+        color: var(--brand-navy);
+        background: linear-gradient(180deg, #fff1c9 0%, #f7bd3f 100%);
+      }
+      .hero-badge {
+        position: absolute;
+        right: 4.5mm;
+        top: 4.5mm;
+        width: 27mm;
+        min-height: 27mm;
+        border-radius: 999px;
+        padding: 4.8mm 3mm;
+        background: linear-gradient(180deg, #ffb617 0%, #f39a00 100%);
+        color: #ffffff;
+        border: 1px solid rgba(255,255,255,0.55);
+        box-shadow: 0 10px 20px rgba(243, 154, 0, 0.24);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-size: 8.6pt;
+        font-weight: 900;
+        text-transform: uppercase;
+        z-index: 2;
+      }
       .scan-panel {
-        align-self: start;
+        position: absolute;
+        right: 0;
+        bottom: 2mm;
+        width: 54mm;
         border-radius: 5mm;
         background: linear-gradient(180deg, #241c63 0%, #2f2870 100%);
         color: #ffffff;
-        padding: 4.5mm 3.5mm 3.6mm;
+        padding: 4.4mm 3.5mm 3.6mm;
         text-align: center;
         box-shadow:
-          0 12px 30px rgba(41, 40, 106, 0.2),
+          0 16px 34px rgba(41, 40, 106, 0.22),
           inset 0 0 0 0.35mm rgba(255,255,255,0.08);
       }
       .scan-title {
         margin: 0 0 2.6mm;
-        font-size: 9pt;
+        font-size: 9.1pt;
         font-weight: 800;
         text-transform: uppercase;
       }
@@ -355,8 +485,8 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
       }
       .scan-label {
         margin-top: 3mm;
-        font-size: 8.7pt;
-        font-weight: 700;
+        font-size: 8.8pt;
+        font-weight: 800;
         text-transform: uppercase;
       }
       .scan-deadline {
@@ -369,194 +499,80 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         font-weight: 800;
         line-height: 1.2;
       }
-      .description {
-        margin: 4mm 0 0;
-        max-width: 108mm;
-        font-size: 11.4pt;
-        line-height: 1.42;
-        color: #33314a;
-      }
-      .visual-and-steps {
-        display: grid;
-        grid-template-columns: minmax(0, 1.16fr) minmax(0, 0.84fr);
-        gap: 6mm;
-        align-items: stretch;
-        margin-top: 5mm;
-        flex: 1;
-      }
-      .hero-visual {
-        position: relative;
-        min-height: 128mm;
-        border-radius: 0 0 30mm 30mm;
-        overflow: hidden;
-        background: linear-gradient(180deg, #fff1c9 0%, #f7bd3f 100%);
-        border: 1px solid rgba(242, 123, 61, 0.22);
-        box-shadow:
-          0 18px 34px rgba(242, 123, 61, 0.12),
-          inset 0 0 0 1px rgba(255,255,255,0.28);
-      }
-      .hero-visual::before {
-        content: "";
-        position: absolute;
-        inset: auto 6% 7% 6%;
-        height: 16mm;
-        border-radius: 999px;
-        background: radial-gradient(circle, rgba(0,0,0,0.18), transparent 72%);
-        filter: blur(6px);
-        z-index: 0;
-      }
-      .hero-image {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        display: block;
-        position: relative;
-        z-index: 1;
-        padding: 8mm 6mm 5mm;
-      }
-      .hero-fallback {
-        width: 100%;
-        height: 100%;
-        min-height: 128mm;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 8mm;
-        text-align: center;
-        font-size: 22pt;
-        font-weight: 800;
-        color: var(--brand-navy);
-        background: linear-gradient(180deg, #fff1c9 0%, #f7bd3f 100%);
-      }
-      .hero-badge {
-        position: absolute;
-        left: 3.6mm;
-        top: 4.5mm;
-        width: 28mm;
-        min-height: 28mm;
-        border-radius: 999px;
-        padding: 5mm 3.4mm;
-        background: linear-gradient(180deg, #ffb617 0%, #f39a00 100%);
-        color: #ffffff;
-        border: 1px solid rgba(255,255,255,0.55);
-        box-shadow: 0 10px 20px rgba(243, 154, 0, 0.24);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 1.6mm;
-        text-align: center;
-        font-size: 8.2pt;
-        font-weight: 900;
-        text-transform: uppercase;
-        z-index: 2;
-      }
-      .hero-badge-icon {
-        font-size: 12pt;
-        line-height: 1;
-      }
       .steps-column {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 6.2mm;
-        padding-top: 3mm;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4mm;
+        align-items: start;
+        margin-top: 1.6mm;
       }
       .step-row {
         display: grid;
-        grid-template-columns: 14mm 1fr;
-        gap: 3.6mm;
-        align-items: center;
+        grid-template-columns: 12mm 1fr;
+        gap: 2.8mm;
+        align-items: start;
       }
       .step-number {
-        width: 9mm;
-        height: 9mm;
+        width: 8.6mm;
+        height: 8.6mm;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         border-radius: 999px;
         background: var(--brand-frame);
         color: #ffffff;
-        font-size: 10pt;
+        font-size: 9.2pt;
         font-weight: 700;
-      }
-      .step-icon {
-        width: 14mm;
-        height: 14mm;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 999px;
-        background: rgba(255, 244, 226, 0.96);
-        color: var(--brand-navy);
-        font-size: 16pt;
-        box-shadow: inset 0 0 0 0.4mm rgba(255,255,255,0.6);
       }
       .step-copy {
         display: flex;
         flex-direction: column;
-        gap: 0.8mm;
+        gap: 0.4mm;
       }
       .step-title {
-        font-size: 12.8pt;
+        font-size: 11.6pt;
         font-weight: 800;
         color: var(--brand-navy);
         text-transform: uppercase;
       }
       .step-text {
-        font-size: 10.4pt;
-        line-height: 1.42;
+        font-size: 9.2pt;
+        line-height: 1.25;
         color: #33314a;
       }
-      .steps-divider {
-        height: 0.4mm;
-        width: 100%;
-        background: linear-gradient(90deg, rgba(160, 19, 77, 0.2), rgba(160, 19, 77, 0.04));
-        border-radius: 999px;
-      }
       .meta-card {
-        margin: 6mm 7mm 7mm;
-        border: 1px solid rgba(160, 19, 77, 0.12);
-        border-radius: 5mm;
-        background: rgba(255, 252, 245, 0.94);
-        padding: 4mm 4.5mm;
+        margin: 5.4mm 7mm 7mm;
+        border-top: 0.35mm solid rgba(160, 19, 77, 0.12);
+        background: transparent;
+        padding: 3.2mm 0 0;
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 2mm;
-        box-shadow:
-          inset 0 0 0 0.6mm rgba(255, 255, 255, 0.72),
-          0 12px 24px rgba(41, 40, 106, 0.05);
+        gap: 3mm;
       }
       .meta-row {
-        display: grid;
-        grid-template-columns: 9mm 1fr;
-        gap: 2.4mm;
-        align-items: start;
-        padding: 1.4mm 1.2mm;
+        display: block;
+        min-width: 0;
+        padding: 0;
       }
       .meta-row + .meta-row {
         border-left: 0.35mm solid rgba(160, 19, 77, 0.12);
-        padding-left: 3.2mm;
+        padding-left: 3mm;
       }
       .meta-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14pt;
-        line-height: 1;
+        display: none;
       }
       .meta-label {
         display: block;
-        font-size: 8pt;
+        font-size: 7.4pt;
         font-weight: 700;
-        letter-spacing: 0.16em;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
         color: var(--brand-frame);
       }
       .meta-value {
         display: block;
-        margin-top: 1mm;
-        font-size: 10.6pt;
+        margin-top: 1.2mm;
+        font-size: 10pt;
         line-height: 1.32;
         color: #2b2a38;
       }
@@ -623,62 +639,57 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         ${adultBadge}
       </header>
       <section class="content">
-        <div class="main-column">
-          <div class="hero-head">
-            <div class="intro-copy">
-              <div class="eyebrow">Scannez, jouez, gagnez</div>
-              <h1 class="intro-title">${safeTitle}<br /><span class="intro-accent">&Agrave; GAGNER !</span></h1>
-            </div>
-            <aside class="scan-panel">
-              <div class="scan-title">Tentez votre chance</div>
-              <div class="scan-frame">
-                <img src="${qrCodeUrl}" alt="QR code ${safeTitle}" />
-              </div>
-              <div class="scan-label">Scannez pour jouer</div>
-              <div class="scan-deadline">Fin du jeu ${safeEndDateLabel}</div>
-            </aside>
-          </div>
-
-          <p class="description">${safeDescription || "Un jeu instantane a decouvrir directement chez votre commercant ProxiPlay."}</p>
-
-          <section class="visual-and-steps">
-            <div class="hero-visual">
-              ${imageBadge}
-              ${coverBlock}
-            </div>
-            <div class="steps-column">
-              <div class="step-row">
-                <div class="step-icon"><span class="step-number">1</span></div>
-                <div class="step-copy">
-                  <div class="step-title">Scannez</div>
-                  <div class="step-text">le QR code avec votre telephone.</div>
-                </div>
-              </div>
-              <div class="steps-divider"></div>
-              <div class="step-row">
-                <div class="step-icon"><span class="step-number">2</span></div>
-                <div class="step-copy">
-                  <div class="step-title">Jouez</div>
-                  <div class="step-text">en quelques secondes pour tenter votre chance.</div>
-                </div>
-              </div>
-              <div class="steps-divider"></div>
-              <div class="step-row">
-                <div class="step-icon"><span class="step-number">3</span></div>
-                <div class="step-copy">
-                  <div class="step-title">Gagnez</div>
-                  <div class="step-text">votre lot immediatement si le jeu est gagnant.</div>
-                </div>
-              </div>
-            </div>
-          </section>
+        <div class="intro-copy">
+          <div class="eyebrow">Scannez, jouez, gagnez</div>
+          <h1 class="intro-title">${safeGainLead}<br /><span class="intro-accent">${safeGainAccent}</span></h1>
+          <div class="free-line">C&apos;est <strong>gratuit</strong>. Jouez maintenant chez ${safeMerchantName}.</div>
+          <p class="description">${safeDescription || "Scannez le QR code pour tenter votre chance tout de suite."}</p>
         </div>
+
+        <section class="visual-block">
+          <div class="hero-visual">
+            ${imageBadge}
+            ${coverBlock}
+          </div>
+          <aside class="scan-panel">
+            <div class="scan-title">Scannez pour jouer</div>
+            <div class="scan-frame">
+              <img src="${qrCodeUrl}" alt="QR code ${safeTitle}" />
+            </div>
+            <div class="scan-label">Jouez maintenant</div>
+            <div class="scan-deadline">Fin du jeu le ${safeEndDateLabel}</div>
+          </aside>
+        </section>
+
+        <section class="steps-column">
+          <div class="step-row">
+            <div class="step-number">1</div>
+            <div class="step-copy">
+              <div class="step-title">Scannez</div>
+              <div class="step-text">le QR code.</div>
+            </div>
+          </div>
+          <div class="step-row">
+            <div class="step-number">2</div>
+            <div class="step-copy">
+              <div class="step-title">Jouez</div>
+              <div class="step-text">gratuitement.</div>
+            </div>
+          </div>
+          <div class="step-row">
+            <div class="step-number">3</div>
+            <div class="step-copy">
+              <div class="step-title">Gagnez</div>
+              <div class="step-text">votre reduction.</div>
+            </div>
+          </div>
+        </section>
       </section>
       <section class="meta-card">
         <div class="meta-row"><span class="meta-icon">📅</span><div><span class="meta-label">P&eacute;riode</span><span class="meta-value">${safeDates}</span></div></div>
         <div class="meta-row"><span class="meta-icon">🏪</span><div><span class="meta-label">Commer&ccedil;ant</span><span class="meta-value">${safeMerchantName}</span></div></div>
-        ${mainPrizeBlock}
-        ${secondaryPrizeBlock}
+        ${premiumMainPrizeBlock}
+        ${premiumSecondaryPrizeBlock}
       </section>
     </main>
     </div>
