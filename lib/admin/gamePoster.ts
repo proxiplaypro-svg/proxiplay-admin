@@ -75,6 +75,32 @@ export function buildGamePosterDeepLink(game: {
   return `https://proxiplay.fr/j/${game.id}${queryString ? `?${queryString}` : ""}`;
 }
 
+export async function downloadGamePosterPdf(gameId: string) {
+  const normalizedGameId = gameId.trim();
+
+  if (!normalizedGameId) {
+    throw new Error("Identifiant de jeu manquant.");
+  }
+
+  const response = await fetch("/api/generate-poster", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gameId: normalizedGameId }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Erreur generation PDF");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `affiche-${normalizedGameId}.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function buildFacebookCaption({
   title,
   merchantName,

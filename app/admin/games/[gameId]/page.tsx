@@ -15,7 +15,7 @@ import {
   type DocumentReference,
   type Timestamp,
 } from "firebase/firestore";
-import { openGameFacebookPostWindow, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
+import { downloadGamePosterPdf, openGameFacebookPostWindow } from "@/lib/admin/gamePoster";
 import { db, firebaseApp } from "@/lib/firebase/client-app";
 
 type GameDetailsPageProps = {
@@ -336,38 +336,7 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   };
 
   const handlePrintPoster = async () => {
-    const secondaryPrizeSummary =
-      game.secondaryPrizes.length > 0
-        ? game.secondaryPrizes
-            .map((prize) => `${prize.name} (${prize.count})`)
-            .join(", ")
-        : null;
-    const firstSecondaryPrizeTitle =
-      game.secondaryPrizes.find((prize) => prize.name.trim().length > 0)?.name ?? null;
-    const lotDescription =
-      game.mainPrizeDescription ||
-      game.secondaryPrizes.find((prize) => prize.description)?.description ||
-      game.description;
-
-    await openGamePosterPrintWindow({
-      id: game.id,
-      title: game.name,
-      merchantName: game.merchantName,
-      description: lotDescription,
-      imageUrl: game.imageUrl,
-      startDateLabel: game.startDateLabel,
-      endDateLabel: game.endDateLabel,
-      merchantId: game.merchantId,
-      animationId: game.animationId,
-      restrictedToAdults: game.restrictedToAdults,
-      mainPrizeLabel:
-        game.mainPrizeTitle ||
-        game.mainPrizeDescription ||
-        (game.hasMainPrize && game.mainPrizeValue !== null ? `${game.mainPrizeValue} EUR` : null),
-      mainPrizeTitle: game.mainPrizeTitle || null,
-      secondaryPrizeTitle: firstSecondaryPrizeTitle,
-      secondaryPrizeSummary,
-    });
+    await handleGeneratePosterPdf();
   };
 
   const handleOpenFacebookPost = async () => {
@@ -404,24 +373,7 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
     setPosterPdfLoading(true);
 
     try {
-      const res = await fetch("/api/generate-poster", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId: game.id }),
-      });
-
-      if (!res.ok) {
-        window.alert("Erreur generation PDF");
-        return;
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `affiche-${game.id}.pdf`;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      await downloadGamePosterPdf(game.id);
     } catch {
       window.alert("Erreur generation PDF");
     } finally {
