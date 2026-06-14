@@ -17,6 +17,20 @@ export type PrintableGamePosterData = {
   secondaryPrizeSummary?: string | null;
 };
 
+export type PrintableGameFacebookPostData = {
+  id: string;
+  title: string;
+  merchantName: string;
+  description: string;
+  imageUrl: string | null;
+  prizeImageUrl?: string | null;
+  merchantId: string | null;
+  animationId?: string | null;
+  restrictedToAdults?: boolean;
+  mainPrizeLabel?: string | null;
+  mainPrizeTitle?: string | null;
+};
+
 const PROXIPLAY_WORDMARK_PATH = "/proxiplay-wordmark.png";
 
 function escapeHtml(value: string) {
@@ -57,6 +71,29 @@ export function buildGamePosterDeepLink(game: {
 
   const queryString = params.toString();
   return `https://proxiplay.fr/j/${game.id}${queryString ? `?${queryString}` : ""}`;
+}
+
+function buildFacebookCaption({
+  title,
+  merchantName,
+  description,
+  link,
+  mainPrizeLabel,
+}: {
+  title: string;
+  merchantName: string;
+  description: string;
+  link: string;
+  mainPrizeLabel?: string | null;
+}) {
+  const lines = [
+    `${title}${merchantName ? ` chez ${merchantName}` : ""}`,
+    mainPrizeLabel ? `Lot a gagner: ${mainPrizeLabel}` : "",
+    description,
+    `Jouez ici: ${link}`,
+  ].filter((line) => line.trim().length > 0);
+
+  return lines.join("\n\n");
 }
 
 export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
@@ -138,22 +175,22 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     const safeWordmarkUrl = escapeHtml(
       new URL(PROXIPLAY_WORDMARK_PATH, window.location.origin).toString(),
     );
+    const safeEndDateLabel = escapeHtml(game.endDateLabel.trim() || "Date a definir");
     const adultBadge = game.restrictedToAdults
       ? '<span class="badge badge-danger">18+</span>'
       : "";
     const mainPrizeBlock = safeMainPrize
-      ? `<div class="meta-row"><span class="meta-label">Lot principal</span><span class="meta-value">${safeMainPrize}</span></div>`
+      ? `<div class="meta-row"><span class="meta-icon">🏆</span><div><span class="meta-label">Lot principal</span><span class="meta-value">${safeMainPrize}</span></div></div>`
       : "";
     const secondaryPrizeBlock = safeSecondaryPrizes
-      ? `<div class="meta-row"><span class="meta-label">Lots secondaires</span><span class="meta-value">${safeSecondaryPrizes}</span></div>`
-      : "";
-    const descriptionBlock = safeDescription
-      ? `<div class="section-copy"><div class="section-kicker">Description</div><p class="description">${safeDescription}</p></div>`
+      ? `<div class="meta-row"><span class="meta-icon">🎁</span><div><span class="meta-label">Lots secondaires</span><span class="meta-value">${safeSecondaryPrizes}</span></div></div>`
       : "";
     const coverBlock = safeImageUrl
       ? `<img class="hero-image" src="${safeImageUrl}" alt="${safeTitle}" />`
-      : `<div class="hero-fallback">Affiche ProxiPlay</div>`;
-    const merchantBlock = `<div class="merchant-chip">${safeMerchantName}</div>`;
+      : `<div class="hero-fallback">Visuel du jeu</div>`;
+    const imageBadge = safeMainPrize
+      ? `<div class="hero-badge"><span class="hero-badge-icon">🎁</span><span>${safeMainPrize}</span></div>`
+      : `<div class="hero-badge"><span class="hero-badge-icon">🎁</span><span>A gagner</span></div>`;
 
     printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html>
@@ -182,9 +219,12 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         --brand-green: #6EC12B;
         --brand-yellow: #FFF12B;
         --brand-blue: #90A6D8;
-        background: #f4efe7;
+        background:
+          radial-gradient(circle at top left, rgba(255, 241, 43, 0.22), transparent 24%),
+          radial-gradient(circle at bottom right, rgba(242, 123, 61, 0.14), transparent 22%),
+          #f8f3ea;
         color: #191919;
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: "Segoe UI", Arial, sans-serif;
       }
       body {
         position: relative;
@@ -199,10 +239,11 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         width: 100%;
         height: 281mm;
         margin: 0;
-        display: grid;
-        grid-template-rows: auto auto 1fr auto;
-        gap: 4mm;
-        background: #fffdf9;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        background:
+          radial-gradient(circle at top center, rgba(255,255,255,0.95), rgba(255,253,249,0.96) 48%, rgba(249,243,234,0.96) 100%);
         border: 2.2mm solid var(--brand-frame);
         border-radius: 7mm;
         overflow: hidden;
@@ -214,10 +255,10 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 6mm 7mm 0;
+        padding: 5.6mm 7mm 3.2mm;
       }
       .brand-wordmark {
-        width: 92mm;
+        width: 88mm;
         max-width: 100%;
       }
       .brand-wordmark img {
@@ -241,181 +282,282 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         background: rgba(160, 19, 77, 0.08);
         border-color: rgba(160, 19, 77, 0.2);
       }
-      .intro-band {
-        margin: 0 7mm;
-        border-radius: 5mm;
-        padding: 5.5mm 6mm;
-        background: var(--brand-intro);
-        color: #ffffff;
+      .content {
         display: grid;
-        grid-template-columns: 1fr 44mm;
+        grid-template-columns: minmax(0, 1.55fr) 53mm;
+        gap: 5mm;
+        padding: 0 7mm;
+        flex: 1;
+      }
+      .main-column {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .hero-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 52mm;
         gap: 6mm;
-        align-items: center;
-        box-shadow: inset 0 0 0 0.4mm rgba(255, 255, 255, 0.16);
+        align-items: start;
       }
       .intro-copy {
         display: grid;
-        gap: 1.8mm;
+        gap: 2.2mm;
+        padding-top: 2mm;
       }
       .eyebrow {
-        font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 8.5pt;
+        font-size: 9.4pt;
         font-weight: 700;
         letter-spacing: 0.18em;
         text-transform: uppercase;
-        opacity: 0.9;
+        color: var(--brand-frame);
       }
       .intro-title {
         margin: 0;
-        font-size: 24pt;
-        line-height: 0.96;
-        font-weight: 800;
-        text-wrap: balance;
+        font-size: 31pt;
+        line-height: 0.89;
+        font-weight: 900;
+        color: var(--brand-navy);
+        letter-spacing: -0.03em;
+        text-transform: uppercase;
       }
-      .intro-subtitle {
-        font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 10.5pt;
-        line-height: 1.38;
-        max-width: 82mm;
-        opacity: 0.96;
+      .intro-accent {
+        color: var(--brand-frame);
       }
       .scan-panel {
-        border-radius: 4.5mm;
-        background: rgba(255,255,255,0.14);
-        border: 1px solid rgba(255,255,255,0.24);
-        padding: 3mm;
+        align-self: start;
+        border-radius: 5mm;
+        background: linear-gradient(180deg, #241c63 0%, #2f2870 100%);
+        color: #ffffff;
+        padding: 4.5mm 3.5mm 3.6mm;
         text-align: center;
-        box-shadow: inset 0 0 0 0.4mm rgba(255,255,255,0.08);
+        box-shadow:
+          0 12px 30px rgba(41, 40, 106, 0.2),
+          inset 0 0 0 0.35mm rgba(255,255,255,0.08);
       }
-      .scan-panel img {
-        width: 34mm;
-        height: 34mm;
+      .scan-title {
+        margin: 0 0 2.6mm;
+        font-size: 9pt;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .scan-frame {
+        border-radius: 4mm;
+        padding: 2.4mm;
+        background: #ffffff;
+      }
+      .scan-frame img {
+        width: 36mm;
+        height: 36mm;
         display: block;
         margin: 0 auto;
-        border-radius: 3.2mm;
-        background: #ffffff;
-        padding: 1.7mm;
+        border-radius: 2.8mm;
       }
       .scan-label {
-        margin-top: 1.4mm;
-        font-family: "Segoe UI", Arial, sans-serif;
+        margin-top: 3mm;
         font-size: 8.7pt;
         font-weight: 700;
+        text-transform: uppercase;
       }
-      .hero {
+      .scan-deadline {
+        margin-top: 3mm;
+        border-radius: 999px;
+        background: #ffc62b;
+        color: #2f2870;
+        padding: 2.2mm 2.4mm;
+        font-size: 8.5pt;
+        font-weight: 800;
+        line-height: 1.2;
+      }
+      .description {
+        margin: 4mm 0 0;
+        max-width: 108mm;
+        font-size: 11.4pt;
+        line-height: 1.42;
+        color: #33314a;
+      }
+      .visual-and-steps {
         display: grid;
-        grid-template-columns: 1.08fr 0.92fr;
+        grid-template-columns: minmax(0, 1.16fr) minmax(0, 0.84fr);
         gap: 6mm;
-        padding: 0 7mm;
-        align-items: start;
+        align-items: stretch;
+        margin-top: 5mm;
+        flex: 1;
       }
       .hero-visual {
-        min-height: 104mm;
-        max-height: 118mm;
-        border-radius: 5mm;
+        position: relative;
+        min-height: 128mm;
+        border-radius: 0 0 30mm 30mm;
         overflow: hidden;
-        background: #eef0fa;
-        border: 1px solid rgba(41, 40, 106, 0.08);
+        background: linear-gradient(180deg, #fff1c9 0%, #f7bd3f 100%);
+        border: 1px solid rgba(242, 123, 61, 0.22);
         box-shadow:
-          0 10px 25px rgba(41, 40, 106, 0.08),
-          inset 0 0 0 1px rgba(255,255,255,0.25);
+          0 18px 34px rgba(242, 123, 61, 0.12),
+          inset 0 0 0 1px rgba(255,255,255,0.28);
+      }
+      .hero-visual::before {
+        content: "";
+        position: absolute;
+        inset: auto 6% 7% 6%;
+        height: 16mm;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(0,0,0,0.18), transparent 72%);
+        filter: blur(6px);
+        z-index: 0;
       }
       .hero-image {
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        object-fit: contain;
         display: block;
+        position: relative;
+        z-index: 1;
+        padding: 8mm 6mm 5mm;
       }
       .hero-fallback {
         width: 100%;
         height: 100%;
-        min-height: 104mm;
+        min-height: 128mm;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 8mm;
         text-align: center;
-        font-size: 21pt;
+        font-size: 22pt;
         font-weight: 800;
         color: var(--brand-navy);
-        background: #f3f2fb;
+        background: linear-gradient(180deg, #fff1c9 0%, #f7bd3f 100%);
       }
-      .hero-copy {
+      .hero-badge {
+        position: absolute;
+        left: 3.6mm;
+        top: 4.5mm;
+        width: 28mm;
+        min-height: 28mm;
+        border-radius: 999px;
+        padding: 5mm 3.4mm;
+        background: linear-gradient(180deg, #ffb617 0%, #f39a00 100%);
+        color: #ffffff;
+        border: 1px solid rgba(255,255,255,0.55);
+        box-shadow: 0 10px 20px rgba(243, 154, 0, 0.24);
         display: flex;
         flex-direction: column;
-        gap: 2.7mm;
-        min-width: 0;
-      }
-      .merchant-chip {
-        align-self: flex-start;
-        border-radius: 999px;
-        padding: 1.6mm 3.3mm;
-        background: #fff7b8;
-        color: var(--brand-frame);
-        border: 1px solid rgba(160, 19, 77, 0.18);
-        font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 8.3pt;
-        font-weight: 700;
-        letter-spacing: 0.08em;
+        align-items: center;
+        justify-content: center;
+        gap: 1.6mm;
+        text-align: center;
+        font-size: 8.2pt;
+        font-weight: 900;
         text-transform: uppercase;
+        z-index: 2;
       }
-      .title {
-        margin: 0;
-        font-size: 21pt;
+      .hero-badge-icon {
+        font-size: 12pt;
         line-height: 1;
+      }
+      .steps-column {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6.2mm;
+        padding-top: 3mm;
+      }
+      .step-row {
+        display: grid;
+        grid-template-columns: 14mm 1fr;
+        gap: 3.6mm;
+        align-items: center;
+      }
+      .step-number {
+        width: 9mm;
+        height: 9mm;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: var(--brand-frame);
+        color: #ffffff;
+        font-size: 10pt;
+        font-weight: 700;
+      }
+      .step-icon {
+        width: 14mm;
+        height: 14mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: rgba(255, 244, 226, 0.96);
+        color: var(--brand-navy);
+        font-size: 16pt;
+        box-shadow: inset 0 0 0 0.4mm rgba(255,255,255,0.6);
+      }
+      .step-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8mm;
+      }
+      .step-title {
+        font-size: 12.8pt;
         font-weight: 800;
         color: var(--brand-navy);
-        text-wrap: balance;
+        text-transform: uppercase;
       }
-      .section-copy {
+      .step-text {
+        font-size: 10.4pt;
+        line-height: 1.42;
+        color: #33314a;
+      }
+      .steps-divider {
+        height: 0.4mm;
+        width: 100%;
+        background: linear-gradient(90deg, rgba(160, 19, 77, 0.2), rgba(160, 19, 77, 0.04));
+        border-radius: 999px;
+      }
+      .meta-card {
+        margin: 6mm 7mm 7mm;
+        border: 1px solid rgba(160, 19, 77, 0.12);
+        border-radius: 5mm;
+        background: rgba(255, 252, 245, 0.94);
+        padding: 4mm 4.5mm;
         display: grid;
-        gap: 1.4mm;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 2mm;
+        box-shadow:
+          inset 0 0 0 0.6mm rgba(255, 255, 255, 0.72),
+          0 12px 24px rgba(41, 40, 106, 0.05);
       }
-      .section-kicker {
-        font-family: "Segoe UI", Arial, sans-serif;
+      .meta-row {
+        display: grid;
+        grid-template-columns: 9mm 1fr;
+        gap: 2.4mm;
+        align-items: start;
+        padding: 1.4mm 1.2mm;
+      }
+      .meta-row + .meta-row {
+        border-left: 0.35mm solid rgba(160, 19, 77, 0.12);
+        padding-left: 3.2mm;
+      }
+      .meta-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14pt;
+        line-height: 1;
+      }
+      .meta-label {
+        display: block;
         font-size: 8pt;
         font-weight: 700;
         letter-spacing: 0.16em;
         text-transform: uppercase;
         color: var(--brand-frame);
       }
-      .description {
-        margin: 0;
-        font-size: 10.6pt;
-        line-height: 1.46;
-        color: #514d58;
-      }
-      .meta-card {
-        margin: 0 7mm 7mm;
-        border: 1px solid rgba(160, 19, 77, 0.14);
-        border-radius: 5mm;
-        background: #fffdf9;
-        padding: 4.5mm;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 3mm 4mm;
-        box-shadow: inset 0 0 0 0.6mm rgba(255, 255, 255, 0.6);
-      }
-      .meta-row {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 0.8mm;
-        align-items: start;
-        border-radius: 3.6mm;
-        padding: 3.2mm;
-        background: #fff8de;
-      }
-      .meta-label {
-        font-family: "Segoe UI", Arial, sans-serif;
-        font-size: 7.8pt;
-        font-weight: 700;
-        color: #7b7b7b;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-      }
       .meta-value {
-        font-size: 10.3pt;
-        line-height: 1.35;
+        display: block;
+        margin-top: 1mm;
+        font-size: 10.6pt;
+        line-height: 1.32;
         color: #2b2a38;
       }
       .print-tools {
@@ -458,6 +600,9 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
           height: 281mm;
           box-shadow: none;
         }
+        .meta-card {
+          box-shadow: none;
+        }
         .print-tools {
           display: none;
         }
@@ -477,32 +622,61 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
         </div>
         ${adultBadge}
       </header>
-      <section class="intro-band">
-        <div class="intro-copy">
-          <div class="eyebrow">Scannez, jouez, gagnez</div>
-          <h1 class="intro-title">Tentez votre chance</h1>
-          <div class="intro-subtitle">Un jeu instantan&eacute; &agrave; d&eacute;couvrir directement chez votre commer&ccedil;ant ProxiPlay.</div>
-        </div>
-        <aside class="scan-panel">
-          <img src="${qrCodeUrl}" alt="QR code ${safeTitle}" />
-          <div class="scan-label">Scannez pour participer</div>
-        </aside>
-      </section>
-      <section class="hero">
-        <div class="hero-visual">${coverBlock}</div>
-        <div class="hero-copy">
-          ${merchantBlock}
-          <h1 class="title">${safeTitle}</h1>
-          ${descriptionBlock}
-          <div class="section-copy">
-            <div class="section-kicker">Comment jouer</div>
-            <p class="description">Scannez le QR code, ouvrez le jeu sur votre t&eacute;l&eacute;phone et jouez en quelques secondes pour tenter de remporter les lots propos&eacute;s.</p>
+      <section class="content">
+        <div class="main-column">
+          <div class="hero-head">
+            <div class="intro-copy">
+              <div class="eyebrow">Scannez, jouez, gagnez</div>
+              <h1 class="intro-title">${safeTitle}<br /><span class="intro-accent">&Agrave; GAGNER !</span></h1>
+            </div>
+            <aside class="scan-panel">
+              <div class="scan-title">Tentez votre chance</div>
+              <div class="scan-frame">
+                <img src="${qrCodeUrl}" alt="QR code ${safeTitle}" />
+              </div>
+              <div class="scan-label">Scannez pour jouer</div>
+              <div class="scan-deadline">Fin du jeu ${safeEndDateLabel}</div>
+            </aside>
           </div>
+
+          <p class="description">${safeDescription || "Un jeu instantane a decouvrir directement chez votre commercant ProxiPlay."}</p>
+
+          <section class="visual-and-steps">
+            <div class="hero-visual">
+              ${imageBadge}
+              ${coverBlock}
+            </div>
+            <div class="steps-column">
+              <div class="step-row">
+                <div class="step-icon"><span class="step-number">1</span></div>
+                <div class="step-copy">
+                  <div class="step-title">Scannez</div>
+                  <div class="step-text">le QR code avec votre telephone.</div>
+                </div>
+              </div>
+              <div class="steps-divider"></div>
+              <div class="step-row">
+                <div class="step-icon"><span class="step-number">2</span></div>
+                <div class="step-copy">
+                  <div class="step-title">Jouez</div>
+                  <div class="step-text">en quelques secondes pour tenter votre chance.</div>
+                </div>
+              </div>
+              <div class="steps-divider"></div>
+              <div class="step-row">
+                <div class="step-icon"><span class="step-number">3</span></div>
+                <div class="step-copy">
+                  <div class="step-title">Gagnez</div>
+                  <div class="step-text">votre lot immediatement si le jeu est gagnant.</div>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </section>
       <section class="meta-card">
-        <div class="meta-row"><span class="meta-label">P&eacute;riode</span><span class="meta-value">${safeDates}</span></div>
-        <div class="meta-row"><span class="meta-label">Commer&ccedil;ant</span><span class="meta-value">${safeMerchantName}</span></div>
+        <div class="meta-row"><span class="meta-icon">📅</span><div><span class="meta-label">P&eacute;riode</span><span class="meta-value">${safeDates}</span></div></div>
+        <div class="meta-row"><span class="meta-icon">🏪</span><div><span class="meta-label">Commer&ccedil;ant</span><span class="meta-value">${safeMerchantName}</span></div></div>
         ${mainPrizeBlock}
         ${secondaryPrizeBlock}
       </section>
@@ -574,4 +748,374 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     printWindow.document.close();
     throw error;
   }
+}
+
+export async function openGameFacebookPostWindow(game: PrintableGameFacebookPostData) {
+  const postWindow = window.open("", "_blank");
+
+  if (!postWindow) {
+    throw new Error("Impossible d'ouvrir la fenetre du post Facebook.");
+  }
+
+  const deepLink = buildGamePosterDeepLink(game);
+  const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
+  const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commercant");
+  const safeDescription = escapeHtml(game.description.trim());
+  const safeMainPrizeLabel = escapeHtml(game.mainPrizeLabel?.trim() || "");
+  const safeMainPrizeTitle = escapeHtml(game.mainPrizeTitle?.trim() || "");
+  const safeLink = escapeHtml(deepLink);
+  const safeLinkJs = JSON.stringify(deepLink);
+  const safeCaption = escapeHtml(
+    buildFacebookCaption({
+      title: game.title.trim() || "Jeu ProxiPlay",
+      merchantName: game.merchantName.trim(),
+      description: game.description.trim(),
+      link: deepLink,
+      mainPrizeLabel: game.mainPrizeLabel?.trim() || null,
+    }),
+  );
+  const safeCaptionJs = JSON.stringify(
+    buildFacebookCaption({
+      title: game.title.trim() || "Jeu ProxiPlay",
+      merchantName: game.merchantName.trim(),
+      description: game.description.trim(),
+      link: deepLink,
+      mainPrizeLabel: game.mainPrizeLabel?.trim() || null,
+    }),
+  );
+  const safeWordmarkUrl = escapeHtml(
+    new URL(PROXIPLAY_WORDMARK_PATH, window.location.origin).toString(),
+  );
+  const safeVisualUrl = escapeHtml(game.prizeImageUrl?.trim() || game.imageUrl?.trim() || "");
+  const adultBadge = game.restrictedToAdults
+    ? '<span class="badge badge-danger">18+</span>'
+    : "";
+  const prizeBlock = safeMainPrizeLabel || safeMainPrizeTitle
+    ? `<div class="prize-card">
+        <div class="section-kicker">Lot mis en avant</div>
+        <p class="prize-title">${safeMainPrizeTitle || safeMainPrizeLabel}</p>
+        ${safeMainPrizeTitle && safeMainPrizeLabel && safeMainPrizeTitle !== safeMainPrizeLabel ? `<p class="prize-value">${safeMainPrizeLabel}</p>` : ""}
+      </div>`
+    : "";
+  const visualBlock = safeVisualUrl
+    ? `<img class="cover-image" src="${safeVisualUrl}" alt="${safeTitle}" />`
+    : `<div class="cover-fallback">Visuel du lot indisponible</div>`;
+
+  postWindow.document.open();
+  postWindow.document.write(`<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Post Facebook ${safeTitle}</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background:
+          radial-gradient(circle at top left, rgba(255, 241, 43, 0.28), transparent 28%),
+          linear-gradient(180deg, #f7f1e8 0%, #eef1f7 100%);
+        color: #1a1a1a;
+        font-family: "Segoe UI", Arial, sans-serif;
+      }
+      body {
+        padding: 24px;
+      }
+      .layout {
+        max-width: 1240px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: minmax(320px, 1080px) minmax(280px, 360px);
+        gap: 24px;
+        align-items: start;
+      }
+      .social-card {
+        width: min(100%, 1080px);
+        aspect-ratio: 1 / 1;
+        background: #fffdfa;
+        border: 1px solid rgba(160, 19, 77, 0.14);
+        border-radius: 32px;
+        overflow: hidden;
+        box-shadow: 0 24px 80px rgba(41, 40, 106, 0.12);
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 26px 28px 0;
+      }
+      .wordmark img {
+        display: block;
+        width: 220px;
+        max-width: 100%;
+        height: auto;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 12px;
+        font-weight: 700;
+        border: 1px solid rgba(160, 19, 77, 0.18);
+        background: rgba(255, 255, 255, 0.9);
+      }
+      .badge-danger {
+        color: #a0134d;
+        background: rgba(160, 19, 77, 0.08);
+      }
+      .card-body {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(320px, 0.7fr);
+        gap: 28px;
+        padding: 24px 28px 28px;
+      }
+      .visual-shell {
+        border-radius: 28px;
+        overflow: hidden;
+        background: linear-gradient(180deg, #f4efe8 0%, #edf1f8 100%);
+        border: 1px solid rgba(41, 40, 106, 0.08);
+        min-height: 0;
+      }
+      .cover-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .cover-fallback {
+        width: 100%;
+        height: 100%;
+        min-height: 420px;
+        display: grid;
+        place-items: center;
+        padding: 40px;
+        text-align: center;
+        color: #29286a;
+        font-size: 36px;
+        font-weight: 800;
+      }
+      .copy-column {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-width: 0;
+      }
+      .merchant-chip {
+        align-self: flex-start;
+        border-radius: 999px;
+        padding: 8px 14px;
+        background: #fff7b8;
+        color: #a0134d;
+        border: 1px solid rgba(160, 19, 77, 0.18);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .section-kicker {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #a0134d;
+      }
+      .title {
+        margin: 0;
+        color: #29286a;
+        font-size: clamp(38px, 4vw, 62px);
+        line-height: 0.96;
+        font-weight: 800;
+        text-wrap: balance;
+      }
+      .description {
+        margin: 0;
+        font-size: 19px;
+        line-height: 1.5;
+        color: #4d4a57;
+      }
+      .prize-card {
+        border-radius: 24px;
+        background: linear-gradient(180deg, #fff8de 0%, #fff2c4 100%);
+        border: 1px solid rgba(242, 123, 61, 0.28);
+        padding: 18px 20px;
+      }
+      .prize-title {
+        margin: 8px 0 0;
+        font-size: 26px;
+        line-height: 1.12;
+        font-weight: 800;
+        color: #1f1f1f;
+      }
+      .prize-value {
+        margin: 8px 0 0;
+        font-size: 15px;
+        color: #695b3f;
+      }
+      .cta {
+        margin-top: auto;
+        border-radius: 24px;
+        background: #29286a;
+        color: #ffffff;
+        padding: 18px 22px;
+      }
+      .cta-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        opacity: 0.82;
+      }
+      .cta-link {
+        display: block;
+        margin-top: 8px;
+        color: #ffffff;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1.45;
+        word-break: break-word;
+        text-decoration: none;
+      }
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .panel {
+        border-radius: 24px;
+        border: 1px solid rgba(26, 26, 26, 0.08);
+        background: rgba(255, 255, 255, 0.88);
+        padding: 18px;
+        box-shadow: 0 16px 40px rgba(26, 26, 26, 0.06);
+      }
+      .panel h2 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      .panel p, .panel pre {
+        margin: 0;
+        color: #555555;
+        font-size: 13px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .actions button, .actions a {
+        border: 0;
+        border-radius: 999px;
+        padding: 11px 15px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .primary-action {
+        background: #639922;
+        color: #ffffff;
+      }
+      .secondary-action {
+        background: #ffffff;
+        color: #1a1a1a;
+        border: 1px solid #ddd7cb;
+      }
+      @media (max-width: 1120px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .social-card {
+          width: 100%;
+          aspect-ratio: auto;
+        }
+        .card-body {
+          grid-template-columns: 1fr;
+        }
+        .visual-shell {
+          aspect-ratio: 1 / 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <main class="social-card">
+        <header class="card-header">
+          <div class="wordmark">
+            <img src="${safeWordmarkUrl}" alt="ProxiPlay" />
+          </div>
+          ${adultBadge}
+        </header>
+        <section class="card-body">
+          <div class="visual-shell">${visualBlock}</div>
+          <div class="copy-column">
+            <div class="merchant-chip">${safeMerchantName}</div>
+            <div>
+              <div class="section-kicker">Post Facebook</div>
+              <h1 class="title">${safeTitle}</h1>
+            </div>
+            ${safeDescription ? `<p class="description">${safeDescription}</p>` : ""}
+            ${prizeBlock}
+            <div class="cta">
+              <div class="cta-label">Lien du jeu</div>
+              <a class="cta-link" href="${safeLink}" target="_blank" rel="noopener noreferrer">${safeLink}</a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="sidebar">
+        <section class="panel">
+          <h2>Legende proposee</h2>
+          <pre>${safeCaption}</pre>
+        </section>
+        <section class="panel">
+          <h2>Actions rapides</h2>
+          <div class="actions">
+            <button type="button" class="primary-action" onclick="copyCaption()">Copier la legende</button>
+            <button type="button" class="secondary-action" onclick="copyLink()">Copier le lien</button>
+            <a class="secondary-action" href="${safeLink}" target="_blank" rel="noopener noreferrer">Ouvrir le jeu</a>
+          </div>
+        </section>
+      </aside>
+    </div>
+    <script>
+      async function copyText(value, successMessage) {
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(value);
+          } else {
+            const textarea = document.createElement("textarea");
+            textarea.value = value;
+            textarea.setAttribute("readonly", "");
+            textarea.style.position = "absolute";
+            textarea.style.left = "-9999px";
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textarea);
+          }
+          window.alert(successMessage);
+        } catch (_error) {
+          window.alert("Copie impossible depuis cette fenetre.");
+        }
+      }
+      function copyLink() {
+        void copyText(${safeLinkJs}, "Lien du jeu copie.");
+      }
+      function copyCaption() {
+        void copyText(${safeCaptionJs}, "Legende du post copiee.");
+      }
+    </script>
+  </body>
+</html>`);
+  postWindow.document.close();
 }

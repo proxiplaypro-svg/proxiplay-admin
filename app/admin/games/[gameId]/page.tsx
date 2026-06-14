@@ -15,7 +15,7 @@ import {
   type DocumentReference,
   type Timestamp,
 } from "firebase/firestore";
-import { openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
+import { openGameFacebookPostWindow, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { db, firebaseApp } from "@/lib/firebase/client-app";
 
 type GameDetailsPageProps = {
@@ -57,6 +57,7 @@ type FirestoreGameDetailsDocument = {
   }> | null;
   main_prize_title?: string;
   main_prize_description?: string;
+  main_prize_image?: string;
 };
 
 type FirestoreParticipantDocument = {
@@ -83,7 +84,9 @@ type AdminGameDetails = {
   imageUrl: string | null;
   hasMainPrize: boolean;
   mainPrizeValue: number | null;
+  mainPrizeTitle: string;
   mainPrizeDescription: string;
+  mainPrizeImageUrl: string | null;
   secondaryPrizes: Array<{ name: string; count: number; description: string; presentation?: string }>;
   restrictedToAdults: boolean;
 };
@@ -215,7 +218,9 @@ function buildDetails(
     imageUrl,
     hasMainPrize: game.hasMainPrize === true,
     mainPrizeValue: typeof game.prize_value === "number" ? game.prize_value : null,
+    mainPrizeTitle: game.main_prize_title?.trim() || "",
     mainPrizeDescription: game.main_prize_description?.trim() || "",
+    mainPrizeImageUrl: game.main_prize_image?.trim() || null,
     secondaryPrizes,
     restrictedToAdults: game.prohibited_for_minors === true || game.restrictedToAdults === true,
   };
@@ -362,6 +367,32 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
     });
   };
 
+  const handleOpenFacebookPost = async () => {
+    const lotDescription =
+      game.mainPrizeDescription ||
+      game.secondaryPrizes.find((prize) => prize.description)?.description ||
+      game.description;
+
+    await openGameFacebookPostWindow({
+      id: game.id,
+      title: game.name,
+      merchantName: game.merchantName,
+      description: lotDescription,
+      imageUrl: game.imageUrl,
+      prizeImageUrl: game.mainPrizeImageUrl ?? game.imageUrl,
+      merchantId: game.merchantId,
+      animationId: game.animationId,
+      restrictedToAdults: game.restrictedToAdults,
+      mainPrizeLabel:
+        game.hasMainPrize && game.mainPrizeValue !== null
+          ? `${game.mainPrizeValue} EUR`
+          : game.hasMainPrize
+            ? "Lot principal configure"
+            : null,
+      mainPrizeTitle: game.mainPrizeTitle || null,
+    });
+  };
+
   const runBackfillInstantWinners = async (dryRun: boolean) => {
     setBackfillLoading(dryRun ? "dryRun" : "confirm");
     setBackfillFeedback(null);
@@ -499,6 +530,13 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
             onClick={() => void handlePrintPoster()}
           >
             Imprimer l affiche
+          </button>
+          <button
+            type="button"
+            className="rounded-[8px] border border-[#A0134D] bg-white px-3 py-2 text-[12px] font-medium text-[#A0134D] hover:bg-[#FFF5FA]"
+            onClick={() => void handleOpenFacebookPost()}
+          >
+            Creer le post Facebook
           </button>
         </div>
       </div>

@@ -4,7 +4,7 @@ import { FirebaseError } from "firebase/app";
 import { httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
-import { openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
+import { openGameFacebookPostWindow, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { functionsClient } from "@/lib/firebase/functions";
 import type {
   AnimationOption,
@@ -455,6 +455,35 @@ export function GameEditModal({
     }
   };
 
+  const handleOpenFacebookPost = async () => {
+    try {
+      const lotDescription =
+        mainPrizeForm.description.trim() ||
+        secondaryPrizes.find((prize) => prize.description.trim())?.description.trim() ||
+        generalForm.description.trim();
+
+      await openGameFacebookPostWindow({
+        id: game.id,
+        title: generalForm.title.trim() || game.title,
+        merchantName,
+        description: lotDescription,
+        imageUrl: coverPreviewUrl || null,
+        prizeImageUrl: mainPrizePreviewUrl || coverPreviewUrl || null,
+        merchantId: generalForm.merchantId || game.merchantId,
+        animationId: generalForm.animationId || game.animationId,
+        restrictedToAdults: generalForm.restrictedToAdults,
+        mainPrizeLabel: prizeSummary.mainPrizeLabel,
+        mainPrizeTitle: mainPrizeForm.title.trim() || null,
+      });
+    } catch (postError) {
+      setValidationError(
+        postError instanceof Error
+          ? postError.message
+          : "Impossible de creer le post Facebook du jeu.",
+      );
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -567,6 +596,13 @@ export function GameEditModal({
                   className="inline-flex items-center gap-1 text-[11px] font-medium text-[#185FA5] hover:underline"
                 >
                   Imprimer l affiche
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleOpenFacebookPost()}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[#A0134D] hover:underline"
+                >
+                  Creer le post Facebook
                 </button>
               </div>
             )}
