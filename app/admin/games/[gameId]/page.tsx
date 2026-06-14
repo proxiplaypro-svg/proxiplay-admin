@@ -250,6 +250,7 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [posterPdfLoading, setPosterPdfLoading] = useState(false);
   const [backfillLoading, setBackfillLoading] = useState<"dryRun" | "confirm" | null>(null);
   const [backfillFeedback, setBackfillFeedback] = useState<BackfillFeedback | null>(null);
 
@@ -395,6 +396,39 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
     });
   };
 
+  const handleGeneratePosterPdf = async () => {
+    if (posterPdfLoading) {
+      return;
+    }
+
+    setPosterPdfLoading(true);
+
+    try {
+      const res = await fetch("/api/generate-poster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: game.id }),
+      });
+
+      if (!res.ok) {
+        window.alert("Erreur generation PDF");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `affiche-${game.id}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.alert("Erreur generation PDF");
+    } finally {
+      setPosterPdfLoading(false);
+    }
+  };
+
   const runBackfillInstantWinners = async (dryRun: boolean) => {
     setBackfillLoading(dryRun ? "dryRun" : "confirm");
     setBackfillFeedback(null);
@@ -532,6 +566,14 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
             onClick={() => void handlePrintPoster()}
           >
             Imprimer l affiche
+          </button>
+          <button
+            type="button"
+            className="rounded-[8px] border border-[#2D2A6E] bg-white px-3 py-2 text-[12px] font-medium text-[#2D2A6E] hover:bg-[#F5F4FF] disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => void handleGeneratePosterPdf()}
+            disabled={posterPdfLoading}
+          >
+            {posterPdfLoading ? "Generation..." : "Generer l affiche PDF"}
           </button>
           <Link
             href={`/admin/games/${game.id}/visual-generator`}
