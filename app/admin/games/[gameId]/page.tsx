@@ -531,6 +531,12 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
           >
             Imprimer l affiche
           </button>
+          <Link
+            href={`/admin/games/${game.id}/visual-generator`}
+            className="rounded-[8px] border border-[#639922] bg-white px-3 py-2 text-[12px] font-medium text-[#639922] hover:bg-[#F4FAEC]"
+          >
+            Generer un visuel IA
+          </Link>
           <button
             type="button"
             className="rounded-[8px] border border-[#A0134D] bg-white px-3 py-2 text-[12px] font-medium text-[#A0134D] hover:bg-[#FFF5FA]"
