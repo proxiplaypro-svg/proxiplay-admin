@@ -174,7 +174,11 @@ function buildPosterGainHeadline(game: {
 }
 
 export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
-  const printWindow = window.open("", "_blank");
+  await downloadGamePosterPdf(game.id);
+}
+
+/*
+  const printWindow = window.open("", "_blank")!;
 
   if (!printWindow) {
     throw new Error("Impossible d'ouvrir la fenetre d'impression.");
@@ -814,7 +818,7 @@ export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
     throw error;
   }
 }
-
+*/
 export async function openGameFacebookPostWindow(game: PrintableGameFacebookPostData) {
   const postWindow = window.open("", "_blank");
 
