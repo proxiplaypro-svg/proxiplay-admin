@@ -205,14 +205,15 @@ export function PosterVisualGeneratorPage({ gameId }: PosterVisualGeneratorPageP
           merchantId: readText(game.merchantId),
           animationId: readText(game.animation_id, game.campaign_id) || null,
         });
-        const qrCodeDataUrl = await QRCode.toDataURL(deepLink, {
+        const qrCodeOptions = {
           width: 720,
           margin: 0,
           color: {
             dark: "#1A1A1A",
             light: "#FFFFFF",
           },
-        });
+        } as Parameters<typeof QRCode.toDataURL>[1];
+        const qrCodeDataUrl = await QRCode.toDataURL(deepLink, qrCodeOptions);
         const rawImageUrl = readText(game.imageUrl, game.photo, game.coverUrl) || null;
         const resolvedImageUrl = await toDataUrlIfPossible(rawImageUrl);
         const mappedGameData = mapGameData(gameId, game, qrCodeDataUrl, resolvedImageUrl);
