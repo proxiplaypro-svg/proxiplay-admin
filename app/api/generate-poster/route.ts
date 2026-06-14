@@ -138,6 +138,21 @@ function buildPrizeImageFallbackDataUrl() {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
+function formatPosterTitleHtml(value: string) {
+  const compactPercent = value.replace(/(\d)\s+%/g, "$1%");
+  const normalized = compactPercent.trim().replace(/\s+/g, " ");
+  const lastSpaceIndex = normalized.lastIndexOf(" ");
+
+  if (lastSpaceIndex <= 0) {
+    return escapeHtml(normalized);
+  }
+
+  const beforeLastWord = normalized.slice(0, lastSpaceIndex);
+  const lastWord = normalized.slice(lastSpaceIndex + 1);
+
+  return `${escapeHtml(beforeLastWord)} <span class="title-tail">${escapeHtml(lastWord)}</span>`;
+}
+
 async function readLogoDataUrl() {
   const logoCandidates = [
     path.join(/* turbopackIgnore: true */ process.cwd(), "public", "logo-proxiplay.png"),
@@ -199,6 +214,7 @@ async function getChromiumExecutablePath() {
 
 function generatePosterHTML(data: PosterTemplateData) {
   const safeTitle = escapeHtml(data.title);
+  const posterTitleHtml = formatPosterTitleHtml(data.title);
   const safeDescription = escapeHtml(data.description);
   const safeMerchantName = escapeHtml(data.merchantName);
   const safeStartDate = escapeHtml(data.startDateLabel);
@@ -252,8 +268,12 @@ function generatePosterHTML(data: PosterTemplateData) {
         align-items: flex-start;
       }
       .header-left {
-        flex: 1;
+        flex: 0 1 60%;
         min-width: 0;
+      }
+      .header-right {
+        flex: 0 0 38%;
+        max-width: 140px;
       }
       .logo {
         width: 220px;
@@ -273,12 +293,17 @@ function generatePosterHTML(data: PosterTemplateData) {
         margin: 8px 0 0;
         color: #2D2A6E;
         font-family: "Bebas Neue", Impact, sans-serif;
-        font-size: 52px;
+        font-size: 48px;
         line-height: 0.92;
         letter-spacing: 0.02em;
+        word-break: break-word;
+        overflow-wrap: anywhere;
       }
       .gain-accent {
         color: #C0006C;
+      }
+      .title-tail {
+        white-space: nowrap;
       }
       .merchant-line {
         margin-top: 10px;
@@ -356,24 +381,6 @@ function generatePosterHTML(data: PosterTemplateData) {
         object-fit: cover;
         display: block;
       }
-      .prize-badge {
-        position: absolute;
-        top: 12px;
-        right: 12px;
-        width: 84px;
-        height: 84px;
-        border-radius: 999px;
-        background: #F5A623;
-        color: #ffffff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        font-size: 14px;
-        font-weight: 900;
-        line-height: 1.1;
-        box-shadow: 0 12px 26px rgba(245, 166, 35, 0.28);
-      }
       .steps {
         width: 140px;
         flex-shrink: 0;
@@ -446,7 +453,7 @@ function generatePosterHTML(data: PosterTemplateData) {
           <div class="header-left">
             <img class="logo" src="${data.logoDataUrl}" alt="ProxiPlay" />
             <div class="tagline">Scannez, jouez, gagnez</div>
-            <h1 class="gain-title">${safeTitle}<br /><span class="gain-accent">À GAGNER</span></h1>
+            <h1 class="gain-title">${posterTitleHtml}<br /><span class="gain-accent">À GAGNER</span></h1>
             <div class="merchant-line">Une offre locale gratuite chez <strong>${safeMerchantName}</strong></div>
             <p class="description">${safeDescription || "Scannez le QR code et tentez votre chance tout de suite."}</p>
           </div>
@@ -462,7 +469,6 @@ function generatePosterHTML(data: PosterTemplateData) {
         <section class="middle">
           <div class="visual-wrapper">
             <img class="prize-image" src="${data.prizeImageDataUrl}" alt="${safeTitle}" />
-            <div class="prize-badge">À GAGNER</div>
           </div>
           <div class="steps">
             <div class="step">
@@ -493,11 +499,11 @@ function generatePosterHTML(data: PosterTemplateData) {
             <div class="footer-value">${safeMerchantName}</div>
           </div>
           <div class="footer-block">
-            <div class="footer-label">LOT</div>
+            <div class="footer-label">LOT PRINCIPAL</div>
             <div class="footer-value">${safeTitle}</div>
           </div>
           <div class="footer-block">
-            <div class="footer-label">SECONDAIRES</div>
+            <div class="footer-label">LOTS SECONDAIRES</div>
             <div class="footer-value">${safeFirstSecondaryPrize}</div>
           </div>
         </section>
