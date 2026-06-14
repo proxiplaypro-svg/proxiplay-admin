@@ -1,9 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import chromium from "@sparticuz/chromium-min";
+import { jsPDF } from "jspdf";
 import { NextResponse } from "next/server";
-import puppeteer from "puppeteer-core";
-import type { Browser } from "puppeteer-core";
 import QRCode from "qrcode";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 
@@ -70,18 +68,24 @@ type PosterTemplateData = {
   logoDataUrl: string;
 };
 
-const CHROMIUM_PACK_URL =
-  process.env.CHROMIUM_PACK_URL?.trim() ||
-  "https://github.com/Sparticuz/chromium/releases/download/v147.0.0/chromium-v147.0.0-pack.tar";
+const PAGE = {
+  width: 595.28,
+  height: 841.89,
+  margin: 22,
+};
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+const BRAND = {
+  navy: "#2D2A6E",
+  magenta: "#C0006C",
+  frame: "#8B1A4A",
+  orange: "#FFB11B",
+  yellow: "#F5A623",
+  lightGray: "#F7F7F5",
+  midGray: "#D8D8DD",
+  text: "#2B2940",
+  softText: "#777487",
+  white: "#FFFFFF",
+};
 
 function readText(...values: Array<string | null | undefined>) {
   for (const value of values) {
@@ -118,7 +122,6 @@ function looksGenericPrizeLabel(value: string) {
     normalized === "lot à gagner" ||
     normalized === "lot principal configure" ||
     normalized === "lot principal configuré" ||
-    normalized === "lot principal configuree" ||
     normalized === "lot"
   );
 }
@@ -182,7 +185,7 @@ function buildPosterGainHeadline(game: FirestoreGameDocument) {
   const mainPrizeLabel = readMainPrizeLabel(game);
 
   return {
-    lead: mainPrizeLabel.toUpperCase(),
+    lead: mainPrizeLabel.replace(/(\d)\s+%/g, "$1%").toUpperCase(),
     accent: "A GAGNER",
     badge: shouldUseFreeBadge(mainPrizeLabel) ? "100 % GRATUIT" : "A GAGNER",
     mainPrizeLabel,
@@ -214,46 +217,7 @@ async function fetchAsDataUrl(url: string, fallbackMimeType = "image/jpeg") {
 }
 
 function buildPrizeImageFallbackDataUrl() {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600">
-      <defs>
-        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#FFF2D8" />
-          <stop offset="55%" stop-color="#FCE6EF" />
-          <stop offset="100%" stop-color="#EEF2FF" />
-        </linearGradient>
-        <radialGradient id="glowA" cx="35%" cy="28%" r="50%">
-          <stop offset="0%" stop-color="rgba(245,166,35,0.75)" />
-          <stop offset="100%" stop-color="rgba(245,166,35,0)" />
-        </radialGradient>
-        <radialGradient id="glowB" cx="70%" cy="78%" r="48%">
-          <stop offset="0%" stop-color="rgba(192,0,108,0.32)" />
-          <stop offset="100%" stop-color="rgba(192,0,108,0)" />
-        </radialGradient>
-      </defs>
-      <rect width="1200" height="1600" fill="url(#bg)" />
-      <circle cx="310" cy="360" r="310" fill="url(#glowA)" />
-      <circle cx="920" cy="1170" r="360" fill="url(#glowB)" />
-      <rect x="90" y="120" width="1020" height="1360" rx="68" fill="rgba(255,255,255,0.42)" />
-    </svg>
-  `;
-
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function formatPosterTitleHtml(value: string) {
-  const compactPercent = value.replace(/(\d)\s+%/g, "$1%");
-  const normalized = compactPercent.trim().replace(/\s+/g, " ");
-  const lastSpaceIndex = normalized.lastIndexOf(" ");
-
-  if (lastSpaceIndex <= 0) {
-    return escapeHtml(normalized);
-  }
-
-  const beforeLastWord = normalized.slice(0, lastSpaceIndex);
-  const lastWord = normalized.slice(lastSpaceIndex + 1);
-
-  return `${escapeHtml(beforeLastWord)} <span class="title-tail">${escapeHtml(lastWord)}</span>`;
+  return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ioAAAAASUVORK5CYII=";
 }
 
 async function readLogoDataUrl() {
@@ -307,409 +271,197 @@ async function resolveMerchantName(merchantId: string | null) {
   return "Commerce partenaire";
 }
 
-async function getChromiumExecutablePath() {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH?.trim()) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH.trim();
-  }
-
-  return chromium.executablePath(CHROMIUM_PACK_URL);
+function splitHeadlineLines(doc: jsPDF, value: string, maxWidth: number) {
+  return doc.splitTextToSize(value, maxWidth) as string[];
 }
 
-function generatePosterHTML(data: PosterTemplateData) {
-  const safeAltTitle = escapeHtml(data.altTitle);
-  const safeMainPrizeLabel = escapeHtml(data.mainPrizeLabel);
-  const posterTitleHtml = formatPosterTitleHtml(data.headlineLead);
-  const safeDescription = escapeHtml(data.description);
-  const safeMerchantName = escapeHtml(data.merchantName);
-  const safeStartDate = escapeHtml(data.startDateLabel);
-  const safeEndDate = escapeHtml(data.endDateLabel);
-  const safeFirstSecondaryPrize = escapeHtml(data.firstSecondaryPrizeLabel);
-  const safeBadgeLabel = escapeHtml(data.badgeLabel);
-  const safeHeadlineAccent = escapeHtml(data.headlineAccent);
-  const adultBadge = data.restrictedToAdults
-    ? '<div class="adult-badge">18+</div>'
-    : "";
+function drawStep(
+  doc: jsPDF,
+  index: number,
+  x: number,
+  y: number,
+  title: string,
+  text: string,
+) {
+  doc.setFillColor(BRAND.frame);
+  doc.circle(x + 18, y + 18, 14, "F");
+  doc.setTextColor(BRAND.white);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text(String(index), x + 18, y + 23, { align: "center" });
 
-  return `<!DOCTYPE html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Affiche ProxiPlay</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;700;900&display=swap" rel="stylesheet" />
-    <style>
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0;
-        width: 210mm;
-        height: 297mm;
-        background: #ffffff;
-        color: #161520;
-        font-family: "Inter", Arial, sans-serif;
-      }
-      body { padding: 0; }
-      .page {
-        width: 210mm;
-        height: 297mm;
-        padding: 22px;
-        background: #ffffff;
-      }
-      .poster {
-        width: 100%;
-        height: 100%;
-        border: 3px solid #8B1A4A;
-        border-radius: 18px;
-        padding: 30px 30px 24px;
-        background:
-          radial-gradient(circle at top left, rgba(245,166,35,0.08), transparent 26%),
-          radial-gradient(circle at bottom right, rgba(192,0,108,0.06), transparent 18%),
-          #ffffff;
-        display: flex;
-        flex-direction: column;
-        gap: 18px;
-      }
-      .header {
-        display: flex;
-        justify-content: space-between;
-        gap: 20px;
-        align-items: flex-start;
-      }
-      .header-left {
-        flex: 0 0 58%;
-        min-width: 0;
-      }
-      .header-right {
-        position: relative;
-        flex: 0 0 34.5%;
-        min-width: 0;
-        border-radius: 22px;
-        background: #2D2A6E;
-        padding: 18px 18px 16px;
-        color: #ffffff;
-        text-align: center;
-        box-shadow: 0 14px 30px rgba(45, 42, 110, 0.18);
-      }
-      .logo {
-        width: 250px;
-        max-width: 100%;
-        height: auto;
-        display: block;
-      }
-      .tagline {
-        margin-top: 18px;
-        color: #C0006C;
-        font-size: 14px;
-        font-weight: 900;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-      }
-      .gain-title {
-        margin: 10px 0 0;
-        color: #2D2A6E;
-        font-family: "Bebas Neue", Impact, sans-serif;
-        font-size: 48px;
-        line-height: 0.93;
-        letter-spacing: 0.01em;
-        word-break: break-word;
-        overflow-wrap: anywhere;
-      }
-      .gain-accent {
-        color: #C0006C;
-      }
-      .title-tail {
-        white-space: nowrap;
-      }
-      .merchant-line {
-        margin-top: 14px;
-        font-size: 19px;
-        line-height: 1.28;
-        color: #2D2A6E;
-      }
-      .merchant-line strong {
-        font-weight: 900;
-        color: #C0006C;
-      }
-      .merchant-line strong:last-child {
-        color: #2D2A6E;
-      }
-      .description {
-        margin-top: 8px;
-        max-width: 95%;
-        font-size: 16px;
-        line-height: 1.22;
-        font-style: italic;
-        color: #777487;
-      }
-      .adult-badge {
-        position: absolute;
-        top: -8px;
-        right: -8px;
-        width: 48px;
-        height: 48px;
-        border-radius: 999px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(45, 42, 110, 0.92);
-        border: 3px solid rgba(255, 255, 255, 0.45);
-        box-shadow: 0 0 0 2px rgba(45, 42, 110, 0.4);
-        color: #ffffff;
-        font-size: 12px;
-        font-weight: 900;
-      }
-      .chance-title {
-        font-size: 14px;
-        font-weight: 900;
-        line-height: 1.25;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-      }
-      .qr-frame {
-        margin: 14px auto 0;
-        width: 188px;
-        height: 188px;
-        border-radius: 16px;
-        background: #ffffff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 14px;
-      }
-      .qr-frame img {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        display: block;
-      }
-      .scan-label {
-        margin-top: 14px;
-        font-size: 15px;
-        font-weight: 900;
-        line-height: 1.1;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-      }
-      .deadline-badge {
-        margin-top: 14px;
-        border-radius: 999px;
-        background: #F5A623;
-        color: #ffffff;
-        padding: 10px 14px;
-        font-size: 13px;
-        font-weight: 900;
-      }
-      .middle {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 252px;
-        gap: 18px;
-        align-items: stretch;
-        flex: 1;
-        min-height: 0;
-      }
-      .visual-wrapper {
-        position: relative;
-        min-width: 0;
-        min-height: 0;
-        padding-top: 12px;
-      }
-      .promo-badge {
-        position: absolute;
-        top: 28px;
-        right: 18px;
-        border-radius: 999px;
-        width: 104px;
-        height: 104px;
-        background: #FFB11B;
-        color: #ffffff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 10px;
-        font-size: 12px;
-        font-weight: 900;
-        line-height: 1.15;
-        box-shadow: 0 12px 24px rgba(243, 154, 0, 0.18);
-      }
-      .prize-image {
-        width: 100%;
-        height: 305px;
-        border-radius: 18px;
-        object-fit: cover;
-        display: block;
-        background: linear-gradient(180deg, #F6E1AA 0%, #E9CB8B 100%);
-      }
-      .steps {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 0;
-        padding: 18px 0 0;
-      }
-      .step {
-        padding: 18px 0;
-      }
-      .step + .step {
-        border-top: 1px solid #D8D8DD;
-      }
-      .step-header {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-      }
-      .step-index {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 38px;
-        height: 38px;
-        border-radius: 999px;
-        background: #A61B5B;
-        color: #ffffff;
-        font-size: 20px;
-        font-family: "Bebas Neue", Impact, sans-serif;
-        font-weight: 900;
-        flex-shrink: 0;
-      }
-      .step-copy {
-        min-width: 0;
-      }
-      .step-title {
-        margin-top: 0;
-        color: #2D2A6E;
-        font-size: 26px;
-        font-family: "Bebas Neue", Impact, sans-serif;
-        font-weight: 900;
-        line-height: 0.98;
-      }
-      .step-text {
-        margin-top: 2px;
-        color: #2B2940;
-        font-size: 14px;
-        line-height: 1.28;
-      }
-      .footer {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 0;
-        border-radius: 18px;
-        background: #F7F7F5;
-        padding: 16px 18px;
-      }
-      .footer-block {
-        min-width: 0;
-        padding: 0 14px;
-      }
-      .footer-block + .footer-block {
-        border-left: 1px solid #E7E3DF;
-      }
-      .footer-label {
-        color: #8A8796;
-        font-size: 10px;
-        font-weight: 900;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-      }
-      .footer-value {
-        margin-top: 6px;
-        color: #2D2A6E;
-        font-size: 14px;
-        font-weight: 800;
-        line-height: 1.2;
-        word-break: break-word;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="page">
-      <article class="poster">
-        <section class="header">
-          <div class="header-left">
-            <img class="logo" src="${data.logoDataUrl}" alt="ProxiPlay" />
-            <div class="tagline">Scannez, jouez, gagnez</div>
-            <h1 class="gain-title">${posterTitleHtml}<br /><span class="gain-accent">${safeHeadlineAccent}</span></h1>
-            <div class="merchant-line">C&apos;est <strong>gratuit</strong>. Jouez maintenant chez <strong>${safeMerchantName}</strong>.</div>
-            <p class="description">${safeDescription || "Scannez le QR code et tentez votre chance tout de suite."}</p>
-          </div>
-          <aside class="header-right">
-            ${adultBadge}
-            <div class="chance-title">TENTEZ VOTRE CHANCE</div>
-            <div class="qr-frame">
-              <img src="${data.qrCodeDataUrl}" alt="QR code du jeu" />
-            </div>
-            <div class="scan-label">SCANNEZ POUR JOUER !</div>
-            <div class="deadline-badge">Fin le ${safeEndDate}</div>
-          </aside>
-        </section>
+  doc.setTextColor(BRAND.navy);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text(title, x + 42, y + 12);
 
-        <section class="middle">
-          <div class="visual-wrapper">
-            <div class="promo-badge">${safeBadgeLabel.replace(" ", "<br />")}</div>
-            <img class="prize-image" src="${data.prizeImageDataUrl}" alt="${safeAltTitle}" />
-          </div>
-          <div class="steps">
-            <div class="step">
-              <div class="step-header">
-                <div class="step-index">1</div>
-                <div class="step-copy">
-                  <div class="step-title">SCANNEZ</div>
-                  <div class="step-text">le QR code avec votre telephone.</div>
-                </div>
-              </div>
-            </div>
-            <div class="step">
-              <div class="step-header">
-                <div class="step-index">2</div>
-                <div class="step-copy">
-                  <div class="step-title">GRATTEZ</div>
-                  <div class="step-text">et decouvrez si vous avez gagne.</div>
-                </div>
-              </div>
-            </div>
-            <div class="step">
-              <div class="step-header">
-                <div class="step-index">3</div>
-                <div class="step-copy">
-                  <div class="step-title">GAGNEZ</div>
-                  <div class="step-text">votre lot immediatement !</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+  doc.setTextColor(BRAND.text);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10.5);
+  const lines = doc.splitTextToSize(text, 150) as string[];
+  doc.text(lines, x + 42, y + 29);
+}
 
-        <section class="footer">
-          <div class="footer-block">
-            <div class="footer-label">PERIODE</div>
-            <div class="footer-value">${safeStartDate} au ${safeEndDate}</div>
-          </div>
-          <div class="footer-block">
-            <div class="footer-label">COMMERCANT</div>
-            <div class="footer-value">${safeMerchantName}</div>
-          </div>
-          <div class="footer-block">
-            <div class="footer-label">LOT PRINCIPAL</div>
-            <div class="footer-value">${safeMainPrizeLabel}</div>
-          </div>
-          <div class="footer-block">
-            <div class="footer-label">LOTS SECONDAIRES</div>
-            <div class="footer-value">${safeFirstSecondaryPrize}</div>
-          </div>
-        </section>
-      </article>
-    </div>
-  </body>
-</html>`;
+function drawFooterBlock(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  label: string,
+  value: string,
+) {
+  doc.setTextColor("#8A8796");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text(label, x, y);
+
+  doc.setTextColor(BRAND.navy);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.5);
+  const lines = doc.splitTextToSize(value || "-", width) as string[];
+  doc.text(lines, x, y + 16);
+}
+
+function buildPosterPdf(data: PosterTemplateData) {
+  const pdf = new jsPDF({ unit: "pt", format: "a4" });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const outerX = PAGE.margin;
+  const outerY = PAGE.margin;
+  const outerW = pageWidth - PAGE.margin * 2;
+  const outerH = pageHeight - PAGE.margin * 2;
+
+  pdf.setFillColor(BRAND.white);
+  pdf.rect(0, 0, pageWidth, pageHeight, "F");
+  pdf.setDrawColor(BRAND.frame);
+  pdf.setLineWidth(3);
+  pdf.roundedRect(outerX, outerY, outerW, outerH, 20, 20, "S");
+
+  const leftX = outerX + 26;
+  const topY = outerY + 22;
+  const qrCardW = 180;
+  const qrCardH = 210;
+  const qrCardX = outerX + outerW - 26 - qrCardW;
+  const qrCardY = topY + 8;
+
+  pdf.addImage(data.logoDataUrl, "PNG", leftX, topY, 220, 58);
+
+  pdf.setTextColor(BRAND.magenta);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(13);
+  pdf.text("SCANNEZ, JOUEZ, GAGNEZ", leftX, topY + 86);
+
+  pdf.setTextColor(BRAND.navy);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(33);
+  const headlineLines = splitHeadlineLines(pdf, data.headlineLead, 220);
+  let headlineY = topY + 112;
+  for (const line of headlineLines) {
+    pdf.text(line, leftX, headlineY);
+    headlineY += 36;
+  }
+
+  pdf.setTextColor(BRAND.magenta);
+  pdf.setFontSize(34);
+  pdf.text(data.headlineAccent, leftX, headlineY + 4);
+
+  const merchantY = headlineY + 32;
+  pdf.setTextColor(BRAND.navy);
+  pdf.setFontSize(15);
+  pdf.text("C'est ", leftX, merchantY);
+  pdf.setTextColor(BRAND.magenta);
+  pdf.text("gratuit", leftX + 38, merchantY);
+  pdf.setTextColor(BRAND.navy);
+  pdf.text(`. Jouez maintenant chez ${data.merchantName}.`, leftX + 84, merchantY);
+
+  pdf.setTextColor(BRAND.softText);
+  pdf.setFont("helvetica", "italic");
+  pdf.setFontSize(10.5);
+  const descLines = pdf.splitTextToSize(data.description || "Scannez et tentez votre chance tout de suite.", 250) as string[];
+  pdf.text(descLines, leftX, merchantY + 22);
+
+  pdf.setFillColor(BRAND.navy);
+  pdf.roundedRect(qrCardX, qrCardY, qrCardW, qrCardH, 18, 18, "F");
+
+  if (data.restrictedToAdults) {
+    pdf.setFillColor(45, 42, 110);
+    pdf.setDrawColor(255, 255, 255);
+    pdf.setLineWidth(2);
+    pdf.circle(qrCardX + qrCardW - 16, qrCardY + 16, 16, "FD");
+    pdf.setTextColor(BRAND.white);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(10);
+    pdf.text("18+", qrCardX + qrCardW - 16, qrCardY + 20, { align: "center" });
+  }
+
+  pdf.setTextColor(BRAND.white);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
+  pdf.text("TENTEZ VOTRE CHANCE", qrCardX + qrCardW / 2, qrCardY + 24, { align: "center" });
+
+  pdf.setFillColor(BRAND.white);
+  pdf.roundedRect(qrCardX + 24, qrCardY + 40, 132, 132, 12, 12, "F");
+  pdf.addImage(data.qrCodeDataUrl, "PNG", qrCardX + 36, qrCardY + 52, 108, 108);
+
+  pdf.setTextColor(BRAND.white);
+  pdf.setFontSize(14);
+  pdf.text("SCANNEZ POUR JOUER !", qrCardX + qrCardW / 2, qrCardY + 190, { align: "center" });
+
+  pdf.setFillColor(BRAND.yellow);
+  pdf.roundedRect(qrCardX + 18, qrCardY + 198, qrCardW - 36, 24, 12, 12, "F");
+  pdf.setTextColor(BRAND.white);
+  pdf.setFontSize(12);
+  pdf.text(`Fin le ${data.endDateLabel}`, qrCardX + qrCardW / 2, qrCardY + 214, { align: "center" });
+
+  const visualX = leftX;
+  const visualY = topY + 250;
+  const visualW = 342;
+  const visualH = 360;
+
+  pdf.addImage(data.prizeImageDataUrl, "JPEG", visualX, visualY, visualW, visualH);
+
+  pdf.setFillColor(BRAND.orange);
+  pdf.circle(visualX + visualW - 42, visualY + 48, 38, "F");
+  pdf.setTextColor(BRAND.white);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(12);
+  const badgeLines = data.badgeLabel === "100 % GRATUIT" ? ["100 %", "GRATUIT"] : ["A", "GAGNER"];
+  pdf.text(badgeLines, visualX + visualW - 42, visualY + 44, { align: "center" });
+
+  const stepsX = visualX + visualW + 18;
+  const stepsY = visualY + 18;
+  drawStep(pdf, 1, stepsX, stepsY, "SCANNEZ", "le QR code avec votre telephone.");
+  pdf.setDrawColor(BRAND.midGray);
+  pdf.line(stepsX, stepsY + 72, stepsX + 150, stepsY + 72);
+  drawStep(pdf, 2, stepsX, stepsY + 86, "GRATTEZ", "et decouvrez si vous avez gagne.");
+  pdf.line(stepsX, stepsY + 158, stepsX + 150, stepsY + 158);
+  drawStep(pdf, 3, stepsX, stepsY + 172, "GAGNEZ", "votre lot immediatement !");
+
+  const footerX = leftX;
+  const footerY = outerY + outerH - 76;
+  const footerW = outerW - 52;
+  const footerH = 58;
+  const footerBlockW = footerW / 4;
+
+  pdf.setFillColor(BRAND.lightGray);
+  pdf.roundedRect(footerX, footerY, footerW, footerH, 16, 16, "F");
+  pdf.setDrawColor("#E7E3DF");
+  pdf.line(footerX + footerBlockW, footerY + 8, footerX + footerBlockW, footerY + footerH - 8);
+  pdf.line(footerX + footerBlockW * 2, footerY + 8, footerX + footerBlockW * 2, footerY + footerH - 8);
+  pdf.line(footerX + footerBlockW * 3, footerY + 8, footerX + footerBlockW * 3, footerY + footerH - 8);
+
+  drawFooterBlock(pdf, footerX + 14, footerY + 16, footerBlockW - 24, "PERIODE", `${data.startDateLabel}\nau ${data.endDateLabel}`);
+  drawFooterBlock(pdf, footerX + footerBlockW + 14, footerY + 16, footerBlockW - 24, "COMMERCANT", data.merchantName);
+  drawFooterBlock(pdf, footerX + footerBlockW * 2 + 14, footerY + 16, footerBlockW - 24, "LOT PRINCIPAL", data.mainPrizeLabel);
+  drawFooterBlock(pdf, footerX + footerBlockW * 3 + 14, footerY + 16, footerBlockW - 24, "LOTS SECONDAIRES", data.firstSecondaryPrizeLabel);
+
+  return Buffer.from(pdf.output("arraybuffer"));
 }
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  let browser: Browser | null = null;
-
   try {
     const body = (await request.json()) as GeneratePosterRequestBody;
     const gameId = body.gameId?.trim();
@@ -737,7 +489,7 @@ export async function POST(request: Request) {
     ]);
 
     const qrCodeOptions = {
-      width: 200,
+      width: 220,
       margin: 1,
       color: {
         dark: "#FFFFFF",
@@ -774,33 +526,9 @@ export async function POST(request: Request) {
       logoDataUrl,
     };
 
-    const executablePath = await getChromiumExecutablePath();
+    const pdfBuffer = buildPosterPdf(templateData);
 
-    browser = await puppeteer.launch({
-      args: puppeteer.defaultArgs({
-        args: chromium.args,
-        headless: "shell",
-      }),
-      defaultViewport: {
-        width: 1240,
-        height: 1754,
-        deviceScaleFactor: 2,
-      },
-      executablePath,
-      headless: "shell",
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(generatePosterHTML(templateData), { waitUntil: "domcontentloaded" });
-    await page.waitForNetworkIdle();
-
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
-    });
-
-    return new NextResponse(Buffer.from(pdfBuffer), {
+    return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="affiche-${gameId}.pdf"`,
@@ -812,9 +540,5 @@ export async function POST(request: Request) {
       { error: "Impossible de generer l affiche PDF pour le moment." },
       { status: 500 },
     );
-  } finally {
-    if (browser) {
-      await browser.close().catch(() => undefined);
-    }
   }
 }
