@@ -4,7 +4,7 @@ import { FirebaseError } from "firebase/app";
 import { httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
-import { downloadGamePosterPdf, openGameFacebookPostWindow } from "@/lib/admin/gamePoster";
+import { openGameFacebookPostWindow, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { functionsClient } from "@/lib/firebase/functions";
 import type {
   AnimationOption,
@@ -423,7 +423,31 @@ export function GameEditModal({
 
   const handlePrintPoster = async () => {
     try {
-      await downloadGamePosterPdf(game.id);
+      const secondaryPrizeSummary =
+        prizeSummary.secondaryPreview ??
+        prizeSummary.secondaryCountLabel ??
+        null;
+      const lotDescription =
+        mainPrizeForm.description.trim() ||
+        secondaryPrizes.find((prize) => prize.description.trim())?.description.trim() ||
+        generalForm.description.trim();
+
+      await openGamePosterPrintWindow({
+        id: game.id,
+        title: generalForm.title.trim() || game.title,
+        merchantName,
+        description: lotDescription,
+        imageUrl: coverPreviewUrl || null,
+        startDateLabel: generalForm.startDate || "Date a definir",
+        endDateLabel: generalForm.endDate || "Date a definir",
+        merchantId: generalForm.merchantId || game.merchantId,
+        animationId: generalForm.animationId || game.animationId,
+        restrictedToAdults: generalForm.restrictedToAdults,
+        mainPrizeLabel: prizeSummary.mainPrizeLabel,
+        mainPrizeTitle: mainPrizeForm.title.trim() || null,
+        secondaryPrizeTitle: secondaryPrizes[0]?.name?.trim() || null,
+        secondaryPrizeSummary,
+      });
     } catch (printError) {
       setValidationError(
         printError instanceof Error

@@ -15,7 +15,7 @@ import {
   type DocumentReference,
   type Timestamp,
 } from "firebase/firestore";
-import { downloadGamePosterPdf, openGameFacebookPostWindow } from "@/lib/admin/gamePoster";
+import { openGameFacebookPostWindow, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { db, firebaseApp } from "@/lib/firebase/client-app";
 
 type GameDetailsPageProps = {
@@ -250,7 +250,6 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [posterPdfLoading, setPosterPdfLoading] = useState(false);
   const [backfillLoading, setBackfillLoading] = useState<"dryRun" | "confirm" | null>(null);
   const [backfillFeedback, setBackfillFeedback] = useState<BackfillFeedback | null>(null);
 
@@ -336,7 +335,38 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   };
 
   const handlePrintPoster = async () => {
-    await handleGeneratePosterPdf();
+    const secondaryPrizeSummary =
+      game.secondaryPrizes.length > 0
+        ? game.secondaryPrizes
+            .map((prize) => `${prize.name} (${prize.count})`)
+            .join(", ")
+        : null;
+    const lotDescription =
+      game.mainPrizeDescription ||
+      game.secondaryPrizes.find((prize) => prize.description)?.description ||
+      game.description;
+
+    await openGamePosterPrintWindow({
+      id: game.id,
+      title: game.name,
+      merchantName: game.merchantName,
+      description: lotDescription,
+      imageUrl: game.imageUrl,
+      startDateLabel: game.startDateLabel,
+      endDateLabel: game.endDateLabel,
+      merchantId: game.merchantId,
+      animationId: game.animationId,
+      restrictedToAdults: game.restrictedToAdults,
+      mainPrizeLabel:
+        game.hasMainPrize && game.mainPrizeValue !== null
+          ? `${game.mainPrizeValue} EUR`
+          : game.hasMainPrize
+            ? "Lot principal configure"
+            : null,
+      mainPrizeTitle: game.mainPrizeTitle || null,
+      secondaryPrizeTitle: game.secondaryPrizes[0]?.name || null,
+      secondaryPrizeSummary,
+    });
   };
 
   const handleOpenFacebookPost = async () => {
@@ -363,22 +393,6 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
             : null,
       mainPrizeTitle: game.mainPrizeTitle || null,
     });
-  };
-
-  const handleGeneratePosterPdf = async () => {
-    if (posterPdfLoading) {
-      return;
-    }
-
-    setPosterPdfLoading(true);
-
-    try {
-      await downloadGamePosterPdf(game.id);
-    } catch {
-      window.alert("Erreur generation PDF");
-    } finally {
-      setPosterPdfLoading(false);
-    }
   };
 
   const runBackfillInstantWinners = async (dryRun: boolean) => {
@@ -518,14 +532,6 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
             onClick={() => void handlePrintPoster()}
           >
             Imprimer l affiche
-          </button>
-          <button
-            type="button"
-            className="rounded-[8px] border border-[#2D2A6E] bg-white px-3 py-2 text-[12px] font-medium text-[#2D2A6E] hover:bg-[#F5F4FF] disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={() => void handleGeneratePosterPdf()}
-            disabled={posterPdfLoading}
-          >
-            {posterPdfLoading ? "Generation..." : "Generer l affiche PDF"}
           </button>
           <Link
             href={`/admin/games/${game.id}/visual-generator`}
