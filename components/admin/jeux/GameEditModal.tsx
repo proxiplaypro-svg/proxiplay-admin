@@ -4,7 +4,7 @@ import { FirebaseError } from "firebase/app";
 import { httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
-import { openGameFacebookPostWindow, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
+import { openGameFacebookPostWindowWithMerchant, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { functionsClient } from "@/lib/firebase/functions";
 import type {
   AnimationOption,
@@ -467,19 +467,23 @@ export function GameEditModal({
         secondaryPrizes.find((prize) => prize.description.trim())?.description.trim() ||
         generalForm.description.trim();
 
-      await openGameFacebookPostWindow({
-        id: game.id,
-        title: generalForm.title.trim() || game.title,
+      await openGameFacebookPostWindowWithMerchant(
+        {
+          id: game.id,
+          title: generalForm.title.trim() || game.title,
+          merchantName,
+          description: lotDescription,
+          imageUrl: coverPreviewUrl || null,
+          prizeImageUrl: mainPrizePreviewUrl || coverPreviewUrl || null,
+          endDateLabel: generalForm.endDate || game.endDate || null,
+          merchantId: generalForm.merchantId || game.merchantId,
+          animationId: generalForm.animationId || game.animationId,
+          restrictedToAdults: generalForm.restrictedToAdults,
+          mainPrizeLabel: prizeSummary.mainPrizeLabel,
+          mainPrizeTitle: mainPrizeForm.title.trim() || null,
+        },
         merchantName,
-        description: lotDescription,
-        imageUrl: coverPreviewUrl || null,
-        prizeImageUrl: mainPrizePreviewUrl || coverPreviewUrl || null,
-        merchantId: generalForm.merchantId || game.merchantId,
-        animationId: generalForm.animationId || game.animationId,
-        restrictedToAdults: generalForm.restrictedToAdults,
-        mainPrizeLabel: prizeSummary.mainPrizeLabel,
-        mainPrizeTitle: mainPrizeForm.title.trim() || null,
-      });
+      );
     } catch (postError) {
       setValidationError(
         postError instanceof Error

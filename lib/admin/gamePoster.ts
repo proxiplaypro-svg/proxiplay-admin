@@ -24,14 +24,13 @@ export type PrintableGameFacebookPostData = {
   description: string;
   imageUrl: string | null;
   prizeImageUrl?: string | null;
+  endDateLabel?: string | null;
   merchantId: string | null;
   animationId?: string | null;
   restrictedToAdults?: boolean;
   mainPrizeLabel?: string | null;
   mainPrizeTitle?: string | null;
 };
-
-const PROXIPLAY_WORDMARK_PATH = "/proxiplay-wordmark.png";
 
 function escapeHtml(value: string) {
   return value
@@ -97,29 +96,6 @@ export async function downloadGamePosterPdf(gameId: string) {
   anchor.download = `affiche-${normalizedGameId}.pdf`;
   anchor.click();
   URL.revokeObjectURL(url);
-}
-
-function buildFacebookCaption({
-  title,
-  merchantName,
-  description,
-  link,
-  mainPrizeLabel,
-}: {
-  title: string;
-  merchantName: string;
-  description: string;
-  link: string;
-  mainPrizeLabel?: string | null;
-}) {
-  const lines = [
-    `${title}${merchantName ? ` chez ${merchantName}` : ""}`,
-    mainPrizeLabel ? `Lot a gagner: ${mainPrizeLabel}` : "",
-    description,
-    `Jouez ici: ${link}`,
-  ].filter((line) => line.trim().length > 0);
-
-  return lines.join("\n\n");
 }
 
 function normalizePromotionalCopy(value: string | null | undefined) {
@@ -586,52 +562,44 @@ export async function openGamePosterPrintWindow(
 }
 
 export async function openGameFacebookPostWindow(game: PrintableGameFacebookPostData) {
+  return openGameFacebookPostWindowWithMerchant(game, game.merchantName);
+}
+
+export async function openGameFacebookPostWindowWithMerchant(
+  game: PrintableGameFacebookPostData,
+  merchant = game.merchantName,
+) {
   const postWindow = window.open("", "_blank");
 
   if (!postWindow) {
     throw new Error("Impossible d'ouvrir la fenetre du post Facebook.");
   }
 
-  const deepLink = buildGamePosterDeepLink(game);
-  const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
-  const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commercant");
-  const safeDescription = escapeHtml(game.description.trim());
-  const safeMainPrizeLabel = escapeHtml(game.mainPrizeLabel?.trim() || "");
-  const safeMainPrizeTitle = escapeHtml(game.mainPrizeTitle?.trim() || "");
-  const safeLink = escapeHtml(deepLink);
-  const safeLinkJs = JSON.stringify(deepLink);
-  const safeCaption = escapeHtml(
-    buildFacebookCaption({
-      title: game.title.trim() || "Jeu ProxiPlay",
-      merchantName: game.merchantName.trim(),
-      description: game.description.trim(),
-      link: deepLink,
-      mainPrizeLabel: game.mainPrizeLabel?.trim() || null,
-    }),
-  );
-  const safeCaptionJs = JSON.stringify(
-    buildFacebookCaption({
-      title: game.title.trim() || "Jeu ProxiPlay",
-      merchantName: game.merchantName.trim(),
-      description: game.description.trim(),
-      link: deepLink,
-      mainPrizeLabel: game.mainPrizeLabel?.trim() || null,
-    }),
-  );
-  const safeWordmarkUrl = escapeHtml(
-    new URL(PROXIPLAY_WORDMARK_PATH, window.location.origin).toString(),
-  );
+  const merchantName = merchant.trim() || game.merchantName.trim() || "Commercant";
+  const title = game.title.trim() || "Jeu ProxiPlay";
+  const endDateLabel = formatPosterDate(game.endDateLabel?.trim() || "");
+  const safeTitle = escapeHtml(title);
   const safeVisualUrl = escapeHtml(game.prizeImageUrl?.trim() || game.imageUrl?.trim() || "");
-  const adultBadge = game.restrictedToAdults
-    ? '<span class="badge badge-danger">18+</span>'
-    : "";
-  const prizeBlock = safeMainPrizeLabel || safeMainPrizeTitle
-    ? `<div class="prize-card">
-        <div class="section-kicker">Lot mis en avant</div>
-        <p class="prize-title">${safeMainPrizeTitle || safeMainPrizeLabel}</p>
-        ${safeMainPrizeTitle && safeMainPrizeLabel && safeMainPrizeTitle !== safeMainPrizeLabel ? `<p class="prize-value">${safeMainPrizeLabel}</p>` : ""}
-      </div>`
-    : "";
+  const safeWordmarkUrl = escapeHtml(
+    new URL("/proxiplay-wordmark.png", window.location.origin).toString(),
+  );
+  const merchantHashTag = merchantName.replace(/\s+/g, "");
+  const postText = [
+    `🎉 ${merchantName} vous offre une chance de gagner !`,
+    "",
+    `🎁 ${title}`,
+    `📍 Rendez-vous chez ${merchantName}`,
+    "📱 Scannez le QR code sur place et tentez votre chance !",
+    "🆓 C'est 100% gratuit",
+    `⏰ Jusqu'au ${endDateLabel}`,
+    "",
+    `#Proxiplay #Dunkerque #${merchantHashTag} #JeuGratuit #BonPlan`,
+  ].join("\n");
+  const safePostText = escapeHtml(postText);
+  const safePostTextJs = JSON.stringify(postText);
+  const safeDownloadName = escapeHtml(
+    `${sanitizeFileName(`${merchantName}-${title}`) || game.id}-facebook-visuel`,
+  );
   const visualBlock = safeVisualUrl
     ? `<img class="cover-image" src="${safeVisualUrl}" alt="${safeTitle}" />`
     : `<div class="cover-fallback">Visuel du lot indisponible</div>`;
@@ -640,7 +608,7 @@ export async function openGameFacebookPostWindow(game: PrintableGameFacebookPost
   postWindow.document.write(`<!DOCTYPE html>
 <html lang="fr">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
     <title>Post Facebook ${safeTitle}</title>
     <style>
       * {
@@ -659,203 +627,107 @@ export async function openGameFacebookPostWindow(game: PrintableGameFacebookPost
         padding: 24px;
       }
       .layout {
-        max-width: 1240px;
+        max-width: 960px;
         margin: 0 auto;
-        display: grid;
-        grid-template-columns: minmax(320px, 1080px) minmax(280px, 360px);
-        gap: 24px;
-        align-items: start;
-      }
-      .social-card {
-        width: min(100%, 1080px);
-        aspect-ratio: 1 / 1;
-        background: #fffdfa;
-        border: 1px solid rgba(160, 19, 77, 0.14);
-        border-radius: 32px;
-        overflow: hidden;
-        box-shadow: 0 24px 80px rgba(41, 40, 106, 0.12);
-        display: grid;
-        grid-template-rows: auto 1fr auto;
-      }
-      .card-header {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        flex-direction: column;
         gap: 20px;
-        padding: 26px 28px 0;
-      }
-      .wordmark img {
-        display: block;
-        width: 220px;
-        max-width: 100%;
-        height: auto;
-      }
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        border-radius: 999px;
-        padding: 8px 14px;
-        font-size: 12px;
-        font-weight: 700;
-        border: 1px solid rgba(160, 19, 77, 0.18);
-        background: rgba(255, 255, 255, 0.9);
-      }
-      .badge-danger {
-        color: #a0134d;
-        background: rgba(160, 19, 77, 0.08);
-      }
-      .card-body {
-        display: grid;
-        grid-template-columns: minmax(0, 0.9fr) minmax(320px, 0.7fr);
-        gap: 28px;
-        padding: 24px 28px 28px;
-      }
-      .visual-shell {
-        border-radius: 28px;
-        overflow: hidden;
-        background: linear-gradient(180deg, #f4efe8 0%, #edf1f8 100%);
-        border: 1px solid rgba(41, 40, 106, 0.08);
-        min-height: 0;
-      }
-      .cover-image {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-      }
-      .cover-fallback {
-        width: 100%;
-        height: 100%;
-        min-height: 420px;
-        display: grid;
-        place-items: center;
-        padding: 40px;
-        text-align: center;
-        color: #29286a;
-        font-size: 36px;
-        font-weight: 800;
-      }
-      .copy-column {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-        min-width: 0;
-      }
-      .merchant-chip {
-        align-self: flex-start;
-        border-radius: 999px;
-        padding: 8px 14px;
-        background: #fff7b8;
-        color: #a0134d;
-        border: 1px solid rgba(160, 19, 77, 0.18);
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-      .section-kicker {
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: #a0134d;
-      }
-      .title {
-        margin: 0;
-        color: #29286a;
-        font-size: clamp(38px, 4vw, 62px);
-        line-height: 0.96;
-        font-weight: 800;
-        text-wrap: balance;
-      }
-      .description {
-        margin: 0;
-        font-size: 19px;
-        line-height: 1.5;
-        color: #4d4a57;
-      }
-      .prize-card {
-        border-radius: 24px;
-        background: linear-gradient(180deg, #fff8de 0%, #fff2c4 100%);
-        border: 1px solid rgba(242, 123, 61, 0.28);
-        padding: 18px 20px;
-      }
-      .prize-title {
-        margin: 8px 0 0;
-        font-size: 26px;
-        line-height: 1.12;
-        font-weight: 800;
-        color: #1f1f1f;
-      }
-      .prize-value {
-        margin: 8px 0 0;
-        font-size: 15px;
-        color: #695b3f;
-      }
-      .cta {
-        margin-top: auto;
-        border-radius: 24px;
-        background: #29286a;
-        color: #ffffff;
-        padding: 18px 22px;
-      }
-      .cta-label {
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        opacity: 0.82;
-      }
-      .cta-link {
-        display: block;
-        margin-top: 8px;
-        color: #ffffff;
-        font-size: 17px;
-        font-weight: 700;
-        line-height: 1.45;
-        word-break: break-word;
-        text-decoration: none;
-      }
-      .sidebar {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
       }
       .panel {
         border-radius: 24px;
         border: 1px solid rgba(26, 26, 26, 0.08);
-        background: rgba(255, 255, 255, 0.88);
-        padding: 18px;
+        background: rgba(255, 255, 255, 0.92);
+        padding: 22px;
         box-shadow: 0 16px 40px rgba(26, 26, 26, 0.06);
       }
-      .panel h2 {
-        margin: 0 0 8px;
-        font-size: 16px;
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
       }
-      .panel p, .panel pre {
+      .wordmark img {
+        display: block;
+        width: 180px;
+        height: auto;
+      }
+      .eyebrow {
         margin: 0;
-        color: #555555;
-        font-size: 13px;
-        line-height: 1.55;
-        white-space: pre-wrap;
-        word-break: break-word;
+        color: #a0134d;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .title {
+        margin: 6px 0 0;
+        color: #29286a;
+        font-size: 32px;
+        line-height: 1.05;
+        font-weight: 800;
+      }
+      .helper {
+        margin: 6px 0 0;
+        color: #666666;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .text-area {
+        width: 100%;
+        min-height: 250px;
+        margin-top: 16px;
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid #ddd7cb;
+        background: #fffdfa;
+        color: #1a1a1a;
+        font: inherit;
+        line-height: 1.6;
+        resize: vertical;
+      }
+      .cover-image {
+        width: 100%;
+        max-height: 520px;
+        object-fit: cover;
+        display: block;
+        border-radius: 20px;
+      }
+      .cover-fallback {
+        width: 100%;
+        min-height: 260px;
+        display: grid;
+        place-items: center;
+        padding: 32px;
+        text-align: center;
+        color: #29286a;
+        font-size: 28px;
+        font-weight: 800;
+        border: 1px solid rgba(41, 40, 106, 0.08);
+        border-radius: 20px;
+        background: linear-gradient(180deg, #f4efe8 0%, #edf1f8 100%);
+      }
+      .instruction {
+        margin: 14px 0 0;
+        color: #4d4a57;
+        font-size: 14px;
+        line-height: 1.5;
       }
       .actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: 12px;
+        margin-top: 16px;
       }
       .actions button, .actions a {
         border: 0;
         border-radius: 999px;
-        padding: 11px 15px;
-        font-size: 12px;
+        padding: 11px 16px;
+        font-size: 13px;
         font-weight: 700;
         cursor: pointer;
         text-decoration: none;
       }
       .primary-action {
-        background: #639922;
+        background: #29286a;
         color: #ffffff;
       }
       .secondary-action {
@@ -863,91 +735,56 @@ export async function openGameFacebookPostWindow(game: PrintableGameFacebookPost
         color: #1a1a1a;
         border: 1px solid #ddd7cb;
       }
-      @media (max-width: 1120px) {
-        .layout {
-          grid-template-columns: 1fr;
-        }
-        .social-card {
-          width: 100%;
-          aspect-ratio: auto;
-        }
-        .card-body {
-          grid-template-columns: 1fr;
-        }
-        .visual-shell {
-          aspect-ratio: 1 / 1;
+      @media (max-width: 720px) {
+        body {
+          padding: 16px;
         }
       }
     </style>
   </head>
   <body>
     <div class="layout">
-      <main class="social-card">
-        <header class="card-header">
+      <section class="panel">
+        <div class="header">
           <div class="wordmark">
             <img src="${safeWordmarkUrl}" alt="ProxiPlay" />
           </div>
-          ${adultBadge}
-        </header>
-        <section class="card-body">
-          <div class="visual-shell">${visualBlock}</div>
-          <div class="copy-column">
-            <div class="merchant-chip">${safeMerchantName}</div>
-            <div>
-              <div class="section-kicker">Post Facebook</div>
-              <h1 class="title">${safeTitle}</h1>
-            </div>
-            ${safeDescription ? `<p class="description">${safeDescription}</p>` : ""}
-            ${prizeBlock}
-            <div class="cta">
-              <div class="cta-label">Lien du jeu</div>
-              <a class="cta-link" href="${safeLink}" target="_blank" rel="noopener noreferrer">${safeLink}</a>
-            </div>
+          <div>
+            <p class="eyebrow">Post Facebook</p>
+            <h1 class="title">${safeTitle}</h1>
+            <p class="helper">Texte prêt à copier pour publier le jeu sur Facebook.</p>
           </div>
-        </section>
-      </main>
+        </div>
+        <textarea id="post-text" class="text-area">${safePostText}</textarea>
+        <div class="actions">
+          <button type="button" class="primary-action" onclick="copyPostText()">Copier le texte</button>
+        </div>
+      </section>
 
-      <aside class="sidebar">
-        <section class="panel">
-          <h2>Legende proposee</h2>
-          <pre>${safeCaption}</pre>
-        </section>
-        <section class="panel">
-          <h2>Actions rapides</h2>
-          <div class="actions">
-            <button type="button" class="primary-action" onclick="copyCaption()">Copier la legende</button>
-            <button type="button" class="secondary-action" onclick="copyLink()">Copier le lien</button>
-            <a class="secondary-action" href="${safeLink}" target="_blank" rel="noopener noreferrer">Ouvrir le jeu</a>
-          </div>
-        </section>
-      </aside>
+      <section class="panel">
+        <p class="eyebrow">Visuel du jeu</p>
+        <div style="margin-top:16px">${visualBlock}</div>
+        ${safeVisualUrl ? `<div class="actions"><a class="secondary-action" href="${safeVisualUrl}" download="${safeDownloadName}">Télécharger l'image</a></div>` : ""}
+        <p class="instruction">Collez le texte et ajoutez l'image manuellement sur Facebook.</p>
+      </section>
     </div>
     <script>
-      async function copyText(value, successMessage) {
+      const textarea = document.getElementById("post-text");
+      if (textarea) {
+        textarea.focus();
+        textarea.select();
+      }
+      async function copyPostText() {
         try {
-          if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(value);
-          } else {
-            const textarea = document.createElement("textarea");
-            textarea.value = value;
-            textarea.setAttribute("readonly", "");
-            textarea.style.position = "absolute";
-            textarea.style.left = "-9999px";
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand("copy");
-            document.body.removeChild(textarea);
-          }
-          window.alert(successMessage);
+          await navigator.clipboard.writeText(${safePostTextJs});
+          window.alert("Texte du post copié.");
         } catch (_error) {
-          window.alert("Copie impossible depuis cette fenetre.");
+          if (textarea) {
+            textarea.focus();
+            textarea.select();
+          }
+          window.alert("Copie impossible automatiquement. Sélectionnez puis copiez le texte.");
         }
-      }
-      function copyLink() {
-        void copyText(${safeLinkJs}, "Lien du jeu copie.");
-      }
-      function copyCaption() {
-        void copyText(${safeCaptionJs}, "Legende du post copiee.");
       }
     </script>
   </body>
