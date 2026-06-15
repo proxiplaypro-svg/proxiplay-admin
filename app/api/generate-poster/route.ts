@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { jsPDF } from "jspdf";
 import { NextResponse } from "next/server";
 import QRCode from "qrcode";
@@ -220,16 +218,15 @@ function buildPrizeImageFallbackDataUrl() {
   return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ioAAAAASUVORK5CYII=";
 }
 
-async function readLogoDataUrl() {
+async function readLogoDataUrl(requestUrl: string) {
   const logoCandidates = [
-    path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "logo-proxiplay.png"),
-    path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "proxiplay-wordmark.png"),
+    new URL("/logo-proxiplay.png", requestUrl).toString(),
+    new URL("/proxiplay-wordmark.png", requestUrl).toString(),
   ];
 
   for (const candidate of logoCandidates) {
     try {
-      const file = await readFile(candidate);
-      return `data:image/png;base64,${file.toString("base64")}`;
+      return await fetchAsDataUrl(candidate, "image/png");
     } catch {
       continue;
     }
@@ -487,7 +484,7 @@ export async function POST(request: Request) {
 
     const [merchantName, logoDataUrl] = await Promise.all([
       resolveMerchantName(merchantId),
-      readLogoDataUrl(),
+      readLogoDataUrl(request.url),
     ]);
 
     const qrCodeOptions = {
