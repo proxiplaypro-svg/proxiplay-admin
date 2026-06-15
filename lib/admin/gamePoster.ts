@@ -1,7 +1,5 @@
 "use client";
 
-import QRCode from "qrcode";
-
 export type PrintableGamePosterData = {
   id: string;
   title: string;
@@ -235,16 +233,25 @@ function triggerBlobDownload(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function truncateMerchantName(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
 export async function generateFacebookVisual(
   game: PrintableGameFacebookPostData,
   merchant = game.merchantName,
 ) {
   const merchantName = merchant.trim() || game.merchantName.trim() || "Commercant";
+  const truncatedMerchantName = truncateMerchantName(merchantName, 25);
   const title = game.title.trim() || "Jeu ProxiPlay";
   const prizeImageUrl = game.prizeImageUrl?.trim() || game.imageUrl?.trim() || "";
   const logoUrl = new URL("/logo-proxiplay.png", window.location.origin).toString();
   const endDateLabel = formatPosterDate(game.endDateLabel?.trim() || "");
-  const deepLink = buildGamePosterDeepLink(game);
+  const gameUrl = `play.proxiplay.fr/j/${game.id}`;
 
   if (!prizeImageUrl) {
     throw new Error("Aucune image de lot disponible pour generer le visuel Facebook.");
@@ -294,28 +301,24 @@ export async function generateFacebookVisual(
   context.textBaseline = "middle";
   context.fillText(badgeText, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2 + 1);
 
-  const qrOptions = {
-    width: 160,
-    margin: 1,
-    color: {
-      dark: "#1A1A1A",
-      light: "#FFFFFF",
-    },
-  } as Parameters<typeof QRCode.toDataURL>[1];
-  const qrDataUrl = await QRCode.toDataURL(deepLink, qrOptions);
-  const qrImage = await loadImage(qrDataUrl);
-
-  const qrFrameSize = 176;
-  const qrX = canvas.width - qrFrameSize - 48;
-  const qrY = canvas.height - qrFrameSize - 48;
-  context.fillStyle = "#FFFFFF";
+  const urlLabel = `👉 ${gameUrl}`;
+  context.font = "bold 24px Inter, Arial, sans-serif";
+  const urlLabelWidth = context.measureText(urlLabel).width;
+  const urlBoxWidth = Math.min(urlLabelWidth + 32, 420);
+  const urlBoxHeight = 48;
+  const urlBoxX = canvas.width - urlBoxWidth - 48;
+  const urlBoxY = canvas.height - urlBoxHeight - 48;
+  context.fillStyle = "rgba(0, 0, 0, 0.5)";
   context.beginPath();
-  context.roundRect(qrX, qrY, qrFrameSize, qrFrameSize, 20);
+  context.roundRect(urlBoxX, urlBoxY, urlBoxWidth, urlBoxHeight, 8);
   context.fill();
-  context.drawImage(qrImage, qrX + 8, qrY + 8, 160, 160);
+  context.fillStyle = "#FFFFFF";
+  context.textAlign = "left";
+  context.textBaseline = "middle";
+  context.fillText(urlLabel, urlBoxX + 16, urlBoxY + urlBoxHeight / 2);
 
   const textLeft = 48;
-  const textMaxWidth = qrX - textLeft - 36;
+  const textMaxWidth = canvas.width - textLeft - 48;
   const titleBottomY = canvas.height - 220;
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
@@ -336,7 +339,7 @@ export async function generateFacebookVisual(
   context.fillStyle = "#FFFFFF";
   context.font = "italic 28px Inter, Arial, sans-serif";
   context.fillText(
-    `Chez ${merchantName} • Gratuit • Scannez le QR !`,
+    `Chez ${truncatedMerchantName} • Gratuit • play.proxiplay.fr`,
     textLeft,
     accentY + 52,
   );
