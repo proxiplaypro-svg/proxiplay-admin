@@ -1,5 +1,7 @@
 "use client";
 
+import QRCode from "qrcode";
+
 export type PrintableGamePosterData = {
   id: string;
   title: string;
@@ -161,6 +163,196 @@ function formatPosterDate(value: string) {
   }
 
   return parsed.toLocaleDateString("fr-FR");
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Impossible de charger l'image: ${src}`));
+    image.src = src;
+  });
+}
+
+function drawCoverImage(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number,
+) {
+  const sourceRatio = image.width / image.height;
+  const targetRatio = width / height;
+
+  let sx = 0;
+  let sy = 0;
+  let sw = image.width;
+  let sh = image.height;
+
+  if (sourceRatio > targetRatio) {
+    sw = image.height * targetRatio;
+    sx = (image.width - sw) / 2;
+  } else {
+    sh = image.width / targetRatio;
+    sy = (image.height - sh) / 2;
+  }
+
+  context.drawImage(image, sx, sy, sw, sh, 0, 0, width, height);
+}
+
+function wrapText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    const candidate = currentLine ? `${currentLine} ${word}` : word;
+    if (context.measureText(candidate).width <= maxWidth || !currentLine) {
+      currentLine = candidate;
+      continue;
+    }
+    lines.push(currentLine);
+    currentLine = word;
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
+function triggerBlobDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function generateFacebookVisual(
+  game: PrintableGameFacebookPostData,
+  merchant = game.merchantName,
+) {
+  const merchantName = merchant.trim() || game.merchantName.trim() || "Commercant";
+  const title = game.title.trim() || "Jeu ProxiPlay";
+  const prizeImageUrl = game.prizeImageUrl?.trim() || game.imageUrl?.trim() || "";
+  const logoUrl = new URL("/logo-proxiplay.png", window.location.origin).toString();
+  const endDateLabel = formatPosterDate(game.endDateLabel?.trim() || "");
+  const deepLink = buildGamePosterDeepLink(game);
+
+  if (!prizeImageUrl) {
+    throw new Error("Aucune image de lot disponible pour generer le visuel Facebook.");
+  }
+
+  const [backgroundImage, logoImage] = await Promise.all([
+    loadImage(prizeImageUrl),
+    loadImage(logoUrl),
+  ]);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1080;
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("Impossible de preparer le canvas Facebook.");
+  }
+
+  context.fillStyle = "#FFFFFF";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawCoverImage(context, backgroundImage, canvas.width, canvas.height);
+
+  const overlay = context.createLinearGradient(0, canvas.height, 0, canvas.height * 0.42);
+  overlay.addColorStop(0, "rgba(0,0,0,0.78)");
+  overlay.addColorStop(1, "rgba(0,0,0,0)");
+  context.fillStyle = overlay;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  const logoHeight = 40;
+  const logoWidth = (logoImage.width / logoImage.height) * logoHeight;
+  context.drawImage(logoImage, 48, 48, logoWidth, logoHeight);
+
+  const badgeText = `Fin le ${endDateLabel}`;
+  context.font = "bold 30px Inter, Arial, sans-serif";
+  const badgeWidth = context.measureText(badgeText).width + 40;
+  const badgeHeight = 52;
+  const badgeX = canvas.width - badgeWidth - 48;
+  const badgeY = 48;
+  context.fillStyle = "#F5A623";
+  context.beginPath();
+  context.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 26);
+  context.fill();
+  context.fillStyle = "#FFFFFF";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(badgeText, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2 + 1);
+
+  const qrOptions = {
+    width: 160,
+    margin: 1,
+    color: {
+      dark: "#1A1A1A",
+      light: "#FFFFFF",
+    },
+  } as Parameters<typeof QRCode.toDataURL>[1];
+  const qrDataUrl = await QRCode.toDataURL(deepLink, qrOptions);
+  const qrImage = await loadImage(qrDataUrl);
+
+  const qrFrameSize = 176;
+  const qrX = canvas.width - qrFrameSize - 48;
+  const qrY = canvas.height - qrFrameSize - 48;
+  context.fillStyle = "#FFFFFF";
+  context.beginPath();
+  context.roundRect(qrX, qrY, qrFrameSize, qrFrameSize, 20);
+  context.fill();
+  context.drawImage(qrImage, qrX + 8, qrY + 8, 160, 160);
+
+  const textLeft = 48;
+  const textMaxWidth = qrX - textLeft - 36;
+  const titleBottomY = canvas.height - 220;
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
+  context.fillStyle = "#FFFFFF";
+  context.font = "bold 64px Inter, Arial, sans-serif";
+  const titleLines = wrapText(context, title, textMaxWidth).slice(0, 3);
+  const titleLineHeight = 72;
+  const titleStartY = titleBottomY - (titleLines.length - 1) * titleLineHeight;
+  titleLines.forEach((line, index) => {
+    context.fillText(line, textLeft, titleStartY + index * titleLineHeight);
+  });
+
+  const accentY = titleStartY + titleLines.length * titleLineHeight + 14;
+  context.fillStyle = "#F5A623";
+  context.font = "bold 48px Inter, Arial, sans-serif";
+  context.fillText("À GAGNER !", textLeft, accentY);
+
+  context.fillStyle = "#FFFFFF";
+  context.font = "italic 28px Inter, Arial, sans-serif";
+  context.fillText(
+    `Chez ${merchantName} • Gratuit • Scannez le QR !`,
+    textLeft,
+    accentY + 52,
+  );
+
+  const fileName = `facebook-${sanitizeFileName(merchantName) || "merchant"}-${sanitizeFileName(game.id) || "game"}.png`;
+
+  await new Promise<void>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Impossible d'exporter le visuel Facebook."));
+        return;
+      }
+      triggerBlobDownload(blob, fileName);
+      resolve();
+    }, "image/png");
+  });
 }
 
 export async function openGamePosterPrintWindow(
@@ -575,6 +767,10 @@ export async function openGameFacebookPostWindowWithMerchant(
     throw new Error("Impossible d'ouvrir la fenetre du post Facebook.");
   }
 
+  (postWindow as Window & { generateFacebookVisual?: () => void }).generateFacebookVisual = () => {
+    void generateFacebookVisual(game, merchant);
+  };
+
   const merchantName = merchant.trim() || game.merchantName.trim() || "Commercant";
   const title = game.title.trim() || "Jeu ProxiPlay";
   const endDateLabel = formatPosterDate(game.endDateLabel?.trim() || "");
@@ -764,7 +960,7 @@ export async function openGameFacebookPostWindowWithMerchant(
       <section class="panel">
         <p class="eyebrow">Visuel du jeu</p>
         <div style="margin-top:16px">${visualBlock}</div>
-        ${safeVisualUrl ? `<div class="actions"><a class="secondary-action" href="${safeVisualUrl}" download="${safeDownloadName}">Télécharger l'image</a></div>` : ""}
+        ${safeVisualUrl ? `<div class="actions"><button type="button" class="secondary-action" onclick="downloadFacebookVisual()">Télécharger le visuel</button><a class="secondary-action" href="${safeVisualUrl}" download="${safeDownloadName}">Télécharger l'image</a></div>` : ""}
         <p class="instruction">Collez le texte et ajoutez l'image manuellement sur Facebook.</p>
       </section>
     </div>
@@ -785,6 +981,13 @@ export async function openGameFacebookPostWindowWithMerchant(
           }
           window.alert("Copie impossible automatiquement. Sélectionnez puis copiez le texte.");
         }
+      }
+      function downloadFacebookVisual() {
+        if (typeof window.generateFacebookVisual === "function") {
+          window.generateFacebookVisual();
+          return;
+        }
+        window.alert("Generation du visuel indisponible.");
       }
     </script>
   </body>
