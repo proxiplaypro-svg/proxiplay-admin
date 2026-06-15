@@ -205,7 +205,7 @@ export async function openGamePosterPrintWindow(
     `${formatPosterDate(game.startDateLabel)} au ${formatPosterDate(game.endDateLabel)}`,
   );
   const safeEndDate = escapeHtml(formatPosterDate(game.endDateLabel));
-  const safeMainPrize = escapeHtml(game.mainPrizeLabel?.trim() || game.mainPrizeTitle?.trim() || "-");
+  const safeMainPrize = escapeHtml(game.title.trim() || "-");
   const safeSecondaryPrizes = escapeHtml(
     game.secondaryPrizeSummary?.trim() || game.secondaryPrizeTitle?.trim() || "-",
   );
@@ -229,7 +229,7 @@ export async function openGamePosterPrintWindow(
   printWindow.document.write(`<!DOCTYPE html>
 <html lang="fr">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
     <title>Affiche ${safeTitle}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -289,7 +289,7 @@ export async function openGamePosterPrintWindow(
       .title {
         margin: 0;
         color: #2d2a6e;
-        font-family: "Bebas Neue", Impact, sans-serif;
+        font-family: "Bebas Neue", sans-serif;
         font-size: 48px;
         line-height: 0.92;
         letter-spacing: 0.01em;
@@ -507,7 +507,7 @@ export async function openGamePosterPrintWindow(
           <p class="tagline">Scannez, jouez, gagnez</p>
           <h1 class="title">${safeGainLead}</h1>
           <p class="title-accent">${safeGainAccent}</p>
-          <p class="merchant-line">Chez ${safeMerchantName}</p>
+          <p class="merchant-line">C'est <span style="color:#C0006C;text-decoration:underline">gratuit</span>. Jouez maintenant chez <strong>${safeMerchantName}</strong>.</p>
           <p class="description">${safeDescription || "Scannez le QR code pour tenter votre chance tout de suite."}</p>
         </div>
         <aside class="header-right">
