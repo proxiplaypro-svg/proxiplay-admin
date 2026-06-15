@@ -251,7 +251,6 @@ export async function generateFacebookVisual(
   const prizeImageUrl = game.prizeImageUrl?.trim() || game.imageUrl?.trim() || "";
   const logoUrl = new URL("/logo-proxiplay.png", window.location.origin).toString();
   const endDateLabel = formatPosterDate(game.endDateLabel?.trim() || "");
-  const gameUrl = `play.proxiplay.fr/j/${game.id}`;
 
   if (!prizeImageUrl) {
     throw new Error("Aucune image de lot disponible pour generer le visuel Facebook.");
@@ -301,22 +300,6 @@ export async function generateFacebookVisual(
   context.textBaseline = "middle";
   context.fillText(badgeText, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2 + 1);
 
-  const urlLabel = `👉 ${gameUrl}`;
-  context.font = "bold 24px Inter, Arial, sans-serif";
-  const urlLabelWidth = context.measureText(urlLabel).width;
-  const urlBoxWidth = Math.min(urlLabelWidth + 32, 420);
-  const urlBoxHeight = 48;
-  const urlBoxX = canvas.width - urlBoxWidth - 48;
-  const urlBoxY = canvas.height - urlBoxHeight - 48;
-  context.fillStyle = "rgba(0, 0, 0, 0.5)";
-  context.beginPath();
-  context.roundRect(urlBoxX, urlBoxY, urlBoxWidth, urlBoxHeight, 8);
-  context.fill();
-  context.fillStyle = "#FFFFFF";
-  context.textAlign = "left";
-  context.textBaseline = "middle";
-  context.fillText(urlLabel, urlBoxX + 16, urlBoxY + urlBoxHeight / 2);
-
   const textLeft = 48;
   const textMaxWidth = canvas.width - textLeft - 48;
   const titleBottomY = canvas.height - 220;
@@ -339,7 +322,7 @@ export async function generateFacebookVisual(
   context.fillStyle = "#FFFFFF";
   context.font = "italic 28px Inter, Arial, sans-serif";
   context.fillText(
-    `Chez ${truncatedMerchantName} • Gratuit • play.proxiplay.fr`,
+    `Chez ${truncatedMerchantName} • Gratuit • Jouez sur ProxiPlay`,
     textLeft,
     accentY + 52,
   );
@@ -783,6 +766,7 @@ export async function openGameFacebookPostWindowWithMerchant(
     new URL("/proxiplay-wordmark.png", window.location.origin).toString(),
   );
   const merchantHashTag = merchantName.replace(/\s+/g, "");
+  const gameUrl = `play.proxiplay.fr/j/${game.id}`;
   const postText = [
     `🎉 ${merchantName} vous offre une chance de gagner !`,
     "",
@@ -791,6 +775,7 @@ export async function openGameFacebookPostWindowWithMerchant(
     "📱 Scannez le QR code sur place et tentez votre chance !",
     "🆓 C'est 100% gratuit",
     `⏰ Jusqu'au ${endDateLabel}`,
+    `🔗 ${gameUrl}`,
     "",
     `#Proxiplay #Dunkerque #${merchantHashTag} #JeuGratuit #BonPlan`,
   ].join("\n");
