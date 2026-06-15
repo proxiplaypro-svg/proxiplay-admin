@@ -486,13 +486,29 @@ export async function POST(request: Request) {
 
     const merchantId = readText(game.merchantId) || null;
     const qrCodeUrl = readText(game.qrCodeUrl);
+    console.log("1a. Route payload", {
+      gameId,
+      merchantId,
+      hasQrCodeUrl: Boolean(qrCodeUrl),
+      hasPrizeImageUrl: Boolean(readPrizeImageUrl(game)),
+    });
 
     if (!qrCodeUrl) {
       return NextResponse.json({ error: "qrCodeUrl manquant sur le jeu." }, { status: 500 });
     }
 
-    const merchantName = await resolveMerchantName(merchantId);
-    console.log("1b. Merchant resolved");
+    let merchantName = "Commerce partenaire";
+
+    try {
+      merchantName = await resolveMerchantName(merchantId);
+      console.log("1b. Merchant resolved", { merchantName });
+    } catch (error) {
+      console.error("1b. Merchant resolve error", error);
+      return NextResponse.json(
+        { error: `Merchant resolve error: ${String(error)}` },
+        { status: 500 },
+      );
+    }
 
     const qrCodeOptions = {
       width: 220,
@@ -502,14 +518,47 @@ export async function POST(request: Request) {
         light: "#2D2A6E",
       },
     } as unknown as Parameters<typeof QRCode.toDataURL>[1];
-    const qrCodeDataUrl = await QRCode.toDataURL(qrCodeUrl, qrCodeOptions);
-    console.log("2. QR generated");
+    let qrCodeDataUrl = "";
+
+    try {
+      console.log("2a. Generating QR", {
+        qrCodeUrlLength: qrCodeUrl.length,
+        qrCodeUrlPreview: qrCodeUrl.slice(0, 120),
+      });
+      qrCodeDataUrl = await QRCode.toDataURL(qrCodeUrl, qrCodeOptions);
+      console.log("2. QR generated", { qrCodeDataUrlLength: qrCodeDataUrl.length });
+    } catch (error) {
+      console.error("2. QR generation error", error);
+      return NextResponse.json(
+        { error: `QR generation error: ${String(error)}` },
+        { status: 500 },
+      );
+    }
 
     const prizeImageUrl = readPrizeImageUrl(game);
-    const prizeImageDataUrl = prizeImageUrl
-      ? await fetchAsDataUrl(prizeImageUrl, "image/jpeg").catch(() => buildPrizeImageFallbackDataUrl())
-      : buildPrizeImageFallbackDataUrl();
-    console.log("3. Image fetched");
+    let prizeImageDataUrl = buildPrizeImageFallbackDataUrl();
+
+    try {
+      prizeImageDataUrl = prizeImageUrl
+        ? await fetchAsDataUrl(prizeImageUrl, "image/jpeg").catch((error) => {
+            console.warn("3a. Prize image fetch failed, using fallback", {
+              prizeImageUrl,
+              error: String(error),
+            });
+            return buildPrizeImageFallbackDataUrl();
+          })
+        : buildPrizeImageFallbackDataUrl();
+      console.log("3. Image fetched", {
+        usedFallback: !prizeImageUrl,
+        prizeImageUrl: prizeImageUrl || null,
+      });
+    } catch (error) {
+      console.error("3. Image preparation error", error);
+      return NextResponse.json(
+        { error: `Image preparation error: ${String(error)}` },
+        { status: 500 },
+      );
+    }
 
     const gainHeadline = buildPosterGainHeadline(game);
     const templateData: PosterTemplateData = {
@@ -534,10 +583,20 @@ export async function POST(request: Request) {
     };
 
     console.log("4. Building PDF with jsPDF...");
-    const pdfBuffer = buildPosterPdf(templateData);
-    console.log("5. PDF generated");
+    let pdfBuffer: Buffer;
 
-    return new NextResponse(pdfBuffer, {
+    try {
+      pdfBuffer = buildPosterPdf(templateData);
+      console.log("5. PDF generated", { byteLength: pdfBuffer.byteLength });
+    } catch (error) {
+      console.error("5. PDF generation error", error);
+      return NextResponse.json(
+        { error: `PDF generation error: ${String(error)}` },
+        { status: 500 },
+      );
+    }
+
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="affiche-${gameId}.pdf"`,
