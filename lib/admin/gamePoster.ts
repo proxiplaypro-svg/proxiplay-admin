@@ -1,7 +1,5 @@
 "use client";
 
-import QRCode from "qrcode";
-
 export type PrintableGamePosterData = {
   id: string;
   title: string;
@@ -168,651 +166,423 @@ function buildPosterGainHeadline(game: {
 
   return {
     lead: upper,
-    accent: "A GAGNER",
-    badge: shouldUseFreeBadge(selected) ? "100 % GRATUIT" : "A GAGNER",
+    accent: "A Gagner !",
+    badge: shouldUseFreeBadge(selected) ? "100 % GRATUIT" : "A Gagner",
   };
 }
 
-export async function openGamePosterPrintWindow(game: PrintableGamePosterData) {
+function formatPosterDate(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "Date a definir";
+  }
+
+  const parsed = new Date(trimmed);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed;
+  }
+
+  return parsed.toLocaleDateString("fr-FR");
+}
+
+export async function openGamePosterPrintWindow(
+  game: PrintableGamePosterData,
+  merchant = game.merchantName,
+) {
   const printWindow = window.open("", "_blank");
 
   if (!printWindow) {
     throw new Error("Impossible d'ouvrir la fenetre d'impression.");
   }
 
+  const deepLink = buildGamePosterDeepLink(game);
+  const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
+  const safeMerchantName = escapeHtml(merchant.trim() || game.merchantName.trim() || "Commercant");
+  const safeDescription = escapeHtml(game.description.trim());
+  const safePeriod = escapeHtml(
+    `${formatPosterDate(game.startDateLabel)} au ${formatPosterDate(game.endDateLabel)}`,
+  );
+  const safeEndDate = escapeHtml(formatPosterDate(game.endDateLabel));
+  const safeMainPrize = escapeHtml(game.mainPrizeLabel?.trim() || game.mainPrizeTitle?.trim() || "-");
+  const safeSecondaryPrizes = escapeHtml(
+    game.secondaryPrizeSummary?.trim() || game.secondaryPrizeTitle?.trim() || "-",
+  );
+  const safeImageUrl = game.imageUrl ? escapeHtml(game.imageUrl) : null;
+  const safeLogoUrl = escapeHtml(new URL("/logo-proxiplay.png", window.location.origin).toString());
+  const safeFileName = sanitizeFileName(`${merchant}-${game.title}`) || game.id;
+  const gainHeadline = buildPosterGainHeadline({
+    title: game.title,
+    mainPrizeTitle: game.mainPrizeTitle,
+    mainPrizeLabel: game.mainPrizeLabel,
+    secondaryPrizeTitle: game.secondaryPrizeTitle,
+  });
+  const safeGainLead = escapeHtml(gainHeadline.lead);
+  const safeGainAccent = escapeHtml(gainHeadline.accent);
+  const safeImageBadge = escapeHtml(gainHeadline.badge);
+  const coverBlock = safeImageUrl
+    ? `<img class="hero-image" src="${safeImageUrl}" alt="${safeTitle}" />`
+    : `<div class="hero-fallback">Image du lot</div>`;
+
   printWindow.document.open();
   printWindow.document.write(`<!DOCTYPE html>
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <title>Pr&eacute;paration de l&rsquo;affiche...</title>
-    <style>
-      html, body {
-        margin: 0;
-        min-height: 100%;
-        background: #f7f7f5;
-        color: #1a1a1a;
-        font-family: "Segoe UI", Arial, sans-serif;
-      }
-      body {
-        display: grid;
-        place-items: center;
-      }
-      .loading-card {
-        width: min(92vw, 420px);
-        padding: 28px 24px;
-        border: 1px solid #e8e8e4;
-        border-radius: 20px;
-        background: #ffffff;
-        text-align: center;
-        box-shadow: 0 20px 50px rgba(26, 26, 26, 0.08);
-      }
-      .loading-title {
-        margin: 0;
-        font-size: 24px;
-        font-weight: 800;
-      }
-      .loading-text {
-        margin: 10px 0 0;
-        color: #666666;
-        line-height: 1.5;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="loading-card">
-      <h1 class="loading-title">Pr&eacute;paration de l&rsquo;affiche</h1>
-      <p class="loading-text">Le visuel premium est en cours de g&eacute;n&eacute;ration...</p>
-    </div>
-  </body>
-</html>`);
-  printWindow.document.close();
-
-  try {
-    const qrCodeOptions = {
-      width: 720,
-      margin: 0,
-      color: {
-        dark: "#1A1A1A",
-        light: "#FFFFFF",
-      },
-    } as Parameters<typeof QRCode.toDataURL>[1];
-
-    const deepLink = buildGamePosterDeepLink(game);
-    const qrCodeUrl = await QRCode.toDataURL(deepLink, qrCodeOptions);
-
-    const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
-    const safeMerchantName = escapeHtml(game.merchantName.trim() || "Commercant");
-    const safeDescription = escapeHtml(game.description.trim());
-    const safeDates = escapeHtml(`${game.startDateLabel} au ${game.endDateLabel}`);
-    const safeMainPrize = escapeHtml(game.mainPrizeLabel?.trim() || "");
-    const safeSecondaryPrizes = escapeHtml(game.secondaryPrizeSummary?.trim() || "");
-    const safeImageUrl = game.imageUrl ? escapeHtml(game.imageUrl) : null;
-    const safeFileName = sanitizeFileName(`${game.merchantName}-${game.title}`) || game.id;
-    const safeWordmarkUrl = escapeHtml(
-      new URL(PROXIPLAY_WORDMARK_PATH, window.location.origin).toString(),
-    );
-    const safeEndDateLabel = escapeHtml(game.endDateLabel.trim() || "Date a definir");
-    const gainHeadline = buildPosterGainHeadline({
-      title: game.title,
-      mainPrizeTitle: game.mainPrizeTitle,
-      mainPrizeLabel: game.mainPrizeLabel,
-      secondaryPrizeTitle: game.secondaryPrizeTitle,
-    });
-    const safeGainLead = escapeHtml(gainHeadline.lead);
-    const safeGainAccent = escapeHtml(gainHeadline.accent);
-    const safeGainBadge = escapeHtml(gainHeadline.badge);
-    const adultBadge = game.restrictedToAdults
-      ? '<span class="badge badge-danger">18+</span>'
-      : "";
-    const mainPrizeBlock = safeMainPrize
-      ? `<div class="meta-row"><span class="meta-icon">🏆</span><div><span class="meta-label">Lot principal</span><span class="meta-value">${safeMainPrize}</span></div></div>`
-      : "";
-    const secondaryPrizeBlock = safeSecondaryPrizes
-      ? `<div class="meta-row"><span class="meta-icon">🎁</span><div><span class="meta-label">Lots secondaires</span><span class="meta-value">${safeSecondaryPrizes}</span></div></div>`
-      : "";
-    const coverBlock = safeImageUrl
-      ? `<img class="hero-image" src="${safeImageUrl}" alt="${safeTitle}" />`
-      : `<div class="hero-fallback">Visuel du jeu</div>`;
-    const legacyImageBadge = safeMainPrize
-      ? `<div class="hero-badge"><span class="hero-badge-icon">🎁</span><span>${safeMainPrize}</span></div>`
-      : `<div class="hero-badge"><span class="hero-badge-icon">🎁</span><span>A gagner</span></div>`;
-    const imageBadge = `<div class="hero-badge"><span>${safeGainBadge}</span></div>`;
-    void mainPrizeBlock;
-    void secondaryPrizeBlock;
-    void legacyImageBadge;
-    const premiumMainPrizeBlock = safeMainPrize
-      ? `<div class="meta-row"><div><span class="meta-label">Lot principal</span><span class="meta-value">${safeMainPrize}</span></div></div>`
-      : "";
-    const premiumSecondaryPrizeBlock = safeSecondaryPrizes
-      ? `<div class="meta-row"><div><span class="meta-label">Lots secondaires</span><span class="meta-value">${safeSecondaryPrizes}</span></div></div>`
-      : "";
-
-    printWindow.document.open();
-    printWindow.document.write(`<!DOCTYPE html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8" />
     <title>Affiche ${safeTitle}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;700;900&display=swap" rel="stylesheet" />
     <style>
-      @page {
-        size: A4 portrait;
-        margin: 0;
-      }
       * {
         box-sizing: border-box;
       }
       html, body {
         margin: 0;
         padding: 0;
-        width: 210mm;
-        height: 297mm;
-        --brand-navy: #29286A;
-        --brand-intro: #2B285F;
-        --brand-frame: #A0134D;
-        --brand-pink: #B2145A;
-        --brand-orange: #F27B3D;
-        --brand-green: #6EC12B;
-        --brand-yellow: #FFF12B;
-        --brand-blue: #90A6D8;
-        background:
-          radial-gradient(circle at top left, rgba(255, 241, 43, 0.22), transparent 24%),
-          radial-gradient(circle at bottom right, rgba(242, 123, 61, 0.14), transparent 22%),
-          #f8f3ea;
-        color: #191919;
-        font-family: "Segoe UI", Arial, sans-serif;
+        background: #f3eee7;
+        color: #1f2240;
+        font-family: "Inter", Arial, sans-serif;
       }
       body {
-        position: relative;
-        overflow: hidden;
-      }
-      .sheet {
-        width: 210mm;
-        height: 297mm;
-        padding: 8mm;
+        padding: 24px;
       }
       .poster {
         width: 100%;
-        height: 281mm;
-        margin: 0;
+        max-width: 794px;
+        margin: 0 auto;
+        background: #ffffff;
+        border: 4px solid #8b1a4a;
+        border-radius: 28px;
+        padding: 24px;
         display: flex;
         flex-direction: column;
-        gap: 0;
-        background:
-          radial-gradient(circle at top center, rgba(255,255,255,0.95), rgba(255,253,249,0.96) 48%, rgba(249,243,234,0.96) 100%);
-        border: 2.2mm solid var(--brand-frame);
-        border-radius: 7mm;
-        overflow: hidden;
-        box-shadow:
-          0 20px 60px rgba(41, 40, 106, 0.1),
-          inset 0 0 0 1.2mm rgba(255, 255, 255, 0.72);
+        gap: 24px;
+        box-shadow: 0 18px 48px rgba(45, 42, 110, 0.14);
       }
       .header {
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        padding: 5.6mm 7mm 3.2mm;
+        align-items: flex-start;
+        gap: 24px;
       }
-      .brand-wordmark {
-        width: 70mm;
-        max-width: 100%;
-      }
-      .brand-wordmark img {
-        display: block;
-        width: 100%;
-        height: auto;
-      }
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        border-radius: 999px;
-        padding: 2.2mm 4.2mm;
-        font-size: 10pt;
-        font-weight: 700;
-        border: 1px solid rgba(160, 19, 77, 0.18);
-        background: rgba(255, 255, 255, 0.9);
-        font-family: "Segoe UI", Arial, sans-serif;
-      }
-      .badge-danger {
-        color: var(--brand-frame);
-        background: rgba(160, 19, 77, 0.08);
-        border-color: rgba(160, 19, 77, 0.2);
-      }
-      .content {
-        display: flex;
-        flex-direction: column;
-        padding: 0 7mm;
-        gap: 4.6mm;
+      .header-left {
         flex: 1;
+        min-width: 0;
       }
-      .intro-copy {
-        display: grid;
-        gap: 2.4mm;
-        padding-top: 1.2mm;
-        max-width: 122mm;
+      .logo {
+        display: block;
+        width: 320px;
+        max-width: 100%;
+        height: auto;
+        margin-bottom: 16px;
       }
-      .eyebrow {
-        font-size: 8.8pt;
-        font-weight: 700;
+      .tagline {
+        margin: 0 0 8px;
+        color: #c0006c;
+        font-size: 13px;
+        font-weight: 800;
         letter-spacing: 0.18em;
         text-transform: uppercase;
-        color: var(--brand-frame);
       }
-      .intro-title {
+      .title {
         margin: 0;
-        font-size: 39pt;
-        line-height: 0.86;
-        font-weight: 900;
-        color: var(--brand-navy);
-        letter-spacing: -0.03em;
+        color: #2d2a6e;
+        font-family: "Bebas Neue", Impact, sans-serif;
+        font-size: 48px;
+        line-height: 0.92;
+        letter-spacing: 0.01em;
         text-transform: uppercase;
-        max-width: 132mm;
       }
-      .intro-accent {
-        color: var(--brand-frame);
+      .title-accent {
+        margin: 2px 0 0;
+        color: #c0006c;
+        font-family: "Bebas Neue", Impact, sans-serif;
+        font-size: 40px;
+        line-height: 0.95;
       }
-      .free-line {
-        font-size: 12pt;
-        font-weight: 700;
-        color: #383552;
-      }
-      .free-line strong {
-        color: var(--brand-frame);
+      .merchant-line {
+        margin: 14px 0 6px;
+        color: #2d2a6e;
+        font-size: 16px;
+        font-weight: 800;
       }
       .description {
         margin: 0;
-        max-width: 122mm;
-        font-size: 10.8pt;
-        line-height: 1.36;
-        color: #33314a;
+        color: #55556f;
+        font-size: 15px;
+        line-height: 1.45;
       }
-      .visual-block {
-        position: relative;
-        min-height: 112mm;
-      }
-      .hero-visual {
-        position: relative;
-        width: calc(100% - 66mm);
-        min-height: 114mm;
-        border-radius: 0 0 34mm 34mm;
-        overflow: hidden;
-        background: linear-gradient(180deg, #fff1c9 0%, #f7bd3f 100%);
-        border: 1px solid rgba(242, 123, 61, 0.22);
-        box-shadow:
-          0 18px 34px rgba(242, 123, 61, 0.12),
-          inset 0 0 0 1px rgba(255,255,255,0.28);
-      }
-      .hero-visual::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background:
-          linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0)),
-          radial-gradient(circle at center, rgba(255,255,255,0) 40%, rgba(0,0,0,0.16) 100%);
-        z-index: 0;
-      }
-      .hero-visual::after {
-        content: "";
-        position: absolute;
-        inset: auto 6% 6% 6%;
-        height: 18mm;
-        border-radius: 999px;
-        background: radial-gradient(circle, rgba(0,0,0,0.18), transparent 72%);
-        filter: blur(6px);
-        z-index: 0;
-      }
-      .hero-image {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-        position: relative;
-        z-index: 1;
-        filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.14));
-      }
-      .hero-fallback {
-        width: 100%;
-        height: 100%;
-        min-height: 114mm;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 8mm;
-        text-align: center;
-        font-size: 22pt;
-        font-weight: 800;
-        color: var(--brand-navy);
-        background: linear-gradient(180deg, #fff1c9 0%, #f7bd3f 100%);
-      }
-      .hero-badge {
-        position: absolute;
-        right: 4mm;
-        top: 4mm;
-        width: 30mm;
-        min-height: 30mm;
-        border-radius: 999px;
-        padding: 5.2mm 3.2mm;
-        background: linear-gradient(180deg, #ffb617 0%, #f39a00 100%);
+      .header-right {
+        width: 160px;
+        flex: 0 0 160px;
+        background: #2d2a6e;
         color: #ffffff;
-        border: 1px solid rgba(255,255,255,0.55);
-        box-shadow: 0 10px 20px rgba(243, 154, 0, 0.24);
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        border-radius: 22px;
+        padding: 18px 14px;
         text-align: center;
-        font-size: 9pt;
-        font-weight: 900;
-        text-transform: uppercase;
-        z-index: 2;
+        box-shadow: 0 18px 38px rgba(45, 42, 110, 0.22);
       }
-      .scan-panel {
-        position: absolute;
-        right: 0;
-        bottom: 2mm;
-        width: 64mm;
-        border-radius: 5mm;
-        background: linear-gradient(180deg, #241c63 0%, #2f2870 100%);
-        color: #ffffff;
-        padding: 4.4mm 3.5mm 3.6mm;
-        text-align: center;
-        box-shadow:
-          0 16px 34px rgba(41, 40, 106, 0.22),
-          inset 0 0 0 0.35mm rgba(255,255,255,0.08);
-      }
-      .scan-title {
-        margin: 0 0 2.6mm;
-        font-size: 9.1pt;
+      .qr-title {
+        margin: 0 0 12px;
+        font-size: 14px;
         font-weight: 800;
         text-transform: uppercase;
+        letter-spacing: 0.06em;
       }
-      .scan-frame {
-        border-radius: 4mm;
-        padding: 2.4mm;
+      #qr-container {
+        width: 120px;
+        height: 120px;
+        margin: 0 auto 14px;
         background: #ffffff;
+        border-radius: 16px;
+        padding: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
-      .scan-frame img {
-        width: 42mm;
-        height: 42mm;
+      #qr-container img,
+      #qr-container canvas {
         display: block;
-        margin: 0 auto;
-        border-radius: 2.8mm;
+        width: 100% !important;
+        height: 100% !important;
       }
-      .scan-label {
-        margin-top: 3mm;
-        font-size: 9.3pt;
-        font-weight: 800;
-        text-transform: uppercase;
-      }
-      .scan-deadline {
-        margin-top: 3mm;
-        border-radius: 999px;
-        background: #ffc62b;
-        color: #2f2870;
-        padding: 2.2mm 2.4mm;
-        font-size: 8.5pt;
-        font-weight: 800;
-        line-height: 1.2;
-      }
-      .steps-column {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 4mm;
-        align-items: start;
-        margin-top: 2.4mm;
-      }
-      .step-row {
-        display: grid;
-        grid-template-columns: 12mm 1fr;
-        gap: 2.8mm;
-        align-items: start;
-      }
-      .step-number {
-        width: 8.6mm;
-        height: 8.6mm;
+      .deadline-badge {
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        width: 100%;
+        min-height: 40px;
+        padding: 8px 12px;
         border-radius: 999px;
-        background: var(--brand-frame);
-        color: #ffffff;
-        font-size: 9.2pt;
-        font-weight: 700;
+        background: #f5a623;
+        color: #2d2a6e;
+        font-size: 13px;
+        font-weight: 800;
+        text-align: center;
       }
-      .step-copy {
+      .middle {
+        display: flex;
+        gap: 24px;
+        align-items: stretch;
+      }
+      .visual-column {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+      }
+      .hero-image {
+        display: block;
+        width: 100%;
+        height: 220px;
+        object-fit: cover;
+        border-radius: 28px;
+        background: linear-gradient(180deg, #f1eadf 0%, #e5d2a9 100%);
+      }
+      .hero-fallback {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 220px;
+        border-radius: 28px;
+        background: linear-gradient(180deg, #f1eadf 0%, #e5d2a9 100%);
+        color: #8e6f3d;
+        font-size: 28px;
+        font-style: italic;
+      }
+      .image-badge {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: 96px;
+        height: 96px;
+        border-radius: 999px;
+        background: #f5a623;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-family: "Bebas Neue", Impact, sans-serif;
+        font-size: 22px;
+        line-height: 0.95;
+        letter-spacing: 0.04em;
+        box-shadow: 0 12px 24px rgba(245, 166, 35, 0.3);
+      }
+      .steps-column {
+        width: 160px;
+        flex: 0 0 160px;
         display: flex;
         flex-direction: column;
-        gap: 0.4mm;
+      }
+      .step {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 12px 0;
+      }
+      .step + .step {
+        border-top: 1px solid #d9d9df;
+      }
+      .step-number {
+        width: 34px;
+        height: 34px;
+        flex: 0 0 34px;
+        border-radius: 999px;
+        background: #8b1a4a;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        font-weight: 800;
       }
       .step-title {
-        font-size: 11.6pt;
-        font-weight: 800;
-        color: var(--brand-navy);
+        margin: 0 0 2px;
+        color: #2d2a6e;
+        font-size: 14px;
+        font-weight: 900;
         text-transform: uppercase;
       }
       .step-text {
-        font-size: 9.2pt;
-        line-height: 1.25;
-        color: #33314a;
+        margin: 0;
+        color: #55556f;
+        font-size: 13px;
+        line-height: 1.35;
       }
-      .meta-card {
-        margin: 5.4mm 7mm 7mm;
-        border-top: 0.35mm solid rgba(160, 19, 77, 0.12);
-        background: transparent;
-        padding: 3.2mm 0 0;
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 3mm;
-      }
-      .meta-row {
-        display: block;
-        min-width: 0;
-        padding: 0;
-      }
-      .meta-row + .meta-row {
-        border-left: 0.35mm solid rgba(160, 19, 77, 0.12);
-        padding-left: 3mm;
-      }
-      .meta-icon {
-        display: none;
-      }
-      .meta-label {
-        display: block;
-        font-size: 7.4pt;
-        font-weight: 700;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: var(--brand-frame);
-      }
-      .meta-value {
-        display: block;
-        margin-top: 1.2mm;
-        font-size: 10pt;
-        line-height: 1.32;
-        color: #2b2a38;
-      }
-      .print-tools {
-        position: fixed;
-        top: 14px;
-        right: 14px;
+      .footer {
         display: flex;
-        gap: 8px;
+        gap: 12px;
       }
-      .print-tools button {
-        border: 0;
-        border-radius: 999px;
-        padding: 10px 16px;
-        font-size: 12px;
+      .footer-block {
+        flex: 1;
+        min-width: 0;
+        background: #f7f7f5;
+        border-radius: 16px;
+        padding: 14px 16px;
+      }
+      .footer-label {
+        display: block;
+        margin-bottom: 6px;
+        color: #8b1a4a;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .footer-value {
+        color: #2d2a6e;
+        font-size: 14px;
         font-weight: 700;
-        cursor: pointer;
-      }
-      .print-button {
-        background: #639922;
-        color: #ffffff;
-      }
-      .download-button {
-        background: #ffffff;
-        color: #1a1a1a;
-        border: 1px solid #d9d4ca !important;
+        line-height: 1.35;
+        word-break: break-word;
       }
       @media print {
-        body {
-          background: #ffffff;
-          width: 210mm;
-          height: 297mm;
+        @page {
+          size: A4 portrait;
+          margin: 0;
         }
-        .sheet {
-          width: 210mm;
-          height: 297mm;
-          padding: 8mm;
+        html, body {
+          background: #ffffff;
+        }
+        body {
+          padding: 0;
         }
         .poster {
-          width: 100%;
-          height: 281mm;
+          max-width: none;
+          min-height: 1122px;
+          border-radius: 0;
           box-shadow: none;
-        }
-        .meta-card {
-          box-shadow: none;
-        }
-        .print-tools {
-          display: none;
         }
       }
     </style>
   </head>
   <body>
-    <div class="print-tools">
-      <button class="download-button" onclick="window.print()">Imprimer</button>
-      <button class="print-button" onclick="window.close()">Fermer</button>
-    </div>
-    <div class="sheet">
     <main class="poster">
       <header class="header">
-        <div class="brand-wordmark">
-          <img src="${safeWordmarkUrl}" alt="ProxiPlay" />
-        </div>
-        ${adultBadge}
-      </header>
-      <section class="content">
-        <div class="intro-copy">
-          <div class="eyebrow">Scannez, jouez, gagnez</div>
-          <h1 class="intro-title">${safeGainLead}<br /><span class="intro-accent">${safeGainAccent}</span></h1>
-          <div class="free-line">C&apos;est <strong>gratuit</strong>. Jouez maintenant chez ${safeMerchantName}.</div>
+        <div class="header-left">
+          <img class="logo" src="${safeLogoUrl}" alt="ProxiPlay" />
+          <p class="tagline">Scannez, jouez, gagnez</p>
+          <h1 class="title">${safeGainLead}</h1>
+          <p class="title-accent">${safeGainAccent}</p>
+          <p class="merchant-line">Chez ${safeMerchantName}</p>
           <p class="description">${safeDescription || "Scannez le QR code pour tenter votre chance tout de suite."}</p>
         </div>
-
-        <section class="visual-block">
-          <div class="hero-visual">
-            ${imageBadge}
-            ${coverBlock}
-          </div>
-          <aside class="scan-panel">
-            <div class="scan-title">Scannez pour jouer</div>
-            <div class="scan-frame">
-              <img src="${qrCodeUrl}" alt="QR code ${safeTitle}" />
-            </div>
-            <div class="scan-label">Jouez maintenant</div>
-            <div class="scan-deadline">Fin du jeu le ${safeEndDateLabel}</div>
-          </aside>
-        </section>
-
-        <section class="steps-column">
-          <div class="step-row">
+        <aside class="header-right">
+          <p class="qr-title">Tentez votre chance</p>
+          <div id="qr-container" aria-label="QR code vers le jeu"></div>
+          <div class="deadline-badge">Fin le ${safeEndDate}</div>
+        </aside>
+      </header>
+      <section class="middle">
+        <div class="visual-column">
+          ${coverBlock}
+          <div class="image-badge">${safeImageBadge}</div>
+        </div>
+        <aside class="steps-column">
+          <div class="step">
             <div class="step-number">1</div>
-            <div class="step-copy">
-              <div class="step-title">Scannez</div>
-              <div class="step-text">le QR code.</div>
+            <div>
+              <p class="step-title">Scannez</p>
+              <p class="step-text">Scannez le QR code avec votre telephone.</p>
             </div>
           </div>
-          <div class="step-row">
+          <div class="step">
             <div class="step-number">2</div>
-            <div class="step-copy">
-              <div class="step-title">Jouez</div>
-              <div class="step-text">gratuitement.</div>
+            <div>
+              <p class="step-title">Jouez</p>
+              <p class="step-text">Jouez tout de suite gratuitement.</p>
             </div>
           </div>
-          <div class="step-row">
+          <div class="step">
             <div class="step-number">3</div>
-            <div class="step-copy">
-              <div class="step-title">Gagnez</div>
-              <div class="step-text">votre reduction.</div>
+            <div>
+              <p class="step-title">Gagnez</p>
+              <p class="step-text">Decouvrez immediatement si vous avez gagne.</p>
             </div>
           </div>
-        </section>
+        </aside>
       </section>
-      <section class="meta-card">
-        <div class="meta-row"><span class="meta-icon">📅</span><div><span class="meta-label">P&eacute;riode</span><span class="meta-value">${safeDates}</span></div></div>
-        <div class="meta-row"><span class="meta-icon">🏪</span><div><span class="meta-label">Commer&ccedil;ant</span><span class="meta-value">${safeMerchantName}</span></div></div>
-        ${premiumMainPrizeBlock}
-        ${premiumSecondaryPrizeBlock}
+      <section class="footer">
+        <div class="footer-block">
+          <span class="footer-label">Periode</span>
+          <span class="footer-value">${safePeriod}</span>
+        </div>
+        <div class="footer-block">
+          <span class="footer-label">Commercant</span>
+          <span class="footer-value">${safeMerchantName}</span>
+        </div>
+        <div class="footer-block">
+          <span class="footer-label">Lot principal</span>
+          <span class="footer-value">${safeMainPrize}</span>
+        </div>
+        <div class="footer-block">
+          <span class="footer-label">Lots secondaires</span>
+          <span class="footer-value">${safeSecondaryPrizes}</span>
+        </div>
       </section>
     </main>
-    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
-      window.addEventListener("load", () => {
+      window.onload = () => {
         document.title = "affiche-${safeFileName}";
-        window.setTimeout(() => {
-          window.print();
-        }, 450);
-      });
+        const container = document.getElementById("qr-container");
+        if (container && typeof QRCode !== "undefined") {
+          new QRCode(container, {
+            text: ${JSON.stringify(deepLink)},
+            width: 120,
+            height: 120,
+          });
+        }
+        window.setTimeout(() => window.print(), 150);
+      };
+      window.onafterprint = () => window.close();
     </script>
   </body>
 </html>`);
-    printWindow.document.close();
-  } catch (error) {
-    const message =
-      error instanceof Error && error.message.trim()
-        ? escapeHtml(error.message)
-        : "Impossible de generer l'affiche.";
-
-    printWindow.document.open();
-    printWindow.document.write(`<!DOCTYPE html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <title>Erreur affiche</title>
-    <style>
-      html, body {
-        margin: 0;
-        min-height: 100%;
-        background: #fff7f7;
-        color: #1a1a1a;
-        font-family: "Segoe UI", Arial, sans-serif;
-      }
-      body {
-        display: grid;
-        place-items: center;
-      }
-      .error-card {
-        width: min(92vw, 460px);
-        padding: 28px 24px;
-        border: 1px solid #f1c4c4;
-        border-radius: 20px;
-        background: #ffffff;
-        box-shadow: 0 20px 50px rgba(26, 26, 26, 0.08);
-      }
-      .error-title {
-        margin: 0;
-        font-size: 22px;
-        font-weight: 800;
-        color: #a32d2d;
-      }
-      .error-text {
-        margin: 12px 0 0;
-        color: #666666;
-        line-height: 1.5;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="error-card">
-      <h1 class="error-title">Affiche indisponible</h1>
-      <p class="error-text">${message}</p>
-    </div>
-  </body>
-</html>`);
-    printWindow.document.close();
-    throw error;
-  }
+  printWindow.document.close();
 }
 
 export async function openGameFacebookPostWindow(game: PrintableGameFacebookPostData) {

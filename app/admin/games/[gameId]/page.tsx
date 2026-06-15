@@ -346,27 +346,30 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
       game.secondaryPrizes.find((prize) => prize.description)?.description ||
       game.description;
 
-    await openGamePosterPrintWindow({
-      id: game.id,
-      title: game.name,
-      merchantName: game.merchantName,
-      description: lotDescription,
-      imageUrl: game.imageUrl,
-      startDateLabel: game.startDateLabel,
-      endDateLabel: game.endDateLabel,
-      merchantId: game.merchantId,
-      animationId: game.animationId,
-      restrictedToAdults: game.restrictedToAdults,
-      mainPrizeLabel:
-        game.hasMainPrize && game.mainPrizeValue !== null
-          ? `${game.mainPrizeValue} EUR`
-          : game.hasMainPrize
-            ? "Lot principal configure"
-            : null,
-      mainPrizeTitle: game.mainPrizeTitle || null,
-      secondaryPrizeTitle: game.secondaryPrizes[0]?.name || null,
-      secondaryPrizeSummary,
-    });
+    await openGamePosterPrintWindow(
+      {
+        id: game.id,
+        title: game.name,
+        merchantName: game.merchantName,
+        description: lotDescription,
+        imageUrl: game.imageUrl,
+        startDateLabel: game.startDateLabel,
+        endDateLabel: game.endDateLabel,
+        merchantId: game.merchantId,
+        animationId: game.animationId,
+        restrictedToAdults: game.restrictedToAdults,
+        mainPrizeLabel:
+          game.hasMainPrize && game.mainPrizeValue !== null
+            ? `${game.mainPrizeValue} EUR`
+            : game.hasMainPrize
+              ? "Lot principal configure"
+              : null,
+        mainPrizeTitle: game.mainPrizeTitle || null,
+        secondaryPrizeTitle: game.secondaryPrizes[0]?.name || null,
+        secondaryPrizeSummary,
+      },
+      game.merchantName,
+    );
   };
 
   const handleOpenFacebookPost = async () => {
