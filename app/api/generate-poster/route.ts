@@ -63,7 +63,6 @@ type PosterTemplateData = {
   prizeImageDataUrl: string;
   firstSecondaryPrizeLabel: string;
   restrictedToAdults: boolean;
-  logoDataUrl: string;
 };
 
 const PAGE = {
@@ -218,23 +217,6 @@ function buildPrizeImageFallbackDataUrl() {
   return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ioAAAAASUVORK5CYII=";
 }
 
-async function readLogoDataUrl(requestUrl: string) {
-  const logoCandidates = [
-    new URL("/logo-proxiplay.png", requestUrl).toString(),
-    new URL("/proxiplay-wordmark.png", requestUrl).toString(),
-  ];
-
-  for (const candidate of logoCandidates) {
-    try {
-      return await fetchAsDataUrl(candidate, "image/png");
-    } catch {
-      continue;
-    }
-  }
-
-  throw new Error("Logo ProxiPlay introuvable dans /public.");
-}
-
 async function resolveGameDocument(gameId: string) {
   const adminDb = getAdminDb();
 
@@ -266,6 +248,33 @@ async function resolveMerchantName(merchantId: string | null) {
   }
 
   return "Commerce partenaire";
+}
+
+function drawBrandHeader(doc: jsPDF, x: number, y: number) {
+  doc.setFillColor(BRAND.navy);
+  doc.roundedRect(x, y, 52, 52, 14, 14, "F");
+
+  doc.setDrawColor(BRAND.white);
+  doc.setLineWidth(2.2);
+  doc.roundedRect(x + 6, y + 10, 40, 34, 10, 10, "S");
+  doc.line(x + 15, y + 16, x + 23, y + 8);
+  doc.line(x + 23, y + 8, x + 31, y + 16);
+  doc.line(x + 31, y + 16, x + 39, y + 8);
+  doc.line(x + 17, y + 22, x + 35, y + 22);
+
+  doc.setFillColor(255, 196, 43);
+  doc.rect(x + 15, y + 19, 9, 9, "F");
+  doc.setFillColor(192, 0, 108);
+  doc.rect(x + 26, y + 19, 9, 9, "F");
+  doc.setFillColor(110, 193, 43);
+  doc.rect(x + 15, y + 30, 9, 9, "F");
+  doc.setFillColor(144, 166, 216);
+  doc.rect(x + 26, y + 30, 9, 9, "F");
+
+  doc.setTextColor(BRAND.navy);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(38);
+  doc.text("ProxiPlay", x + 66, y + 39);
 }
 
 function splitHeadlineLines(doc: jsPDF, value: string, maxWidth: number) {
@@ -341,7 +350,7 @@ function buildPosterPdf(data: PosterTemplateData) {
   const qrCardX = outerX + outerW - 26 - qrCardW;
   const qrCardY = topY + 8;
 
-  pdf.addImage(data.logoDataUrl, "PNG", leftX, topY, 220, 58);
+  drawBrandHeader(pdf, leftX, topY);
 
   pdf.setTextColor(BRAND.magenta);
   pdf.setFont("helvetica", "bold");
@@ -482,10 +491,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "qrCodeUrl manquant sur le jeu." }, { status: 500 });
     }
 
-    const [merchantName, logoDataUrl] = await Promise.all([
-      resolveMerchantName(merchantId),
-      readLogoDataUrl(request.url),
-    ]);
+    const merchantName = await resolveMerchantName(merchantId);
+    console.log("1b. Merchant resolved");
 
     const qrCodeOptions = {
       width: 220,
@@ -524,7 +531,6 @@ export async function POST(request: Request) {
       firstSecondaryPrizeLabel: getFirstSecondaryPrizeLabel(game),
       restrictedToAdults:
         game.restrictedToAdults === true || game.prohibited_for_minors === true,
-      logoDataUrl,
     };
 
     console.log("4. Building PDF with jsPDF...");
