@@ -327,17 +327,30 @@ function deriveGameState(game: FirestoreGameDocument, now = Date.now()) {
   const endDate = readTimestamp(game.end_date, game.endDate)?.toMillis() ?? null;
   const isPublic = game.visible_public !== false;
   const isPrivate = game.isPrivate === true || game.private === true;
+  const hasLiveActivity =
+    readNumber(
+      game.participations_count,
+      game.participations,
+      game.sessionCount,
+      game.partiesCount,
+      game.views,
+    ) > 0;
 
   if (explicitStatus === "expire") {
     return "expire" as const;
   }
 
-  if (!isPublic || isPrivate || (startDate !== null && startDate > now)) {
+  if (isPrivate || (startDate !== null && startDate > now)) {
     return "brouillon" as const;
   }
 
   if (endDate !== null && endDate < now) {
     return "expire" as const;
+  }
+
+  // Legacy games can keep a stale draft/hidden flag while already running with traffic.
+  if (!isPublic && (!hasLiveActivity || startDate === null || endDate === null || startDate > now || endDate < now)) {
+    return "brouillon" as const;
   }
 
   if (endDate !== null && endDate - now <= SEVEN_DAYS_IN_MS) {
@@ -612,11 +625,13 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
     pickCollectionName(["games", "jeux"] as const, "games"),
   ]);
 
-  const [merchantSnapshot, gamesSnapshot, prizesSnapshot] = await Promise.all([
+  const [merchantSnapshot, primaryGamesSnapshot, secondaryGamesSnapshot, prizesSnapshot] = await Promise.all([
     getDocs(collection(db, merchantCollectionName)),
     getDocs(collection(db, gamesCollectionName)),
+    getDocs(collection(db, gamesCollectionName === "games" ? "jeux" : "games")),
     getDocs(collection(db, "prizes")),
   ]);
+  const allGameSnapshots = [...primaryGamesSnapshot.docs, ...secondaryGamesSnapshot.docs];
 
   const now = Date.now();
   const thresholdTimestamp = Timestamp.fromMillis(now - THIRTY_DAYS_IN_MS);
@@ -644,7 +659,7 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
   });
 
   const participantsByGameId = new Map<string, number>();
-  gamesSnapshot.docs.forEach((snapshot) => {
+  allGameSnapshots.forEach((snapshot) => {
     const game = snapshot.data() as FirestoreGameDocument;
     const count = readNumber(
       game.participations_count,
@@ -656,7 +671,7 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
   });
   const merchantIdByGameId = new Map<string, string>();
 
-  gamesSnapshot.docs.forEach((snapshot) => {
+  allGameSnapshots.forEach((snapshot) => {
     const game = snapshot.data() as FirestoreGameDocument;
     const merchantId = readMerchantId(game.enseigne_id, game.merchantId ?? game.merchant_id ?? null);
 

@@ -234,25 +234,53 @@ function deriveStatus(game: FirestoreGameDocument, now = Date.now()) {
   const endValue = endTimestamp?.toMillis() ?? null;
   const startTimestamp = readTimestamp(game.start_date, game.startDate);
   const startValue = startTimestamp?.toMillis() ?? null;
+  const hasLiveActivity =
+    readLargestNumber(
+      game.sessionCount,
+      game.partiesCount,
+      game.participations,
+      game.participations_count,
+    ) > 0;
 
-  if (explicitStatus) {
-    return explicitStatus;
+  if (explicitStatus === "expire") {
+    return "expire" as const;
+  }
+
+  if (explicitStatus === "prive") {
+    return "prive" as const;
   }
 
   if (isPrivate) {
     return "prive" as const;
   }
 
+  if (explicitStatus === "actif") {
+    return "actif" as const;
+  }
+
   if (endValue !== null && endValue < now) {
     return "expire" as const;
   }
 
-  if (!isPublic) {
+  if (
+    !isPublic &&
+    (!hasLiveActivity || startValue === null || endValue === null || startValue > now || endValue < now)
+  ) {
     return "brouillon" as const;
   }
 
   if (startValue !== null && startValue > now) {
     return "brouillon" as const;
+  }
+
+  if (
+    explicitStatus === "brouillon" &&
+    startValue !== null &&
+    endValue !== null &&
+    startValue <= now &&
+    endValue >= now
+  ) {
+    return "actif" as const;
   }
 
   return "actif" as const;

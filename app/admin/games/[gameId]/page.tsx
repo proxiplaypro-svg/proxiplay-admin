@@ -167,15 +167,26 @@ function getBackfillErrorMessage(error: unknown) {
   return "Une erreur inattendue a empeche le backfill.";
 }
 
-function deriveStatus(game: FirestoreGameDetailsDocument): AdminGameDetails["status"] {
+function deriveStatus(
+  game: FirestoreGameDetailsDocument,
+  participationsCount: number,
+): AdminGameDetails["status"] {
   const now = Date.now();
   const endMs = game.end_date?.toMillis() ?? null;
   const startMs = game.start_date?.toMillis() ?? null;
+  const isPrivate = game.isPrivate === true || game.private === true;
+  const isPublic = game.visible_public !== false;
+  const hasLiveActivity = participationsCount > 0 || (typeof game.views === "number" && game.views > 0);
 
-  if (game.status === "prive") return "prive";
-  if (game.status === "brouillon" || game.visible_public === false) return "brouillon";
+  if (game.status === "prive" || isPrivate) return "prive";
   if (endMs !== null && endMs < now) return "expire";
+  if (!isPublic && (!hasLiveActivity || startMs === null || endMs === null || startMs > now || endMs < now)) {
+    return "brouillon";
+  }
   if (startMs !== null && startMs > now) return "brouillon";
+  if (game.status === "brouillon" && startMs !== null && endMs !== null && startMs <= now && endMs >= now) {
+    return "actif";
+  }
   return "actif";
 }
 
@@ -204,7 +215,7 @@ function buildDetails(
     merchantId: game.enseigne_id?.id ?? game.merchantId ?? null,
     merchantName: (game.merchantName ?? game.enseigne_name ?? "").trim() || "Marchand inconnu",
     animationId: game.animation_id?.trim() || game.campaign_id?.trim() || null,
-    status: deriveStatus(game),
+    status: deriveStatus(game, participationsCount),
     startDateLabel: startDate ? formatDate(startDate) : "—",
     endDateLabel: endDate ? formatDate(endDate) : "—",
     startDateValue: startDate?.getTime() ?? 0,
