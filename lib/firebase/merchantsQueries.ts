@@ -414,19 +414,20 @@ function buildEngagementScore(params: {
 
 function buildMerchantStatus(params: {
   activeGamesCount: number;
-  participationsJ30: number;
-  clicksJ30: number;
-  lastContactDateValue: number;
+  lastGameEndDateValue: number;
 }): MerchantPilotageStatus {
   if (params.activeGamesCount > 0) {
     return "actif";
   }
 
-  if (params.participationsJ30 === 0 && params.clicksJ30 === 0 && params.lastContactDateValue === 0) {
-    return "inactif";
+  if (params.lastGameEndDateValue > 0) {
+    if (Date.now() - params.lastGameEndDateValue <= FOURTEEN_DAYS_IN_MS) {
+      return "actif";
+    }
+    return "a_relancer";
   }
 
-  return "a_relancer";
+  return "inactif";
 }
 
 function buildWhatsAppSafePhone(rawPhone: string) {
@@ -554,6 +555,7 @@ function mapMerchantDocument(
     participationsJ30: number;
     gainsRemis: number;
     activeGames: MerchantActiveGameSummary[];
+    lastGameEndDateValue: number;
   },
 ): MerchantPilotageItem {
   const merchant = snapshot.data() as FirestoreMerchantDocument;
@@ -607,9 +609,7 @@ function mapMerchantDocument(
     engagementScore,
     status: buildMerchantStatus({
       activeGamesCount: merchantStats.activeGamesCount,
-      participationsJ30: merchantStats.participationsJ30,
-      clicksJ30: merchantStats.clicksJ30,
-      lastContactDateValue,
+      lastGameEndDateValue: merchantStats.lastGameEndDateValue,
     }),
     initials: buildInitials(readText(merchant.name, merchant.title, merchant.merchantName, "Enseigne sans nom")),
     activeGames: merchantStats.activeGames,
@@ -644,6 +644,7 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
       participationsJ30: number;
       gainsRemis: number;
       activeGames: MerchantActiveGameSummary[];
+      lastGameEndDateValue: number;
     }
   >();
   const merchantById = new Map<string, FirestoreMerchantDocument>();
@@ -656,6 +657,7 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
       participationsJ30: 0,
       gainsRemis: 0,
       activeGames: [],
+      lastGameEndDateValue: 0,
     });
   });
 
@@ -699,6 +701,10 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
       game.sessionCount,
       game.partiesCount,
     );
+
+    if (endDateValue > 0 && endDateValue < now) {
+      merchantStats.lastGameEndDateValue = Math.max(merchantStats.lastGameEndDateValue, endDateValue);
+    }
 
     if (gameStatus === "actif" || gameStatus === "expire_bientot") {
       merchantStats.activeGamesCount += 1;
@@ -750,6 +756,7 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
         participationsJ30: 0,
         gainsRemis: 0,
         activeGames: [],
+        lastGameEndDateValue: 0,
       };
       const merchant = mapMerchantDocument(
         snapshot,

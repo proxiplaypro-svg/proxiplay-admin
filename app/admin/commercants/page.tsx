@@ -10,14 +10,15 @@ import { MerchantEmailBlastModal } from "@/components/admin/commercants/Merchant
 import { MerchantFilters } from "@/components/admin/commercants/MerchantFilters";
 import { MerchantPanel } from "@/components/admin/commercants/MerchantPanel";
 import { db } from "@/lib/firebase/client-app";
+import { httpsCallable } from "firebase/functions";
 import {
-  buildMerchantEmailLink,
   buildWhatsAppLink,
   ensureMerchantsAuthenticated,
   getMerchantsPilotageData,
   getMerchantsPilotageErrorMessage,
   updateMerchantProfile,
 } from "@/lib/firebase/merchantsQueries";
+import { functionsClient } from "@/lib/firebase/functions";
 import type { MerchantPilotageFilter, MerchantPilotageItem, MerchantPilotageSort } from "@/types/dashboard";
 
 const FOURTEEN_DAYS_IN_MS = 14 * 24 * 60 * 60 * 1000;
@@ -220,9 +221,15 @@ export default function AdminCommercantsPage() {
   const whatsappHref = selectedMerchant
     ? buildWhatsAppLink(selectedMerchant.phone, selectedMerchant.name)
     : null;
-  const emailHref = selectedMerchant
-    ? buildMerchantEmailLink(selectedMerchant.email, selectedMerchant.name)
-    : null;
+
+  const handleEmailRelance = async (merchant: MerchantPilotageItem) => {
+    const sendEmail = httpsCallable<{ email: string; subject: string; message: string }, { success: boolean }>(
+      functionsClient,
+      "sendMerchantEmail",
+    );
+    const body = `Bonjour ${merchant.name},\n\nNous revenons vers vous au sujet de votre activité ProxiPlay et de vos jeux en cours.\n\nBien à vous,\nL'équipe ProxiPlay`;
+    await sendEmail({ email: merchant.email, subject: "Votre jeu ProxiPlay", message: body });
+  };
 
   const handleOpenExternal = (href: string, target: "_blank" | "_self" = "_self") => {
     if (target === "_blank") {
@@ -456,13 +463,13 @@ export default function AdminCommercantsPage() {
             <MerchantPanel
               merchant={selectedMerchant}
               whatsappHref={whatsappHref}
-              emailHref={emailHref}
               onDelete={() => setDeleteConfirm(true)}
               onEdit={() => {
                 setEditFeedback(null);
                 setEditOpen(true);
               }}
               onOpenExternal={handleOpenExternal}
+              onEmailRelance={handleEmailRelance}
             />
           </div>
         ) : null}

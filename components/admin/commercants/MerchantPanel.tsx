@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type {
   MerchantActiveGameSummary,
   MerchantPilotageItem,
@@ -11,10 +11,10 @@ import type {
 type MerchantPanelProps = {
   merchant: MerchantPilotageItem | null;
   whatsappHref: string | null;
-  emailHref: string | null;
   onEdit: () => void;
   onDelete: () => void;
   onOpenExternal: (href: string, target?: "_blank" | "_self") => void;
+  onEmailRelance: (merchant: MerchantPilotageItem) => Promise<void>;
 };
 
 function getScoreTone(score: number) {
@@ -92,11 +92,13 @@ function PanelSection({
 export function MerchantPanel({
   merchant,
   whatsappHref,
-  emailHref,
   onEdit,
   onDelete,
   onOpenExternal,
+  onEmailRelance,
 }: MerchantPanelProps) {
+  const [relanceSending, setRelanceSending] = useState(false);
+  const [relanceFeedback, setRelanceFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   if (!merchant) {
     return (
       <aside className="sticky top-0">
@@ -210,16 +212,28 @@ export function MerchantPanel({
           </button>
           <button
             type="button"
+            disabled={relanceSending}
             onClick={() => {
-              if (emailHref) {
-                onOpenExternal(emailHref, "_self");
-              }
+              if (!merchant) return;
+              setRelanceFeedback(null);
+              setRelanceSending(true);
+              void onEmailRelance(merchant).then(() => {
+                setRelanceFeedback({ ok: true, message: "Email envoyé." });
+              }).catch((err: unknown) => {
+                setRelanceFeedback({ ok: false, message: err instanceof Error ? err.message : "Erreur envoi." });
+              }).finally(() => {
+                setRelanceSending(false);
+              });
             }}
-            disabled={!emailHref}
             className="flex min-h-[54px] items-center justify-center rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 text-center text-[1rem] font-medium text-[#1a1a1a] transition hover:border-[#D9D9D4] hover:bg-[#FAFAF8] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Email relance
+            {relanceSending ? "Envoi…" : "Email relance"}
           </button>
+          {relanceFeedback && (
+            <p className={`col-span-2 text-[12px] ${relanceFeedback.ok ? "text-[#639922]" : "text-[#E24B4A]"}`}>
+              {relanceFeedback.message}
+            </p>
+          )}
           <Link
             href={`/admin/commercants/${merchant.id}`}
             className="col-span-2 flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-4 text-[0.9rem] font-medium text-[#1a1a1a] transition hover:border-[#C0DD97] hover:bg-[#EAF3DE] hover:text-[#3B6D11]"
