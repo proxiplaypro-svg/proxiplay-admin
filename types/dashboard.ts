@@ -209,6 +209,8 @@ export interface MerchantPilotageItem {
   lastContactDateValue: number;
   lastContactChannel: string;
   gamesActiveCount: number;
+  totalGamesCount: number;
+  lastGameEndDateValue: number;
   clicksJ30: number;
   participationsJ30: number;
   gainsRemis: number;

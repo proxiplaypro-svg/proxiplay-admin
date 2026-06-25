@@ -551,6 +551,7 @@ function mapMerchantDocument(
   gamesCollectionName: GameCollectionName,
   merchantStats: {
     activeGamesCount: number;
+    totalGamesCount: number;
     clicksJ30: number;
     participationsJ30: number;
     gainsRemis: number;
@@ -603,6 +604,8 @@ function mapMerchantDocument(
     lastContactDateValue,
     lastContactChannel: readText(merchant.last_contact_channel),
     gamesActiveCount: merchantStats.activeGamesCount,
+    totalGamesCount: merchantStats.totalGamesCount,
+    lastGameEndDateValue: merchantStats.lastGameEndDateValue,
     clicksJ30: merchantStats.clicksJ30,
     participationsJ30: merchantStats.participationsJ30,
     gainsRemis: merchantStats.gainsRemis,
@@ -640,6 +643,7 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
     string,
     {
       activeGamesCount: number;
+      totalGamesCount: number;
       clicksJ30: number;
       participationsJ30: number;
       gainsRemis: number;
@@ -653,6 +657,7 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
     merchantById.set(snapshot.id, snapshot.data() as FirestoreMerchantDocument);
     statsByMerchantId.set(snapshot.id, {
       activeGamesCount: 0,
+      totalGamesCount: 0,
       clicksJ30: 0,
       participationsJ30: 0,
       gainsRemis: 0,
@@ -701,6 +706,8 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
       game.sessionCount,
       game.partiesCount,
     );
+
+    merchantStats.totalGamesCount += 1;
 
     if (endDateValue > 0 && endDateValue < now) {
       merchantStats.lastGameEndDateValue = Math.max(merchantStats.lastGameEndDateValue, endDateValue);
@@ -752,6 +759,7 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
     merchantSnapshot.docs.map(async (snapshot) => {
       const merchantStats = statsByMerchantId.get(snapshot.id) ?? {
         activeGamesCount: 0,
+        totalGamesCount: 0,
         clicksJ30: 0,
         participationsJ30: 0,
         gainsRemis: 0,
