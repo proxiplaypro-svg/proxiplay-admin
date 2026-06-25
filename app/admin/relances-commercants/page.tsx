@@ -39,14 +39,14 @@ function daysWithoutGame(merchant: MerchantPilotageItem): number | null {
   if (merchant.lastGameEndDateValue > 0) {
     return Math.floor((Date.now() - merchant.lastGameEndDateValue) / MS_PER_DAY);
   }
-  return null; // never had a game
+  return null;
 }
 
-type StatusTier = "actif" | "7j" | "15j" | "30j" | "jamais";
+type StatusTier = "actif" | "7j" | "15j" | "30j" | "jamais_publie";
 
-function statusTier(days: number | null): StatusTier {
-  if (days === null) return "jamais";
-  if (days === 0) return "actif";
+function statusTier(merchant: MerchantPilotageItem, days: number | null): StatusTier {
+  if (merchant.totalGamesCount === 0) return "jamais_publie";
+  if (days === null || days === 0) return "actif";
   if (days < 15) return "7j";
   if (days < 30) return "15j";
   return "30j";
@@ -54,21 +54,21 @@ function statusTier(days: number | null): StatusTier {
 
 function tierLabel(tier: StatusTier): string {
   switch (tier) {
-    case "actif": return "Jeu actif";
-    case "7j":    return "7 j sans jeu";
-    case "15j":   return "15 j sans jeu";
-    case "30j":   return "30 j+ sans jeu";
-    case "jamais": return "Jamais de jeu";
+    case "actif":         return "Jeu actif";
+    case "7j":            return "7 j sans jeu";
+    case "15j":           return "15 j sans jeu";
+    case "30j":           return "30 j+ sans jeu";
+    case "jamais_publie": return "Jamais publié";
   }
 }
 
 function tierDot(tier: StatusTier): string {
   switch (tier) {
-    case "actif": return "bg-[#639922]";
-    case "7j":    return "bg-[#EF9F27]";
-    case "15j":   return "bg-[#E24B4A]";
-    case "30j":   return "bg-[#444]";
-    case "jamais": return "bg-[#ccc]";
+    case "actif":         return "bg-[#639922]";
+    case "7j":            return "bg-[#EF9F27]";
+    case "15j":           return "bg-[#E24B4A]";
+    case "30j":           return "bg-[#444]";
+    case "jamais_publie": return "bg-[#7C5CBF]";
   }
 }
 
@@ -91,10 +91,13 @@ function buildMessage(merchant: MerchantPilotageItem, days: number | null): stri
   const prenom = merchant.ownerFirstName || merchant.name;
   const lien = GAME_CREATION_URL;
 
-  if (days === null || days < 15) {
+  if (merchant.totalGamesCount === 0) {
+    return `Bonjour ${prenom},\n\nVotre espace Proxiplay est prêt, mais aucun jeu n'a encore été publié.\n\nOn peut vous aider à lancer votre premier jeu en quelques minutes.\n\n${lien}`;
+  }
+  if (days !== null && days < 15) {
     return `Bonjour ${prenom},\n\nVotre dernier jeu est terminé.\n\nC'est peut-être le bon moment pour lancer le suivant !\n\nCréer un nouveau jeu prend moins de 2 minutes.\n\n${lien}`;
   }
-  if (days < 30) {
+  if (days !== null && days < 30) {
     return `Bonjour ${prenom},\n\nVotre commerce n'a plus de jeu actif depuis quelques jours.\n\nPublier régulièrement permet de rester visible auprès de vos clients locaux.\n\n${lien}`;
   }
   return `Bonjour ${prenom},\n\nNous avons remarqué que vous n'avez plus publié de jeu récemment.\n\nY a-t-il une raison particulière ?\n\nRépondez simplement à ce message, nous serons ravis de vous aider.`;
@@ -105,7 +108,7 @@ function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 }
 
-type Filter = "tous" | "actif" | "7j" | "15j" | "30j" | "deja_relance" | "jamais_relance";
+type Filter = "tous" | "actif" | "7j" | "15j" | "30j" | "jamais_publie" | "deja_relance" | "jamais_relance";
 
 // ─── Note Modal ───────────────────────────────────────────────────────────────
 
@@ -260,7 +263,7 @@ export default function RelancesCommercantsPage() {
     return merchants
       .map((m) => {
         const days = daysWithoutGame(m);
-        const tier = statusTier(days);
+        const tier = statusTier(m, days);
         const phone = m.ownerPhone || m.phone;
         const message = buildMessage(m, days);
         const waLink = buildWhatsAppLink(phone, message);
@@ -269,8 +272,8 @@ export default function RelancesCommercantsPage() {
         return { merchant: m, days, tier, waLink, message, phone, history, lastFollowup };
       })
       .sort((a, b) => {
-        // Most inactive first: jamais → 30j+ → 15j → 7j → actif
-        const tierOrder: Record<StatusTier, number> = { jamais: 0, "30j": 1, "15j": 2, "7j": 3, actif: 4 };
+        // Most inactive first: jamais_publie → 30j+ → 15j → 7j → actif
+        const tierOrder: Record<StatusTier, number> = { jamais_publie: 0, "30j": 1, "15j": 2, "7j": 3, actif: 4 };
         const tDiff = tierOrder[a.tier] - tierOrder[b.tier];
         if (tDiff !== 0) return tDiff;
         // Within same tier, most days first
@@ -285,6 +288,7 @@ export default function RelancesCommercantsPage() {
         case "7j":             return tier === "7j";
         case "15j":            return tier === "15j";
         case "30j":            return tier === "30j";
+        case "jamais_publie":  return tier === "jamais_publie";
         case "deja_relance":   return history.length > 0;
         case "jamais_relance": return history.length === 0;
         default:               return true;
@@ -295,7 +299,7 @@ export default function RelancesCommercantsPage() {
   const stats = useMemo(() => {
     const total = merchants.length;
     const withGame = merchantRows.filter((r) => r.tier === "actif").length;
-    const toRelance = merchantRows.filter((r) => r.tier !== "actif" && r.tier !== "jamais").length;
+    const toRelance = merchantRows.filter((r) => r.tier !== "actif").length;
     const today = followups.filter((f) => f.dateValue >= todayStart).length;
     const week = followups.filter((f) => f.dateValue >= weekStart).length;
     return { total, withGame, toRelance, today, week };
@@ -362,6 +366,7 @@ export default function RelancesCommercantsPage() {
     { value: "7j",            label: "7 jours" },
     { value: "15j",           label: "15 jours" },
     { value: "30j",           label: "30 jours+" },
+    { value: "jamais_publie", label: "Jamais publié" },
     { value: "deja_relance",  label: "Déjà relancé" },
     { value: "jamais_relance",label: "Jamais relancé" },
   ];
@@ -459,7 +464,9 @@ export default function RelancesCommercantsPage() {
                       <td className="px-4 py-3">
                         <span className="flex items-center gap-2">
                           <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${tierDot(tier)}`} />
-                          <span className="text-[12px] text-[#666]">{tierLabel(tier)}</span>
+                          <span className={`text-[12px] ${tier === "jamais_publie" ? "font-medium text-[#7C5CBF]" : "text-[#666]"}`}>
+                            {tierLabel(tier)}
+                          </span>
                         </span>
                       </td>
 
@@ -479,21 +486,27 @@ export default function RelancesCommercantsPage() {
 
                       {/* Dernier jeu */}
                       <td className="px-4 py-3 text-[#666]">
-                        {merchant.lastGameEndDateValue > 0
-                          ? formatDate(merchant.lastGameEndDateValue)
-                          : merchant.gamesActiveCount > 0 ? "En cours" : "—"}
+                        {tier === "jamais_publie" ? (
+                          <span className="text-[#7C5CBF] font-medium">Aucun</span>
+                        ) : merchant.lastGameEndDateValue > 0 ? (
+                          formatDate(merchant.lastGameEndDateValue)
+                        ) : merchant.gamesActiveCount > 0 ? (
+                          "En cours"
+                        ) : "—"}
                       </td>
 
                       {/* Jours sans jeu */}
                       <td className="px-4 py-3 text-center">
-                        {days === null ? (
+                        {tier === "jamais_publie" ? (
                           <span className="text-[#ccc]">—</span>
                         ) : days === 0 ? (
                           <span className="text-[#639922] font-medium">actif</span>
-                        ) : (
+                        ) : days !== null ? (
                           <span className={`font-medium ${days >= 30 ? "text-[#444]" : days >= 15 ? "text-[#E24B4A]" : "text-[#EF9F27]"}`}>
                             {days}j
                           </span>
+                        ) : (
+                          <span className="text-[#ccc]">—</span>
                         )}
                       </td>
 
