@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { MerchantCard } from "@/components/admin/commercants/MerchantCard";
 import { MerchantEditModal } from "@/components/admin/commercants/MerchantEditModal";
+import { MerchantEmailBlastModal } from "@/components/admin/commercants/MerchantEmailBlastModal";
 import { MerchantFilters } from "@/components/admin/commercants/MerchantFilters";
 import { MerchantPanel } from "@/components/admin/commercants/MerchantPanel";
 import { db } from "@/lib/firebase/client-app";
@@ -112,6 +113,7 @@ export default function AdminCommercantsPage() {
   const [editFeedback, setEditFeedback] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [totalParticipations, setTotalParticipations] = useState<number | null>(null);
+  const [emailBlastOpen, setEmailBlastOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -349,6 +351,13 @@ export default function AdminCommercantsPage() {
             >
               Exporter CSV
             </button>
+            <button
+              type="button"
+              className="inline-flex min-w-[220px] items-center justify-center rounded-[10px] border border-[#639922] bg-white px-5 py-3 text-[14px] font-medium text-[#639922] transition hover:bg-[#F0F7E8]"
+              onClick={() => setEmailBlastOpen(true)}
+            >
+              Envoyer un email groupé
+            </button>
             <Link
               href="/admin/marchands/nouveau"
               className="inline-flex min-w-[220px] items-center justify-center rounded-[10px] bg-[#639922] px-5 py-3 text-[14px] font-medium text-white transition hover:bg-[#5a8b1f]"
@@ -458,6 +467,12 @@ export default function AdminCommercantsPage() {
           </div>
         ) : null}
       </div>
+
+      <MerchantEmailBlastModal
+        open={emailBlastOpen}
+        merchants={merchants}
+        onClose={() => setEmailBlastOpen(false)}
+      />
 
       <MerchantEditModal
         merchant={selectedMerchant}
