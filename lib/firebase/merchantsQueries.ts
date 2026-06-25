@@ -628,8 +628,8 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
   const [merchantSnapshot, primaryGamesSnapshot, secondaryGamesSnapshot, prizesSnapshot] = await Promise.all([
     getDocs(collection(db, merchantCollectionName)),
     getDocs(collection(db, gamesCollectionName)),
-    getDocs(collection(db, gamesCollectionName === "games" ? "jeux" : "games")),
-    getDocs(collection(db, "prizes")),
+    getDocs(collection(db, gamesCollectionName === "games" ? "jeux" : "games")).catch(() => ({ docs: [] as typeof primaryGamesSnapshot.docs })),
+    getDocs(collection(db, "prizes")).catch(() => ({ docs: [] as QueryDocumentSnapshot<DocumentData>[] })),
   ]);
   const allGameSnapshots = [...primaryGamesSnapshot.docs, ...secondaryGamesSnapshot.docs];
 
