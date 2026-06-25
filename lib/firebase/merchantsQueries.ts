@@ -557,6 +557,8 @@ function mapMerchantDocument(
     gainsRemis: number;
     activeGames: MerchantActiveGameSummary[];
     lastGameEndDateValue: number;
+    lastGameId: string | null;
+    lastGameCollectionName: "games" | "jeux" | null;
   },
 ): MerchantPilotageItem {
   const merchant = snapshot.data() as FirestoreMerchantDocument;
@@ -606,6 +608,8 @@ function mapMerchantDocument(
     gamesActiveCount: merchantStats.activeGamesCount,
     totalGamesCount: merchantStats.totalGamesCount,
     lastGameEndDateValue: merchantStats.lastGameEndDateValue,
+    lastGameId: merchantStats.lastGameId,
+    lastGameCollectionName: merchantStats.lastGameCollectionName,
     clicksJ30: merchantStats.clicksJ30,
     participationsJ30: merchantStats.participationsJ30,
     gainsRemis: merchantStats.gainsRemis,
@@ -649,6 +653,8 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
       gainsRemis: number;
       activeGames: MerchantActiveGameSummary[];
       lastGameEndDateValue: number;
+      lastGameId: string | null;
+      lastGameCollectionName: "games" | "jeux" | null;
     }
   >();
   const merchantById = new Map<string, FirestoreMerchantDocument>();
@@ -663,6 +669,8 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
       gainsRemis: 0,
       activeGames: [],
       lastGameEndDateValue: 0,
+      lastGameId: null,
+      lastGameCollectionName: null,
     });
   });
 
@@ -710,7 +718,11 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
     merchantStats.totalGamesCount += 1;
 
     if (endDateValue > 0 && endDateValue < now) {
-      merchantStats.lastGameEndDateValue = Math.max(merchantStats.lastGameEndDateValue, endDateValue);
+      if (endDateValue > merchantStats.lastGameEndDateValue) {
+        merchantStats.lastGameEndDateValue = endDateValue;
+        merchantStats.lastGameId = snapshot.id;
+        merchantStats.lastGameCollectionName = snapshot.ref.parent.id as "games" | "jeux";
+      }
     }
 
     if (gameStatus === "actif" || gameStatus === "expire_bientot") {
@@ -765,6 +777,8 @@ export async function getMerchantsPilotageData(): Promise<MerchantsPilotageData>
         gainsRemis: 0,
         activeGames: [],
         lastGameEndDateValue: 0,
+        lastGameId: null,
+        lastGameCollectionName: null,
       };
       const merchant = mapMerchantDocument(
         snapshot,

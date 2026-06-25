@@ -211,6 +211,8 @@ export interface MerchantPilotageItem {
   gamesActiveCount: number;
   totalGamesCount: number;
   lastGameEndDateValue: number;
+  lastGameId: string | null;
+  lastGameCollectionName: "games" | "jeux" | null;
   clicksJ30: number;
   participationsJ30: number;
   gainsRemis: number;

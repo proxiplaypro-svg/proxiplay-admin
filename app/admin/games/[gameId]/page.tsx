@@ -3,7 +3,7 @@
 import { FirebaseError } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   collection,
@@ -258,6 +258,8 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 
 export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDuplicated = searchParams.get("duplicated") === "1";
   const [game, setGame] = useState<AdminGameDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -460,6 +462,17 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* Duplication banner */}
+      {isDuplicated && (
+        <div className="flex items-start gap-3 rounded-[10px] border border-[#CFE5AF] bg-[#EAF3DE] px-4 py-3">
+          <span className="text-[16px]">✅</span>
+          <div>
+            <p className="text-[14px] font-medium text-[#3B6D11]">Votre précédent jeu a été dupliqué.</p>
+            <p className="mt-0.5 text-[13px] text-[#5a8b1f]">Il ne vous reste plus qu'à modifier le lot et les dates.</p>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

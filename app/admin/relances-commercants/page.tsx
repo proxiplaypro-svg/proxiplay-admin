@@ -8,6 +8,7 @@ import {
   getMerchantsPilotageData,
   getMerchantsPilotageErrorMessage,
 } from "@/lib/firebase/merchantsQueries";
+import { duplicateGameDocument } from "@/lib/firebase/gamesQueries";
 import {
   addFollowup,
   getFollowups,
@@ -202,6 +203,7 @@ export default function RelancesCommercantsPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("tous");
   const [pendingWhatsApp, setPendingWhatsApp] = useState<Record<string, boolean>>({});
+  const [pendingDuplicate, setPendingDuplicate] = useState<Record<string, boolean>>({});
   const [noteModal, setNoteModal] = useState<{ merchantName: string; followupId: string; currentNote: string } | null>(null);
 
   useEffect(() => {
@@ -331,6 +333,22 @@ export default function RelancesCommercantsPage() {
       window.open(row.waLink, "_blank", "noopener,noreferrer");
     } finally {
       setPendingWhatsApp((prev) => ({ ...prev, [row.merchant.id]: false }));
+    }
+  };
+
+  const handleDuplicate = async (merchant: MerchantPilotageItem) => {
+    if (!merchant.lastGameId || !merchant.lastGameCollectionName) return;
+    setPendingDuplicate((prev) => ({ ...prev, [merchant.id]: true }));
+    try {
+      const { game } = await duplicateGameDocument(
+        { gameId: merchant.lastGameId, collectionName: merchant.lastGameCollectionName },
+        merchant.merchantCollectionName,
+      );
+      router.push(`/admin/games/${game.id}?duplicated=1`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erreur lors de la duplication.");
+    } finally {
+      setPendingDuplicate((prev) => ({ ...prev, [merchant.id]: false }));
     }
   };
 
@@ -504,28 +522,50 @@ export default function RelancesCommercantsPage() {
 
                       {/* Actions */}
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {waLink ? (
-                            <button
-                              type="button"
-                              disabled={pendingWhatsApp[merchant.id]}
-                              onClick={() => void handleWhatsApp({ merchant, days, tier, waLink, message: buildMessage(merchant, days), phone, history, lastFollowup })}
-                              className="inline-flex items-center gap-1.5 rounded-[7px] border px-3 py-1.5 text-[12px] font-medium text-white transition disabled:opacity-50"
-                              style={{ backgroundColor: "#25D366", borderColor: "rgba(37,211,102,0.3)" }}
-                            >
-                              📲 WhatsApp
-                            </button>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            {waLink ? (
+                              <button
+                                type="button"
+                                disabled={pendingWhatsApp[merchant.id]}
+                                onClick={() => void handleWhatsApp({ merchant, days, tier, waLink, message: buildMessage(merchant, days), phone, history, lastFollowup })}
+                                className="inline-flex items-center gap-1.5 rounded-[7px] border px-3 py-1.5 text-[12px] font-medium text-white transition disabled:opacity-50"
+                                style={{ backgroundColor: "#25D366", borderColor: "rgba(37,211,102,0.3)" }}
+                              >
+                                📲 WhatsApp
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-[#ccc]">Pas de tél.</span>
+                            )}
+                            {lastFollowup && (
+                              <button
+                                type="button"
+                                onClick={() => setNoteModal({ merchantName: merchant.name, followupId: lastFollowup.id, currentNote: lastFollowup.commentaire })}
+                                className="rounded-[7px] border border-[#E0E0DA] bg-[#F7F7F5] px-3 py-1.5 text-[12px] text-[#666] hover:bg-[#EAF3DE] hover:border-[#CFE5AF] hover:text-[#3B6D11]"
+                              >
+                                Note
+                              </button>
+                            )}
+                          </div>
+
+                          {merchant.lastGameId ? (
+                            <div className="flex flex-col gap-1">
+                              {(days ?? 0) >= 30 && (
+                                <p className="text-[11px] text-[#EF9F27]">
+                                  💡 Pourquoi ne pas relancer avec un nouveau lot ?
+                                </p>
+                              )}
+                              <button
+                                type="button"
+                                disabled={pendingDuplicate[merchant.id]}
+                                onClick={() => void handleDuplicate(merchant)}
+                                className="inline-flex items-center gap-1.5 rounded-[7px] border border-[#639922] bg-[#EAF3DE] px-3 py-1.5 text-[12px] font-medium text-[#3B6D11] transition hover:bg-[#D6ECC0] disabled:opacity-50"
+                              >
+                                {pendingDuplicate[merchant.id] ? "Duplication…" : "🔁 Dupliquer le dernier jeu"}
+                              </button>
+                            </div>
                           ) : (
-                            <span className="text-[11px] text-[#ccc]">Pas de tél.</span>
-                          )}
-                          {lastFollowup && (
-                            <button
-                              type="button"
-                              onClick={() => setNoteModal({ merchantName: merchant.name, followupId: lastFollowup.id, currentNote: lastFollowup.commentaire })}
-                              className="rounded-[7px] border border-[#E0E0DA] bg-[#F7F7F5] px-3 py-1.5 text-[12px] text-[#666] hover:bg-[#EAF3DE] hover:border-[#CFE5AF] hover:text-[#3B6D11]"
-                            >
-                              Note
-                            </button>
+                            <span className="text-[11px] text-[#ccc]">Aucun jeu précédent</span>
                           )}
                         </div>
                       </td>
