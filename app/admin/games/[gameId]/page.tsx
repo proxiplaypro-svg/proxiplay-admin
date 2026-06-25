@@ -174,17 +174,18 @@ function deriveStatus(
   const now = Date.now();
   const endMs = game.end_date?.toMillis() ?? null;
   const startMs = game.start_date?.toMillis() ?? null;
-  const isPrivate = game.isPrivate === true || game.private === true;
   const isPublic = game.visible_public !== false;
   const hasLiveActivity = participationsCount > 0 || (typeof game.views === "number" && game.views > 0);
+  const normalizedStatus = game.status?.trim().toLowerCase();
 
-  if (game.status === "prive" || isPrivate) return "prive";
+  if (normalizedStatus === "prive" || normalizedStatus === "private") return "prive";
   if (endMs !== null && endMs < now) return "expire";
+  if (normalizedStatus === "active" || normalizedStatus === "actif" || normalizedStatus === "public") return "actif";
   if (!isPublic && (!hasLiveActivity || startMs === null || endMs === null || startMs > now || endMs < now)) {
     return "brouillon";
   }
   if (startMs !== null && startMs > now) return "brouillon";
-  if (game.status === "brouillon" && startMs !== null && endMs !== null && startMs <= now && endMs >= now) {
+  if (normalizedStatus === "brouillon" && startMs !== null && endMs !== null && startMs <= now && endMs >= now) {
     return "actif";
   }
   return "actif";
