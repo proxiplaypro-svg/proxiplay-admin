@@ -91,16 +91,13 @@ function buildMessage(merchant: MerchantPilotageItem, days: number | null): stri
   const prenom = merchant.ownerFirstName || merchant.name;
   const lien = GAME_CREATION_URL;
 
-  if (days === null || days < 7) {
-    return `Bonjour ${prenom} 👋\n\nVotre dernier jeu est terminé.\n\nC'est peut-être le bon moment pour lancer le suivant 🙂\n\nCréer un nouveau jeu prend moins de 2 minutes.\n\n👉 ${lien}`;
-  }
-  if (days < 15) {
-    return `Bonjour ${prenom} 👋\n\nVotre dernier jeu est terminé.\n\nC'est peut-être le bon moment pour lancer le suivant 🙂\n\nCréer un nouveau jeu prend moins de 2 minutes.\n\n👉 ${lien}`;
+  if (days === null || days < 15) {
+    return `Bonjour ${prenom},\n\nVotre dernier jeu est terminé.\n\nC'est peut-être le bon moment pour lancer le suivant !\n\nCréer un nouveau jeu prend moins de 2 minutes.\n\n${lien}`;
   }
   if (days < 30) {
-    return `Bonjour ${prenom} 👋\n\nVotre commerce n'a plus de jeu actif depuis quelques jours.\n\nPublier régulièrement permet de rester visible auprès de vos clients locaux.\n\n👉 ${lien}`;
+    return `Bonjour ${prenom},\n\nVotre commerce n'a plus de jeu actif depuis quelques jours.\n\nPublier régulièrement permet de rester visible auprès de vos clients locaux.\n\n${lien}`;
   }
-  return `Bonjour ${prenom} 👋\n\nNous avons remarqué que vous n'avez plus publié de jeu récemment.\n\nY a-t-il une raison particulière ?\n\nRépondez simplement à ce message.\n\nNous serons ravis de vous aider.`;
+  return `Bonjour ${prenom},\n\nNous avons remarqué que vous n'avez plus publié de jeu récemment.\n\nY a-t-il une raison particulière ?\n\nRépondez simplement à ce message, nous serons ravis de vous aider.`;
 }
 
 function formatDate(ms: number): string {
