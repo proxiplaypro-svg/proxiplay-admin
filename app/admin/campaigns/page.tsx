@@ -19,6 +19,7 @@ import {
   type DocumentReference,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
+import Link from "next/link";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import { auth } from "@/lib/firebase/auth";
@@ -2473,7 +2474,7 @@ export default function AdminCampaignsPage() {
                         <p className="mt-3 text-center text-[12px] text-[#666666]">
                           {game.merchantName}
                         </p>
-                        <div className="mt-4 flex justify-center">
+                        <div className="mt-4 flex justify-center gap-2">
                           <button
                             type="button"
                             className={buttonSecondaryClassName}
@@ -2482,6 +2483,14 @@ export default function AdminCampaignsPage() {
                           >
                             Telecharger
                           </button>
+                          <Link
+                            href={`/admin/games/${game.id}/visual-generator`}
+                            className={buttonSecondaryClassName}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Affiche
+                          </Link>
                         </div>
                       </div>
                     ))}

@@ -23,8 +23,9 @@ type FirestoreUserDocument = {
 };
 
 type FirestoreProgressDocument = {
-  visited_merchants?: string[];
-  qualified?: boolean;
+  visited_merchant_ids?: string[];
+  visited_count?: number;
+  threshold_reached?: boolean;
   last_updated?: { toMillis: () => number };
 };
 
@@ -151,11 +152,16 @@ export async function GET(
       );
     }
 
-    const [gamesSnapshot, prizesSnapshot, animationProgressSnapshot, winnerSnapshot] =
+    const [gamesSnapshot, prizesSnapshot, entriesSnapshot, winnerSnapshot] =
       await Promise.all([
         adminDb.collection("games").where("animation_id", "==", animationId).get(),
         adminDb.collection("prizes").where("animation_id", "==", animationId).get(),
-        adminDb.collectionGroup("animations").get(),
+        adminDb
+          .collection("animations")
+          .doc(animationId)
+          .collection("entries")
+          .where("threshold_reached", "==", true)
+          .get(),
         adminDb.doc(`animations/${animationId}/winner/current`).get(),
       ]);
 
@@ -174,29 +180,17 @@ export async function GET(
 
     const gameById = new Map(games.map((game) => [game.id, game]));
 
-    const qualifiedProgress = animationProgressSnapshot.docs.filter((snapshot) => {
-      const uid = snapshot.ref.parent.parent?.id;
-      const progressData = (snapshot.data() as FirestoreProgressDocument | undefined) ?? {};
-
-      return (
-        snapshot.id === animationId &&
-        progressData.qualified === true &&
-        typeof uid === "string"
-      );
-    });
-
-    const qualifiedUserIds = qualifiedProgress
-      .map((snapshot) => snapshot.ref.parent.parent?.id ?? "")
-      .filter(Boolean);
+    // Joueurs qualifiés : lus depuis animations/{id}/entries (écrits par participateInGameTransaction)
+    const qualifiedUserIds = entriesSnapshot.docs.map((snapshot) => snapshot.id).filter(Boolean);
 
     const qualifiedUserSnapshots = await Promise.all(
       qualifiedUserIds.map((uid) => adminDb.doc(`users/${uid}`).get()),
     );
 
-    const qualifiedUsers = qualifiedProgress
+    const qualifiedUsers = entriesSnapshot.docs
       .map((snapshot, index) => {
-        const progressData = (snapshot.data() as FirestoreProgressDocument | undefined) ?? {};
-        const uid = snapshot.ref.parent.parent?.id ?? "";
+        const entryData = (snapshot.data() as FirestoreProgressDocument | undefined) ?? {};
+        const uid = snapshot.id;
         const userData =
           (qualifiedUserSnapshots[index]?.data() as FirestoreUserDocument | undefined) ?? {};
         const email = readText(userData.email);
@@ -205,11 +199,13 @@ export async function GET(
           uid,
           label: buildPlayerLabel(userData, email),
           email: email || "-",
-          visitedMerchantsCount: Array.isArray(progressData.visited_merchants)
-            ? progressData.visited_merchants.length
-            : 0,
+          visitedMerchantsCount: typeof entryData.visited_count === "number"
+            ? entryData.visited_count
+            : Array.isArray(entryData.visited_merchant_ids)
+              ? entryData.visited_merchant_ids.length
+              : 0,
           lastUpdatedLabel: formatDateValue(
-            progressData.last_updated?.toMillis() ?? null,
+            entryData.last_updated?.toMillis() ?? null,
             {
               day: "2-digit",
               month: "short",
