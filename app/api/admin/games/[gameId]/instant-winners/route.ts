@@ -12,9 +12,10 @@ type RequestBody = {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { gameId: string } },
+  { params }: { params: Promise<{ gameId: string }> },
 ) {
   try {
+    const { gameId } = await params;
     const body = (await request.json()) as RequestBody;
     const { prizeCount, gameStartMs, gameEndMs, secondaryPrizeName, secondaryPrizeDescription } =
       body;
@@ -22,7 +23,7 @@ export async function POST(
     const db = getAdminDb();
     const instantWinnersRef = db
       .collection("games")
-      .doc(params.gameId)
+      .doc(gameId)
       .collection("instant_winners");
 
     const existingSnapshot = await instantWinnersRef.where("hasWinner", "==", false).get();

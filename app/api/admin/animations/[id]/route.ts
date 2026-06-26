@@ -4,13 +4,14 @@ import { getAdminDb } from "@/lib/firebase/admin-app";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { id } = await params;
     const body = (await request.json()) as Record<string, unknown>;
     const db = getAdminDb();
 
-    await db.collection("animations").doc(params.id).update({
+    await db.collection("animations").doc(id).update({
       ...body,
       updated_at: FieldValue.serverTimestamp(),
     });
@@ -27,17 +28,18 @@ export async function PATCH(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { id } = await params;
     const db = getAdminDb();
     const batch = db.batch();
 
-    batch.delete(db.collection("animations").doc(params.id));
+    batch.delete(db.collection("animations").doc(id));
 
     const gamesSnapshot = await db
       .collection("games")
-      .where("animation_id", "==", params.id)
+      .where("animation_id", "==", id)
       .get();
 
     gamesSnapshot.docs.forEach((gameDoc) => {
