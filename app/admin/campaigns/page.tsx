@@ -16,7 +16,6 @@ import {
   Timestamp,
   updateDoc,
   where,
-  writeBatch,
   type DocumentReference,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
@@ -536,72 +535,36 @@ function buildAnimationSecondaryPrizes(
   ];
 }
 async function ensureGameInstantWinners(params: {
-  gameRef: DocumentReference;
+  gameId: string;
   prizeCount: number;
   gameStartDate: Timestamp;
   gameEndDate: Timestamp;
   secondaryPrizeName: string;
   secondaryPrizeDescription: string;
-  merchantId: string;
 }) {
-  const {
-    gameRef,
-    prizeCount,
-    gameStartDate,
-    gameEndDate,
-    secondaryPrizeName,
-    secondaryPrizeDescription,
-    merchantId,
-  } = params;
+  const { gameId, prizeCount, gameStartDate, gameEndDate, secondaryPrizeName, secondaryPrizeDescription } =
+    params;
 
   if (prizeCount <= 0) {
     return;
   }
 
-  const instantWinnersRef = collection(gameRef, "instant_winners");
-  const existingInstantWinnersSnapshot = await getDocs(
-    query(instantWinnersRef, where("hasWinner", "==", false)),
-  );
-  const existingCount = existingInstantWinnersSnapshot.size;
-
-  if (existingCount >= prizeCount) {
-    return;
-  }
-
-  const missingCount = prizeCount - existingCount;
-  const gameStartMs = gameStartDate.toMillis();
-  const gameEndMs = gameEndDate.toMillis();
-  const rangeMs = gameEndMs - gameStartMs;
-
-  if (rangeMs <= 0) {
-    return;
-  }
-
-  const batch = writeBatch(db);
-
-  for (let index = 0; index < missingCount; index += 1) {
-    const randomOffset = Math.random() * rangeMs;
-    const winnerDateMs = Math.round(gameStartMs + randomOffset);
-    const instantWinnerRef = doc(instantWinnersRef);
-
-    batch.set(instantWinnerRef, {
-      hasWinner: false,
-      date: Timestamp.fromMillis(winnerDateMs),
-      secondary_prize_name: secondaryPrizeName,
-      secondary_prize_presentation: secondaryPrizeDescription,
-    });
-  }
-
-  await batch.commit();
-
-  console.info("instant_winners generated for animation game", {
-    gameId: gameRef.id,
-    merchantId,
-    createdCount: missingCount,
-    totalCount: prizeCount,
-    startAt: new Date(gameStartMs).toISOString(),
-    endAt: new Date(gameEndMs).toISOString(),
+  const response = await fetch(`/api/admin/games/${gameId}/instant-winners`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prizeCount,
+      gameStartMs: gameStartDate.toMillis(),
+      gameEndMs: gameEndDate.toMillis(),
+      secondaryPrizeName,
+      secondaryPrizeDescription,
+    }),
   });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error?.trim() || "Impossible de generer les instant_winners.");
+  }
 }
 async function uploadCampaignImage(
   campaignId: string,
@@ -1347,10 +1310,7 @@ export default function AdminCampaignsPage() {
         threshold,
       };
 
-      const campaignRef = formState.id
-        ? doc(db, "animations", formState.id)
-        : doc(collection(db, "animations"));
-      const campaignId = campaignRef.id;
+      const campaignId = formState.id ?? doc(collection(db, "animations")).id;
 
       const coverImageUrl = formState.coverImageFile
         ? await uploadCampaignImage(campaignId, formState.coverImageFile, "cover")
@@ -1359,21 +1319,32 @@ export default function AdminCampaignsPage() {
         ? await uploadCampaignImage(campaignId, formState.prizeImageFile, "prize")
         : formState.prizeImageUrl.trim() || "";
 
+      const animationPayload = {
+        ...basePayload,
+        cover_image: coverImageUrl,
+        prize_image: prizeImageUrl,
+      };
+
       if (formState.id) {
-        await updateDoc(campaignRef, {
-          ...basePayload,
-          cover_image: coverImageUrl,
-          prize_image: prizeImageUrl,
-          updated_at: serverTimestamp(),
+        const patchResponse = await fetch(`/api/admin/animations/${formState.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(animationPayload),
         });
+        if (!patchResponse.ok) {
+          const payload = (await patchResponse.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error?.trim() || "Impossible de mettre a jour l animation.");
+        }
       } else {
-        await setDoc(campaignRef, {
-          ...basePayload,
-          cover_image: coverImageUrl,
-          prize_image: prizeImageUrl,
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp(),
+        const postResponse = await fetch("/api/admin/animations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: campaignId, ...animationPayload }),
         });
+        if (!postResponse.ok) {
+          const payload = (await postResponse.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error?.trim() || "Impossible de creer l animation.");
+        }
       }
 
       const existingGamesByMerchantId = new Map(
@@ -1455,13 +1426,12 @@ export default function AdminCampaignsPage() {
             if (prizeCount > 0) {
               try {
                 await ensureGameInstantWinners({
-                  gameRef,
+                  gameId: gameRef.id,
                   prizeCount,
                   gameStartDate,
                   gameEndDate,
                   secondaryPrizeName: merchant.secondaryPrize.trim(),
                   secondaryPrizeDescription: merchant.secondaryPrizeDescription.trim(),
-                  merchantId: merchant.merchantId,
                 });
               } catch (error) {
                 console.error("Impossible de generer les instant_winners du jeu.", {
@@ -1495,13 +1465,12 @@ export default function AdminCampaignsPage() {
           if (prizeCount > 0) {
             try {
               await ensureGameInstantWinners({
-                gameRef,
+                gameId: gameRef.id,
                 prizeCount,
                 gameStartDate,
                 gameEndDate,
                 secondaryPrizeName: merchant.secondaryPrize.trim(),
                 secondaryPrizeDescription: merchant.secondaryPrizeDescription.trim(),
-                merchantId: merchant.merchantId,
               });
             } catch (error) {
               console.error("Impossible de generer les instant_winners du jeu.", {
@@ -1556,10 +1525,15 @@ export default function AdminCampaignsPage() {
     setStatusActionLoadingId(campaign.id);
 
     try {
-      await updateDoc(doc(db, "animations", campaign.id), {
-        status: nextStatus,
-        updated_at: serverTimestamp(),
+      const response = await fetch(`/api/admin/animations/${campaign.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
       });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error?.trim() || "Impossible de mettre a jour le statut.");
+      }
     } catch (error) {
       console.error(error);
       window.alert(toErrorMessage(error, "Impossible de mettre a jour le statut."));
@@ -1581,17 +1555,13 @@ export default function AdminCampaignsPage() {
     setDeleteActionLoadingId(campaign.id);
 
     try {
-      const linkedGamesSnapshot = await getDocs(
-        query(collection(db, "games"), where("animation_id", "==", campaign.id)),
-      );
-      const batch = writeBatch(db);
-
-      batch.delete(doc(db, "animations", campaign.id));
-      linkedGamesSnapshot.docs.forEach((gameSnapshot) => {
-        batch.delete(gameSnapshot.ref);
+      const response = await fetch(`/api/admin/animations/${campaign.id}`, {
+        method: "DELETE",
       });
-
-      await batch.commit();
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error?.trim() || "Impossible de supprimer cette animation.");
+      }
 
       if (selectedCampaignId === campaign.id) {
         setSelectedCampaignId(null);
