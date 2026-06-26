@@ -60,12 +60,14 @@ type MerchantOption = {
   id: string;
   name: string;
   city: string;
+  ownerRef: DocumentReference | null;
 };
 
 type CampaignMerchantRow = {
   merchantId: string;
   merchantName: string;
   merchantCity: string;
+  ownerRef: DocumentReference | null;
   secondaryPrize: string;
   secondaryPrizeDescription: string;
   prizeCount: string;
@@ -140,6 +142,7 @@ type FirestoreGameDocument = {
 type FirestoreMerchantDocument = {
   name?: string;
   city?: string;
+  owner?: DocumentReference | null;
 };
 
 type FirestoreUserDocument = {
@@ -363,6 +366,7 @@ function mapMerchant(snapshot: QueryDocumentSnapshot) {
     id: snapshot.id,
     name: readText(data.name, "Commerce sans nom"),
     city: readText(data.city),
+    ownerRef: data.owner instanceof Object && "id" in data.owner ? (data.owner as DocumentReference) : null,
   } satisfies MerchantOption;
 }
 
@@ -871,11 +875,13 @@ export default function AdminCampaignsPage() {
     const merchantCityById = new Map(merchants.map((merchant) => [merchant.id, merchant.city]));
     const linkedGames = games.filter((game) => game.campaignId === selectedCampaignId);
 
+    const merchantOwnerRefById = new Map(merchants.map((merchant) => [merchant.id, merchant.ownerRef]));
     setParticipantMerchants(
       linkedGames.map((game) => ({
         merchantId: game.merchantId ?? game.id,
         merchantName: game.merchantName,
         merchantCity: merchantCityById.get(game.merchantId ?? "") ?? "",
+        ownerRef: merchantOwnerRefById.get(game.merchantId ?? "") ?? null,
         secondaryPrize: game.secondaryPrize,
         secondaryPrizeDescription: "",
         prizeCount: String(Math.max(0, game.prizeCount)),
@@ -1188,6 +1194,7 @@ export default function AdminCampaignsPage() {
         merchantId: merchant.id,
         merchantName: merchant.name,
         merchantCity: merchant.city,
+        ownerRef: merchant.ownerRef,
         secondaryPrize: "",
         secondaryPrizeDescription: "",
         prizeCount: "0",
@@ -1379,7 +1386,7 @@ export default function AdminCampaignsPage() {
           const gamePayload = {
             title: gameName,
             name: gameName,
-            create_by: createdByValue,
+            create_by: merchant.ownerRef ?? createdByValue,
             description: formState.description.trim(),
             conditions: formState.description.trim(),
             type: "animation",
