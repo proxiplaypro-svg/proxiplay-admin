@@ -40,10 +40,11 @@ export async function DELETE(
     const db = getAdminDb();
 
     // Supprimer les sous-collections (Firestore ne le fait pas automatiquement)
-    const [entriesSnap, winnerSnap, gamesSnapshot] = await Promise.all([
+    const [entriesSnap, winnerSnap, gamesSnapshot, prizesSnapshot] = await Promise.all([
       db.collection("animations").doc(id).collection("entries").get(),
       db.collection("animations").doc(id).collection("winner").get(),
       db.collection("games").where("animation_id", "==", id).get(),
+      db.collection("prizes").where("animation_id", "==", id).get(),
     ]);
 
     // Chunked delete : batch Firestore limité à 500 opérations
@@ -52,6 +53,7 @@ export async function DELETE(
       ...entriesSnap.docs.map((d) => d.ref),
       ...winnerSnap.docs.map((d) => d.ref),
       ...gamesSnapshot.docs.map((d) => d.ref),
+      ...prizesSnapshot.docs.map((d) => d.ref),
       db.collection("animations").doc(id),
     ];
 
