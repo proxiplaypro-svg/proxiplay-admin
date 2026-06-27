@@ -36,17 +36,20 @@ export async function POST(
     }
 
     const missingCount = prizeCount - existingCount;
-    const rangeMs = gameEndMs - gameStartMs;
+    // La borne inférieure est max(gameStart, maintenant) pour éviter des dates
+    // déjà passées au moment de la création (ex: animation qui démarre aujourd'hui).
+    const effectiveStartMs = Math.max(gameStartMs, Date.now());
+    const effectiveRangeMs = gameEndMs - effectiveStartMs;
 
-    if (rangeMs <= 0) {
+    if (effectiveRangeMs <= 0) {
       return NextResponse.json({ created: 0 });
     }
 
     const batch = db.batch();
 
     for (let i = 0; i < missingCount; i++) {
-      const randomOffset = Math.random() * rangeMs;
-      const winnerDateMs = Math.round(gameStartMs + randomOffset);
+      const randomOffset = Math.random() * effectiveRangeMs;
+      const winnerDateMs = Math.round(effectiveStartMs + randomOffset);
       const ref = instantWinnersRef.doc();
 
       batch.set(ref, {
