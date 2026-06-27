@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
+
+function parseTimestamp(value: unknown): Timestamp | null {
+  if (!value || typeof value !== "object") return null;
+  const obj = value as Record<string, unknown>;
+  const seconds = typeof obj.seconds === "number" ? obj.seconds : null;
+  const nanoseconds = typeof obj.nanoseconds === "number" ? obj.nanoseconds : 0;
+  if (seconds === null) return null;
+  return new Timestamp(seconds, nanoseconds);
+}
 
 export async function POST(request: NextRequest) {
   try {
     await assertIsAdminRequest(request);
     const body = (await request.json()) as Record<string, unknown>;
-    const { id, ...payload } = body;
+    const { id, start_date, end_date, ...rest } = body;
 
     const db = getAdminDb();
     const ref =
@@ -16,7 +25,9 @@ export async function POST(request: NextRequest) {
         : db.collection("animations").doc();
 
     await ref.set({
-      ...payload,
+      ...rest,
+      ...(start_date !== undefined && { start_date: parseTimestamp(start_date) }),
+      ...(end_date !== undefined && { end_date: parseTimestamp(end_date) }),
       created_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     });

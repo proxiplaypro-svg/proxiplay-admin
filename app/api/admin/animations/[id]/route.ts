@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
+
+function parseTimestamp(value: unknown): Timestamp | null {
+  if (!value || typeof value !== "object") return null;
+  const obj = value as Record<string, unknown>;
+  const seconds = typeof obj.seconds === "number" ? obj.seconds : null;
+  const nanoseconds = typeof obj.nanoseconds === "number" ? obj.nanoseconds : 0;
+  if (seconds === null) return null;
+  return new Timestamp(seconds, nanoseconds);
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -10,11 +19,13 @@ export async function PATCH(
   try {
     await assertIsAdminRequest(request);
     const { id } = await params;
-    const body = (await request.json()) as Record<string, unknown>;
+    const { start_date, end_date, ...rest } = (await request.json()) as Record<string, unknown>;
     const db = getAdminDb();
 
     await db.collection("animations").doc(id).update({
-      ...body,
+      ...rest,
+      ...(start_date !== undefined && { start_date: parseTimestamp(start_date) }),
+      ...(end_date !== undefined && { end_date: parseTimestamp(end_date) }),
       updated_at: FieldValue.serverTimestamp(),
     });
 
