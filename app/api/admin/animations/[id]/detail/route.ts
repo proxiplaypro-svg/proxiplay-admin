@@ -138,7 +138,7 @@ function getErrorMessage(error: unknown) {
 export const runtime = "nodejs";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {

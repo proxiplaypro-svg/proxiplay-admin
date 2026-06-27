@@ -40,27 +40,26 @@ export async function DELETE(
     const db = getAdminDb();
 
     // Supprimer les sous-collections (Firestore ne le fait pas automatiquement)
-    const [entriesSnap, winnerSnap] = await Promise.all([
+    const [entriesSnap, winnerSnap, gamesSnapshot] = await Promise.all([
       db.collection("animations").doc(id).collection("entries").get(),
       db.collection("animations").doc(id).collection("winner").get(),
+      db.collection("games").where("animation_id", "==", id).get(),
     ]);
 
-    const batch = db.batch();
+    // Chunked delete : batch Firestore limité à 500 opérations
+    const CHUNK = 490;
+    const allRefs = [
+      ...entriesSnap.docs.map((d) => d.ref),
+      ...winnerSnap.docs.map((d) => d.ref),
+      ...gamesSnapshot.docs.map((d) => d.ref),
+      db.collection("animations").doc(id),
+    ];
 
-    entriesSnap.docs.forEach((doc) => batch.delete(doc.ref));
-    winnerSnap.docs.forEach((doc) => batch.delete(doc.ref));
-    batch.delete(db.collection("animations").doc(id));
-
-    const gamesSnapshot = await db
-      .collection("games")
-      .where("animation_id", "==", id)
-      .get();
-
-    gamesSnapshot.docs.forEach((gameDoc) => {
-      batch.delete(gameDoc.ref);
-    });
-
-    await batch.commit();
+    for (let i = 0; i < allRefs.length; i += CHUNK) {
+      const batch = db.batch();
+      allRefs.slice(i, i + CHUNK).forEach((ref) => batch.delete(ref));
+      await batch.commit();
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getStorage } from "firebase-admin/storage";
 import { getAdminApp } from "@/lib/firebase/admin-app";
+import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,7 @@ function getPublicFileUrl(bucketName: string, filePath: string, token: string) {
 
 export async function POST(request: Request) {
   try {
+    await assertIsAdminRequest(request);
     const formData = await request.formData();
     const file = formData.get("file");
     const rawPath = formData.get("path");
@@ -67,6 +69,8 @@ export async function POST(request: Request) {
       path: storagePath,
     });
   } catch (error) {
+    const authError = handleAdminAuthError(error);
+    if (authError) return authError;
     console.error("Admin upload failed", error);
     return buildStorageError("Impossible d uploader le fichier pour le moment.", 500);
   }

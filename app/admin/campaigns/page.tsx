@@ -598,7 +598,7 @@ async function uploadCampaignImage(
   formData.append("file", file);
   formData.append("path", `animations/${campaignId}/${kind}.${extension}`);
 
-  const response = await fetch("/api/admin/upload", {
+  const response = await adminFetch("/api/admin/upload", {
     method: "POST",
     body: formData,
   });
@@ -620,7 +620,7 @@ async function uploadGameImage(merchantId: string, file: File) {
   formData.append("file", file);
   formData.append("path", `games/${merchantId}/cover.${extension}`);
 
-  const response = await fetch("/api/admin/upload", {
+  const response = await adminFetch("/api/admin/upload", {
     method: "POST",
     body: formData,
   });

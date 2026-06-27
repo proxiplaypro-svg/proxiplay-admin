@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { getConfiguredAdminEmails, isAllowedAdminEmail } from "@/lib/firebase/adminAccess";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin-app";
+import { getAdminDb } from "@/lib/firebase/admin-app";
+import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 
 type MarkWinnersAsRetiredBody = {
   prizeIds?: string[];
@@ -9,24 +9,6 @@ type MarkWinnersAsRetiredBody = {
 
 function normalizePrizeIds(prizeIds: string[] | undefined) {
   return [...new Set((prizeIds ?? []).map((prizeId) => prizeId.trim()).filter(Boolean))];
-}
-
-async function assertIsAdminRequest(request: Request) {
-  const authorization = request.headers.get("authorization") ?? "";
-  const [scheme, token] = authorization.split(" ");
-
-  if (scheme !== "Bearer" || !token) {
-    throw new Error("UNAUTHENTICATED");
-  }
-
-  const decodedToken = await getAdminAuth().verifyIdToken(token);
-  const adminEmails = getConfiguredAdminEmails();
-
-  if (!isAllowedAdminEmail(decodedToken.email, adminEmails)) {
-    throw new Error("FORBIDDEN");
-  }
-
-  return decodedToken;
 }
 
 export async function POST(request: Request) {
@@ -70,19 +52,8 @@ export async function POST(request: Request) {
       updatedCount: prizeIds.length,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "UNAUTHENTICATED") {
-      console.error("[ADMIN_WINNER_MARK_CLAIMED_ERROR]", {
-        reason: "UNAUTHENTICATED",
-      });
-      return NextResponse.json({ error: "Connexion admin requise." }, { status: 401 });
-    }
-
-    if (error instanceof Error && error.message === "FORBIDDEN") {
-      console.error("[ADMIN_WINNER_MARK_CLAIMED_ERROR]", {
-        reason: "FORBIDDEN",
-      });
-      return NextResponse.json({ error: "Acces admin requis." }, { status: 403 });
-    }
+    const authError = handleAdminAuthError(error);
+    if (authError) return authError;
 
     console.error("[ADMIN_WINNER_MARK_CLAIMED_ERROR]", error);
 
