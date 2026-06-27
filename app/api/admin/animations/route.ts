@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin-app";
+import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 
 export async function POST(request: NextRequest) {
   try {
+    await assertIsAdminRequest(request);
     const body = (await request.json()) as Record<string, unknown>;
     const { id, ...payload } = body;
 
@@ -21,6 +23,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ id: ref.id });
   } catch (error) {
+    const authError = handleAdminAuthError(error);
+    if (authError) return authError;
     console.error("[ANIMATION_CREATE]", error);
     return NextResponse.json(
       { error: "Impossible de creer l animation." },

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin-app";
+import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 
 type FirestoreGameDocument = {
   name?: string;
@@ -141,6 +142,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    await assertIsAdminRequest(request);
     const adminDb = getAdminDb();
     const { id } = await params;
     const animationId = id.trim();
@@ -332,6 +334,8 @@ export async function GET(
       participantsCount: qualifiedUsers.length,
     });
   } catch (error) {
+    const authError = handleAdminAuthError(error);
+    if (authError) return authError;
     console.error("Animation detail API failed", error);
     return NextResponse.json(
       { error: getErrorMessage(error) },

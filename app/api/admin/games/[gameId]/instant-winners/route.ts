@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin-app";
+import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 
 type RequestBody = {
   prizeCount: number;
@@ -15,6 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ gameId: string }> },
 ) {
   try {
+    await assertIsAdminRequest(request);
     const { gameId } = await params;
     const body = (await request.json()) as RequestBody;
     const { prizeCount, gameStartMs, gameEndMs, secondaryPrizeName, secondaryPrizeDescription } =
@@ -59,6 +61,8 @@ export async function POST(
 
     return NextResponse.json({ created: missingCount });
   } catch (error) {
+    const authError = handleAdminAuthError(error);
+    if (authError) return authError;
     console.error("[INSTANT_WINNERS_CREATE]", error);
     return NextResponse.json(
       { error: "Impossible de generer les instant_winners." },

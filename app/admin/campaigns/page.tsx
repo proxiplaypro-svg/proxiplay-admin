@@ -539,6 +539,23 @@ function buildAnimationSecondaryPrizes(
     },
   ];
 }
+async function getAuthToken(): Promise<string> {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Connexion admin requise.");
+  return user.getIdToken();
+}
+
+async function adminFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = await getAuthToken();
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers as Record<string, string> | undefined),
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 async function ensureGameInstantWinners(params: {
   gameId: string;
   prizeCount: number;
@@ -554,7 +571,7 @@ async function ensureGameInstantWinners(params: {
     return;
   }
 
-  const response = await fetch(`/api/admin/games/${gameId}/instant-winners`, {
+  const response = await adminFetch(`/api/admin/games/${gameId}/instant-winners`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -780,7 +797,7 @@ export default function AdminCampaignsPage() {
 
       try {
         console.log("[campaign detail] animationId", selectedCampaignId);
-        const response = await fetch(`/api/admin/animations/${selectedCampaignId}/detail`, {
+        const response = await adminFetch(`/api/admin/animations/${selectedCampaignId}/detail`, {
           method: "GET",
           cache: "no-store",
         });
@@ -1334,7 +1351,7 @@ export default function AdminCampaignsPage() {
       };
 
       if (formState.id) {
-        const patchResponse = await fetch(`/api/admin/animations/${formState.id}`, {
+        const patchResponse = await adminFetch(`/api/admin/animations/${formState.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(animationPayload),
@@ -1344,7 +1361,7 @@ export default function AdminCampaignsPage() {
           throw new Error(payload?.error?.trim() || "Impossible de mettre a jour l animation.");
         }
       } else {
-        const postResponse = await fetch("/api/admin/animations", {
+        const postResponse = await adminFetch("/api/admin/animations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: campaignId, ...animationPayload }),
@@ -1533,7 +1550,7 @@ export default function AdminCampaignsPage() {
     setStatusActionLoadingId(campaign.id);
 
     try {
-      const response = await fetch(`/api/admin/animations/${campaign.id}`, {
+      const response = await adminFetch(`/api/admin/animations/${campaign.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: nextStatus }),
@@ -1563,7 +1580,7 @@ export default function AdminCampaignsPage() {
     setDeleteActionLoadingId(campaign.id);
 
     try {
-      const response = await fetch(`/api/admin/animations/${campaign.id}`, {
+      const response = await adminFetch(`/api/admin/animations/${campaign.id}`, {
         method: "DELETE",
       });
       if (!response.ok) {
