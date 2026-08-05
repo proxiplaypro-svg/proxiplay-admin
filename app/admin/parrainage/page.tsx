@@ -102,6 +102,11 @@ export default function AdminReferralPage() {
             Vue admin sobre du systeme `share_promo`, basee sur `referrals` et le statut bonus
             lu sur `users`. Le code affiche ici le dernier code genere par parrain.
           </p>
+          <p>
+            <Link className="secondary-button" href="/admin/parrainage/jeu">
+              Gerer le jeu de parrainage (tirage au sort)
+            </Link>
+          </p>
         </div>
 
         {loading ? <p className="feedback neutral">Chargement du suivi parrainage...</p> : null}
