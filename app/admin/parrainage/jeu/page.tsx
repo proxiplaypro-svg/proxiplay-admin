@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Timestamp } from "firebase/firestore";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client-app";
 import { auth } from "@/lib/firebase/auth";
 
@@ -123,11 +123,22 @@ export default function AdminReferralGamePage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    const referralGamesQuery = query(collection(db, "referral_games"), orderBy("start_date", "desc"));
+    // No orderBy here on purpose: Firestore silently drops any document
+    // missing the sorted field from the query results, which can make a
+    // game invisible (and thus undeletable from this screen) if its
+    // start_date ever ends up null/malformed. Sorting client-side instead
+    // guarantees every document in the collection is always shown.
+    const referralGamesQuery = collection(db, "referral_games");
     const unsubscribe = onSnapshot(
       referralGamesQuery,
       (snapshot) => {
-        setGames(snapshot.docs.map((doc) => mapReferralGame(doc.id, doc.data())));
+        const nextGames = snapshot.docs.map((doc) => mapReferralGame(doc.id, doc.data()));
+        nextGames.sort((a, b) => {
+          const aTime = a.startDate ? new Date(a.startDate).getTime() : 0;
+          const bTime = b.startDate ? new Date(b.startDate).getTime() : 0;
+          return bTime - aTime;
+        });
+        setGames(nextGames);
         setLoading(false);
         setError(null);
       },
@@ -201,6 +212,24 @@ export default function AdminReferralGamePage() {
       setActionError(
         activateError instanceof Error ? activateError.message : "Impossible d'activer ce jeu.",
       );
+    }
+  };
+
+  const handleEnd = async (game: ReferralGame) => {
+    if (!window.confirm(`Terminer le jeu de parrainage "${game.title}" ?`)) return;
+    setActionError(null);
+    try {
+      const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "ended" }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error?.trim() || "Impossible de terminer ce jeu.");
+      }
+    } catch (endError) {
+      setActionError(endError instanceof Error ? endError.message : "Impossible de terminer ce jeu.");
     }
   };
 
@@ -397,6 +426,15 @@ export default function AdminReferralGamePage() {
                             className="inline-flex items-center rounded-[7px] border border-[#639922] bg-[#EAF3DE] px-3 py-1.5 text-[12px] font-medium text-[#3B6D11] transition hover:bg-[#D6ECC0]"
                           >
                             Activer
+                          </button>
+                        ) : null}
+                        {game.status === "active" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleEnd(game)}
+                            className="inline-flex items-center rounded-[7px] border border-[#E0C87A] bg-[#FBF3DD] px-3 py-1.5 text-[12px] font-medium text-[#8A6A10] transition hover:bg-[#F5E8C4]"
+                          >
+                            Terminer
                           </button>
                         ) : null}
                         {game.status !== "active" ? (
