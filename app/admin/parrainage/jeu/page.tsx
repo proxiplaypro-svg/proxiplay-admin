@@ -126,6 +126,19 @@ export default function AdminReferralGamePage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [uploadingGameId, setUploadingGameId] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [createImageFile, setCreateImageFile] = useState<File | null>(null);
+  const createImageInputRef = useRef<HTMLInputElement | null>(null);
+  const [createImagePreviewUrl, setCreateImagePreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!createImageFile) {
+      setCreateImagePreviewUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(createImageFile);
+    setCreateImagePreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [createImageFile]);
 
   useEffect(() => {
     // No orderBy here on purpose: Firestore silently drops any document
@@ -190,8 +203,26 @@ export default function AdminReferralGamePage() {
         throw new Error(payload?.error?.trim() || "Impossible de créer le jeu de parrainage.");
       }
 
+      const { id: newGameId } = (await response.json()) as { id: string };
+
+      let imageWarning = "";
+      if (createImageFile) {
+        try {
+          const downloadUrl = await uploadReferralGameImage(newGameId, createImageFile);
+          await adminFetch(`/api/admin/referral-games/${newGameId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_url: downloadUrl }),
+          });
+        } catch {
+          imageWarning = " (l'image n'a pas pu être envoyée, tu peux réessayer depuis la liste ci-dessous)";
+        }
+      }
+
       setFormState(emptyForm);
-      setFeedback("Jeu de parrainage créé en brouillon.");
+      setCreateImageFile(null);
+      if (createImageInputRef.current) createImageInputRef.current.value = "";
+      setFeedback(`Jeu de parrainage créé en brouillon.${imageWarning}`);
     } catch (createError) {
       setActionError(
         createError instanceof Error ? createError.message : "Impossible de créer le jeu de parrainage.",
@@ -238,17 +269,30 @@ export default function AdminReferralGamePage() {
     }
   };
 
+  function validateImageFile(file: File): string | null {
+    if (!file.type.startsWith("image/")) {
+      return "Le fichier sélectionné doit être une image valide.";
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      return "L'image dépasse 5 Mo. Choisis un fichier plus léger.";
+    }
+    return null;
+  }
+
+  async function uploadReferralGameImage(gameId: string, file: File): Promise<string> {
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const storageRef = ref(storage, `referral_games/${gameId}/${Date.now()}-${sanitizedFileName}`);
+    await uploadBytes(storageRef, file, { contentType: file.type });
+    return getDownloadURL(storageRef);
+  }
+
   const handleImageSelected = async (game: ReferralGame, file: File | undefined) => {
     if (!file) return;
     const inputEl = fileInputRefs.current[game.id];
 
-    if (!file.type.startsWith("image/")) {
-      setActionError("Le fichier sélectionné doit être une image valide.");
-      if (inputEl) inputEl.value = "";
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setActionError("L'image dépasse 5 Mo. Choisis un fichier plus léger.");
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      setActionError(validationError);
       if (inputEl) inputEl.value = "";
       return;
     }
@@ -256,10 +300,7 @@ export default function AdminReferralGamePage() {
     setActionError(null);
     setUploadingGameId(game.id);
     try {
-      const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const storageRef = ref(storage, `referral_games/${game.id}/${Date.now()}-${sanitizedFileName}`);
-      await uploadBytes(storageRef, file, { contentType: file.type });
-      const downloadUrl = await getDownloadURL(storageRef);
+      const downloadUrl = await uploadReferralGameImage(game.id, file);
 
       const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
         method: "PATCH",
@@ -359,6 +400,42 @@ export default function AdminReferralGamePage() {
                 }
                 rows={3}
               />
+            </label>
+
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
+              <span className="text-[12px] font-medium text-[#666]">Image (affichée au joueur)</span>
+              <div className="flex items-center gap-3">
+                {createImagePreviewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={createImagePreviewUrl}
+                    alt=""
+                    className="h-12 w-12 flex-none rounded-[8px] object-cover"
+                  />
+                ) : null}
+                <input
+                  ref={createImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) {
+                      setCreateImageFile(null);
+                      return;
+                    }
+                    const validationError = validateImageFile(file);
+                    if (validationError) {
+                      setActionError(validationError);
+                      event.target.value = "";
+                      setCreateImageFile(null);
+                      return;
+                    }
+                    setActionError(null);
+                    setCreateImageFile(file);
+                  }}
+                  className="text-[13px] text-[#666] file:mr-3 file:rounded-[8px] file:border file:border-[#E0E0DA] file:bg-white file:px-3 file:py-1.5 file:text-[12px] file:font-medium file:text-[#666] hover:file:bg-[#F7F7F5]"
+                />
+              </div>
             </label>
 
             <label className="flex flex-col gap-1.5 sm:col-span-2">
