@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Timestamp } from "firebase/firestore";
 import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase/client-app";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { db, storage } from "@/lib/firebase/client-app";
 import { auth } from "@/lib/firebase/auth";
 
 type ReferralGameStatus = "draft" | "active" | "ended";
@@ -14,6 +15,7 @@ type ReferralGame = {
   title: string;
   description: string;
   prizeDescription: string;
+  imageUrl: string;
   status: ReferralGameStatus;
   startDate: string | null;
   endDate: string | null;
@@ -42,6 +44,7 @@ function mapReferralGame(id: string, data: Record<string, unknown>): ReferralGam
     title: readText(data.title) || "Sans titre",
     description: readText(data.description),
     prizeDescription: readText(data.prize_description),
+    imageUrl: readText(data.image_url),
     status: (["draft", "active", "ended"] as const).includes(data.status as ReferralGameStatus)
       ? (data.status as ReferralGameStatus)
       : "draft",
@@ -121,6 +124,8 @@ export default function AdminReferralGamePage() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [uploadingGameId, setUploadingGameId] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     // No orderBy here on purpose: Firestore silently drops any document
@@ -230,6 +235,46 @@ export default function AdminReferralGamePage() {
       }
     } catch (endError) {
       setActionError(endError instanceof Error ? endError.message : "Impossible de terminer ce jeu.");
+    }
+  };
+
+  const handleImageSelected = async (game: ReferralGame, file: File | undefined) => {
+    if (!file) return;
+    const inputEl = fileInputRefs.current[game.id];
+
+    if (!file.type.startsWith("image/")) {
+      setActionError("Le fichier sélectionné doit être une image valide.");
+      if (inputEl) inputEl.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setActionError("L'image dépasse 5 Mo. Choisis un fichier plus léger.");
+      if (inputEl) inputEl.value = "";
+      return;
+    }
+
+    setActionError(null);
+    setUploadingGameId(game.id);
+    try {
+      const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storageRef = ref(storage, `referral_games/${game.id}/${Date.now()}-${sanitizedFileName}`);
+      await uploadBytes(storageRef, file, { contentType: file.type });
+      const downloadUrl = await getDownloadURL(storageRef);
+
+      const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_url: downloadUrl }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error?.trim() || "Impossible d'enregistrer l'image.");
+      }
+    } catch (uploadError) {
+      setActionError(uploadError instanceof Error ? uploadError.message : "Impossible d'envoyer l'image.");
+    } finally {
+      setUploadingGameId(null);
+      if (inputEl) inputEl.value = "";
     }
   };
 
@@ -398,10 +443,26 @@ export default function AdminReferralGamePage() {
                 {games.map((game) => (
                   <tr key={game.id} className="border-b border-[#F0F0EC] last:border-b-0 hover:bg-[#FCFCFB]">
                     <td className="px-4 py-3">
-                      <span className="block font-medium text-[#1a1a1a]">{game.title}</span>
-                      <span className="block text-[11px] text-[#999]">
-                        {game.prizeDescription || "Lot non renseigné"}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        {game.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={game.imageUrl}
+                            alt=""
+                            className="h-10 w-10 flex-none rounded-[8px] object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-10 w-10 flex-none items-center justify-center rounded-[8px] border border-dashed border-[#E0E0DA] text-[10px] text-[#999]">
+                            Pas d&apos;image
+                          </div>
+                        )}
+                        <div>
+                          <span className="block font-medium text-[#1a1a1a]">{game.title}</span>
+                          <span className="block text-[11px] text-[#999]">
+                            {game.prizeDescription || "Lot non renseigné"}
+                          </span>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={game.status} />
@@ -419,6 +480,23 @@ export default function AdminReferralGamePage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        <input
+                          ref={(el) => {
+                            fileInputRefs.current[game.id] = el;
+                          }}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(event) => void handleImageSelected(game, event.target.files?.[0])}
+                        />
+                        <button
+                          type="button"
+                          disabled={uploadingGameId === game.id}
+                          onClick={() => fileInputRefs.current[game.id]?.click()}
+                          className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:bg-[#F7F7F5] disabled:opacity-60"
+                        >
+                          {uploadingGameId === game.id ? "Envoi…" : game.imageUrl ? "Changer l'image" : "Ajouter une image"}
+                        </button>
                         {game.status === "draft" ? (
                           <button
                             type="button"
