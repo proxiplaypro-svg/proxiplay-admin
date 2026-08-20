@@ -25,6 +25,29 @@ const FILTERS: { value: ReferralFilter; label: string }[] = [
   { value: "bonus_expire", label: "Bonus expiré" },
 ];
 
+type SortField = "date" | "filleuls" | "codes" | "bonus";
+type SortDirection = "asc" | "desc";
+
+const SORT_OPTIONS: { value: SortField; label: string }[] = [
+  { value: "date", label: "Dernière utilisation" },
+  { value: "filleuls", label: "Nombre de filleuls" },
+  { value: "codes", label: "Codes générés" },
+  { value: "bonus", label: "Bonus accordés" },
+];
+
+function sortValue(inviter: AdminReferralInviterListItem, field: SortField): number {
+  switch (field) {
+    case "date":
+      return inviter.lastAcceptedAtValue;
+    case "filleuls":
+      return inviter.acceptedInviteesCount;
+    case "codes":
+      return inviter.inviteCodesCount;
+    case "bonus":
+      return inviter.grantedRewardsCount;
+  }
+}
+
 function StatCard({ label, value, color }: { label: string; value: number | string; color: string }) {
   return (
     <article
@@ -56,6 +79,8 @@ export default function AdminReferralPage() {
   const [overview, setOverview] = useState<AdminReferralOverview | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ReferralFilter>("tous");
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -122,6 +147,13 @@ export default function AdminReferralPage() {
       return matchesSearch && matchesFilter;
     });
   }, [filter, inviters, search]);
+
+  const sortedInviters = useMemo(() => {
+    const directionMultiplier = sortDirection === "asc" ? 1 : -1;
+    return [...filteredInviters].sort(
+      (a, b) => (sortValue(a, sortField) - sortValue(b, sortField)) * directionMultiplier,
+    );
+  }, [filteredInviters, sortField, sortDirection]);
 
   const visibleGrantedRewards = filteredInviters.reduce(
     (total, inviter) => total + inviter.grantedRewardsCount,
@@ -194,6 +226,30 @@ export default function AdminReferralPage() {
               </div>
             </div>
 
+            {/* Sort */}
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[12px] font-medium text-[#666]">Trier par</span>
+              <select
+                value={sortField}
+                onChange={(event) => setSortField(event.target.value as SortField)}
+                className="rounded-[8px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[13px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))}
+                className="inline-flex items-center gap-1.5 rounded-[8px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[13px] font-medium text-[#666] hover:bg-[#F7F7F5]"
+                title={sortDirection === "asc" ? "Croissant" : "Décroissant"}
+              >
+                {sortDirection === "asc" ? "↑ Croissant" : "↓ Décroissant"}
+              </button>
+            </div>
+
             <p className="text-[13px] text-[#666]">
               {filteredInviters.length} parrain(s) affiché(s) sur {overview.invitersCount} — {visibleGrantedRewards} bonus
               accordés visibles
@@ -214,14 +270,14 @@ export default function AdminReferralPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredInviters.length === 0 && (
+                  {sortedInviters.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-4 py-8 text-center text-[#999]">
                         Aucun parrain ne correspond aux filtres actuels.
                       </td>
                     </tr>
                   )}
-                  {filteredInviters.map((inviter) => (
+                  {sortedInviters.map((inviter) => (
                     <tr key={inviter.userId} className="border-b border-[#F0F0EC] last:border-b-0 hover:bg-[#FCFCFB]">
                       <td className="px-4 py-3">
                         <span className="block font-medium text-[#1a1a1a]">{inviter.label}</span>
