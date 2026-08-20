@@ -55,9 +55,9 @@ function mapReferralGame(id: string, data: Record<string, unknown>): ReferralGam
 }
 
 function formatDisplayDate(value: string | null) {
-  if (!value) return "-";
+  if (!value) return "—";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
+  if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("fr-FR");
 }
 
@@ -88,7 +88,13 @@ async function adminFetch(url: string, options: RequestInit = {}): Promise<Respo
 const statusLabels: Record<ReferralGameStatus, string> = {
   draft: "Brouillon",
   active: "Actif",
-  ended: "Termine",
+  ended: "Terminé",
+};
+
+const statusStyles: Record<ReferralGameStatus, string> = {
+  draft: "bg-[#F0F0EC] text-[#999]",
+  active: "bg-[#EAF3DE] text-[#3B6D11]",
+  ended: "bg-[#EFE7FB] text-[#7C5CBF]",
 };
 
 const emptyForm = {
@@ -98,6 +104,14 @@ const emptyForm = {
   startDate: "",
   endDate: "",
 };
+
+function StatusBadge({ status }: { status: ReferralGameStatus }) {
+  return (
+    <span className={`inline-flex w-fit rounded-full px-2.5 py-1 text-[11px] font-medium ${statusStyles[status]}`}>
+      {statusLabels[status]}
+    </span>
+  );
+}
 
 export default function AdminReferralGamePage() {
   const [games, setGames] = useState<ReferralGame[]>([]);
@@ -140,7 +154,7 @@ export default function AdminReferralGamePage() {
       const startPayload = parseDateInputToTimestampPayload(formState.startDate);
       const endPayload = parseDateInputToTimestampPayload(formState.endDate);
       if (!startPayload || !endPayload) {
-        throw new Error("Les dates de debut et de fin sont obligatoires.");
+        throw new Error("Les dates de début et de fin sont obligatoires.");
       }
 
       const response = await adminFetch("/api/admin/referral-games", {
@@ -157,14 +171,14 @@ export default function AdminReferralGamePage() {
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error?.trim() || "Impossible de creer le jeu de parrainage.");
+        throw new Error(payload?.error?.trim() || "Impossible de créer le jeu de parrainage.");
       }
 
       setFormState(emptyForm);
-      setFeedback("Jeu de parrainage cree en brouillon.");
+      setFeedback("Jeu de parrainage créé en brouillon.");
     } catch (createError) {
       setActionError(
-        createError instanceof Error ? createError.message : "Impossible de creer le jeu de parrainage.",
+        createError instanceof Error ? createError.message : "Impossible de créer le jeu de parrainage.",
       );
     } finally {
       setSubmitting(false);
@@ -209,57 +223,62 @@ export default function AdminReferralGamePage() {
   };
 
   return (
-    <section className="content-grid">
-      <div className="panel panel-wide">
-        <div className="panel-heading">
-          <h2>Jeu de parrainage</h2>
-          <p>
-            Un ticket est cree automatiquement pour chaque parrainage valide (le filleul cree son
-            compte) tant qu&apos;un jeu est actif -- sans plafond. Le tirage au sort se fait
-            automatiquement a la date de fin. Un seul jeu actif a la fois.
-          </p>
-          <p>
-            <Link className="secondary-button" href="/admin/parrainage">
-              Retour au suivi parrainage
-            </Link>
-          </p>
+    <section className="min-h-full bg-[#F7F7F5]">
+      <div className="mx-auto grid max-w-[1440px] gap-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Jeu de parrainage</h1>
+            <p className="mt-1 text-[14px] text-[#666]">
+              Un ticket est créé automatiquement pour chaque parrainage validé (le filleul crée son compte)
+              tant qu&apos;un jeu est actif — sans plafond. Le tirage au sort se fait automatiquement à la
+              date de fin. Un seul jeu actif à la fois.
+            </p>
+          </div>
+          <Link
+            href="/admin/parrainage"
+            className="inline-flex items-center justify-center rounded-[10px] border border-[#E8E8E4] bg-white px-5 py-3 text-[14px] font-medium text-[#666] hover:bg-[#F7F7F5]"
+          >
+            ← Retour au suivi parrainage
+          </Link>
         </div>
-      </div>
 
-      <div className="panel panel-wide">
+        {/* Create form */}
         <form
-          className="game-edit-form"
+          className="rounded-[12px] border border-[#E8E8E4] bg-white p-5"
           onSubmit={(event) => {
             event.preventDefault();
             void handleCreate();
           }}
         >
-          <div className="panel-heading">
-            <h3>Nouveau jeu (brouillon)</h3>
+          <div className="mb-4">
+            <h2 className="text-[16px] font-medium text-[#1a1a1a]">Nouveau jeu (brouillon)</h2>
             {hasActiveGame ? (
-              <p className="feedback neutral">
-                Un jeu est deja actif -- le nouveau jeu restera en brouillon jusqu&apos;a ce que
-                vous terminiez le jeu actif.
+              <p className="mt-1 text-[13px] text-[#EF9F27]">
+                Un jeu est déjà actif — le nouveau jeu restera en brouillon jusqu&apos;à ce que vous
+                terminiez le jeu actif.
               </p>
             ) : null}
           </div>
 
-          <div className="game-edit-grid">
-            <label className="game-edit-field">
-              <span className="search-label">Titre</span>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] font-medium text-[#666]">Titre</span>
               <input
-                className="search-input"
+                className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
                 type="text"
                 value={formState.title}
                 onChange={(event) => setFormState((prev) => ({ ...prev, title: event.target.value }))}
-                placeholder="Grand tirage parrainage ete 2026"
+                placeholder="Grand tirage parrainage été 2026"
               />
             </label>
 
-            <label className="game-edit-field game-edit-field-wide">
-              <span className="search-label">Description (affichee au joueur)</span>
+            <div className="hidden sm:block" />
+
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
+              <span className="text-[12px] font-medium text-[#666]">Description (affichée au joueur)</span>
               <textarea
-                className="game-edit-textarea"
+                className="resize-y rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
                 value={formState.description}
                 onChange={(event) =>
                   setFormState((prev) => ({ ...prev, description: event.target.value }))
@@ -268,10 +287,10 @@ export default function AdminReferralGamePage() {
               />
             </label>
 
-            <label className="game-edit-field game-edit-field-wide">
-              <span className="search-label">Lot a gagner</span>
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
+              <span className="text-[12px] font-medium text-[#666]">Lot à gagner</span>
               <input
-                className="search-input"
+                className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
                 type="text"
                 value={formState.prizeDescription}
                 onChange={(event) =>
@@ -281,10 +300,10 @@ export default function AdminReferralGamePage() {
               />
             </label>
 
-            <label className="game-edit-field">
-              <span className="search-label">Debut</span>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] font-medium text-[#666]">Début</span>
               <input
-                className="search-input"
+                className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
                 type="date"
                 value={formState.startDate}
                 onChange={(event) =>
@@ -292,10 +311,10 @@ export default function AdminReferralGamePage() {
                 }
               />
             </label>
-            <label className="game-edit-field">
-              <span className="search-label">Fin (tirage au sort a cette date)</span>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] font-medium text-[#666]">Fin (tirage au sort à cette date)</span>
               <input
-                className="search-input"
+                className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
                 type="date"
                 value={formState.endDate}
                 onChange={(event) => setFormState((prev) => ({ ...prev, endDate: event.target.value }))}
@@ -303,65 +322,98 @@ export default function AdminReferralGamePage() {
             </label>
           </div>
 
-          {actionError ? <p className="feedback error">{actionError}</p> : null}
-          {feedback ? <p className="feedback success">{feedback}</p> : null}
+          {actionError ? <p className="mt-4 text-[13px] text-[#E24B4A]">{actionError}</p> : null}
+          {feedback ? <p className="mt-4 text-[13px] text-[#3B6D11]">{feedback}</p> : null}
 
-          <div className="dashboard-actions game-edit-actions">
-            <button className="primary-button" type="submit" disabled={submitting}>
-              {submitting ? "Creation..." : "Creer en brouillon"}
+          <div className="mt-5">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-5 py-3 text-[14px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50"
+            >
+              {submitting ? "Création…" : "Créer en brouillon"}
             </button>
           </div>
         </form>
-      </div>
 
-      <div className="panel panel-wide">
-        {loading ? <p className="feedback neutral">Chargement des jeux de parrainage...</p> : null}
+        {/* Games list */}
+        {loading ? (
+          <div className="rounded-[12px] border border-[#E8E8E4] bg-white px-5 py-8 text-center text-[#666]">
+            <div className="loader" aria-hidden="true" />
+            <p className="mt-3">Chargement des jeux de parrainage…</p>
+          </div>
+        ) : null}
         {error ? <p className="feedback error">{error}</p> : null}
 
         {!loading && !error ? (
-          <div className="games-table-body">
-            {games.length === 0 ? (
-              <p className="feedback neutral">Aucun jeu de parrainage pour le moment.</p>
-            ) : null}
+          <div className="overflow-x-auto rounded-[12px] border border-[#E8E8E4] bg-white">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-[#E8E8E4] text-left text-[11px] uppercase tracking-[0.06em] text-[#999]">
+                  <th className="px-4 py-3 font-medium">Titre</th>
+                  <th className="px-4 py-3 font-medium">Statut</th>
+                  <th className="px-4 py-3 font-medium">Période</th>
+                  <th className="px-4 py-3 font-medium">Tickets</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {games.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-[#999]">
+                      Aucun jeu de parrainage pour le moment.
+                    </td>
+                  </tr>
+                ) : null}
 
-            {games.map((game) => (
-              <article key={game.id} className="games-table-row">
-                <div className="games-cell" data-label="Titre">
-                  <strong>{game.title}</strong>
-                  <span>{game.prizeDescription || "Lot non renseigne"}</span>
-                </div>
-                <div className="games-cell" data-label="Statut">
-                  <span className={`referral-status-badge ${game.status}`}>
-                    {statusLabels[game.status]}
-                  </span>
-                </div>
-                <div className="games-cell" data-label="Periode">
-                  <span>
-                    {formatDisplayDate(game.startDate)} → {formatDisplayDate(game.endDate)}
-                  </span>
-                </div>
-                <div className="games-cell" data-label="Tickets">
-                  <strong>{game.ticketCount}</strong>
-                  {game.status === "ended" && game.winnerUid ? (
-                    <span>
-                      Gagnant : {game.winnerTicketCount ?? "?"}/{game.totalTicketCount ?? "?"} tickets
-                    </span>
-                  ) : null}
-                </div>
-                <div className="games-cell referral-actions-cell" data-label="Actions">
-                  {game.status === "draft" ? (
-                    <button type="button" className="secondary-button" onClick={() => handleActivate(game)}>
-                      Activer
-                    </button>
-                  ) : null}
-                  {game.status !== "active" ? (
-                    <button type="button" className="secondary-button" onClick={() => handleDelete(game)}>
-                      Supprimer
-                    </button>
-                  ) : null}
-                </div>
-              </article>
-            ))}
+                {games.map((game) => (
+                  <tr key={game.id} className="border-b border-[#F0F0EC] last:border-b-0 hover:bg-[#FCFCFB]">
+                    <td className="px-4 py-3">
+                      <span className="block font-medium text-[#1a1a1a]">{game.title}</span>
+                      <span className="block text-[11px] text-[#999]">
+                        {game.prizeDescription || "Lot non renseigné"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={game.status} />
+                    </td>
+                    <td className="px-4 py-3 text-[#666]">
+                      {formatDisplayDate(game.startDate)} → {formatDisplayDate(game.endDate)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="block font-medium text-[#1a1a1a]">{game.ticketCount}</span>
+                      {game.status === "ended" && game.winnerUid ? (
+                        <span className="block text-[11px] text-[#999]">
+                          Gagnant : {game.winnerTicketCount ?? "?"}/{game.totalTicketCount ?? "?"} tickets
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        {game.status === "draft" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleActivate(game)}
+                            className="inline-flex items-center rounded-[7px] border border-[#639922] bg-[#EAF3DE] px-3 py-1.5 text-[12px] font-medium text-[#3B6D11] transition hover:bg-[#D6ECC0]"
+                          >
+                            Activer
+                          </button>
+                        ) : null}
+                        {game.status !== "active" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(game)}
+                            className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:bg-[#F7F7F5]"
+                          >
+                            Supprimer
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : null}
       </div>

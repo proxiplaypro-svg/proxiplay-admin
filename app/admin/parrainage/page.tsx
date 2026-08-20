@@ -17,6 +17,41 @@ function normalizeString(value: string) {
 
 type ReferralFilter = "tous" | "avec_filleuls" | "sans_filleul" | "bonus_actif" | "bonus_expire";
 
+const FILTERS: { value: ReferralFilter; label: string }[] = [
+  { value: "tous", label: "Tous" },
+  { value: "avec_filleuls", label: "Avec filleuls" },
+  { value: "sans_filleul", label: "Sans filleul" },
+  { value: "bonus_actif", label: "Bonus actif" },
+  { value: "bonus_expire", label: "Bonus expiré" },
+];
+
+function StatCard({ label, value, color }: { label: string; value: number | string; color: string }) {
+  return (
+    <article
+      className="rounded-[12px] border border-[#E8E8E4] bg-white p-5"
+      style={{ boxShadow: `inset 0 3px 0 ${color}` }}
+    >
+      <span className="text-[11px] uppercase tracking-[0.05em] text-[#999]">{label}</span>
+      <strong className="mt-3 block text-[28px] font-medium leading-none text-[#1a1a1a]">{value}</strong>
+    </article>
+  );
+}
+
+function BonusBadge({ inviter }: { inviter: AdminReferralInviterListItem }) {
+  const style =
+    inviter.bonusStatus === "actif"
+      ? "bg-[#EAF3DE] text-[#3B6D11]"
+      : inviter.bonusStatus === "expire"
+        ? "bg-[#F0F0EC] text-[#999]"
+        : "bg-[#F0F0EC] text-[#999]";
+
+  return (
+    <span className={`inline-flex w-fit rounded-full px-2.5 py-1 text-[11px] font-medium ${style}`}>
+      {inviter.bonusStatusLabel}
+    </span>
+  );
+}
+
 export default function AdminReferralPage() {
   const [overview, setOverview] = useState<AdminReferralOverview | null>(null);
   const [search, setSearch] = useState("");
@@ -94,139 +129,148 @@ export default function AdminReferralPage() {
   );
 
   return (
-    <section className="content-grid">
-      <div className="panel panel-wide">
-        <div className="panel-heading">
-          <h2>Parrainage</h2>
-          <p>
-            Vue admin sobre du systeme `share_promo`, basee sur `referrals` et le statut bonus
-            lu sur `users`. Le code affiche ici le dernier code genere par parrain.
-          </p>
-          <p>
-            <Link className="secondary-button" href="/admin/parrainage/jeu">
-              Gerer le jeu de parrainage (tirage au sort)
-            </Link>
-          </p>
+    <section className="min-h-full bg-[#F7F7F5]">
+      <div className="mx-auto grid max-w-[1440px] gap-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Parrainage</h1>
+            <p className="mt-1 text-[14px] text-[#666]">
+              Vue admin du système de parrainage — codes, filleuls et statut des bonus.
+            </p>
+          </div>
+          <Link
+            href="/admin/parrainage/jeu"
+            className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-5 py-3 text-[14px] font-medium text-white hover:bg-[#5a8b1f]"
+          >
+            🎁 Gérer le jeu de parrainage
+          </Link>
         </div>
 
-        {loading ? <p className="feedback neutral">Chargement du suivi parrainage...</p> : null}
-        {error ? <p className="feedback error">{error}</p> : null}
+        {/* Loading / Error */}
+        {loading && (
+          <div className="rounded-[12px] border border-[#E8E8E4] bg-white px-5 py-8 text-center text-[#666]">
+            <div className="loader" aria-hidden="true" />
+            <p className="mt-3">Chargement du suivi parrainage…</p>
+          </div>
+        )}
+
+        {!loading && error && <p className="feedback error">{error}</p>}
 
         {!loading && !error && overview ? (
           <>
-            <div className="overview-grid referral-kpi-grid">
-              <article className="overview-card">
-                <span>Parrains avec code</span>
-                <strong>{overview.invitersCount}</strong>
-              </article>
-              <article className="overview-card">
-                <span>Filleuls</span>
-                <strong>{overview.inviteesCount}</strong>
-              </article>
-              <article className="overview-card">
-                <span>Bonus accordes</span>
-                <strong>{overview.grantedRewardsCount}</strong>
-              </article>
-              <article className="overview-card">
-                <span>Bonus actifs</span>
-                <strong>{overview.activeBonusesCount}</strong>
-              </article>
+            {/* Stats */}
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard label="Parrains avec code" value={overview.invitersCount} color="rgba(159,177,199,0.7)" />
+              <StatCard label="Filleuls" value={overview.inviteesCount} color="#4F7CFF" />
+              <StatCard label="Bonus accordés" value={overview.grantedRewardsCount} color="#639922" />
+              <StatCard label="Bonus actifs" value={overview.activeBonusesCount} color="#EF9F27" />
             </div>
 
-            <div className="games-toolbar referral-toolbar">
-              <label className="search-field">
-                <span className="search-label">Recherche</span>
-                <input
-                  className="search-input"
-                  type="search"
-                  placeholder="Pseudo, email ou code de parrainage"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </label>
-
-              <label className="search-field">
-                <span className="search-label">Filtre</span>
-                <select value={filter} onChange={(event) => setFilter(event.target.value as ReferralFilter)}>
-                  <option value="tous">Tous</option>
-                  <option value="avec_filleuls">Avec filleuls</option>
-                  <option value="sans_filleul">Sans filleul</option>
-                  <option value="bonus_actif">Bonus actif</option>
-                  <option value="bonus_expire">Bonus expire</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="referral-summary-row">
-              <p>
-                {filteredInviters.length} parrain(s) affiches sur {overview.invitersCount}
-              </p>
-              <p>
-                {visibleGrantedRewards} bonus accordes visibles
-                {overview.lastStatsUpdateLabel ? ` - stats mises a jour ${overview.lastStatsUpdateLabel}` : ""}
-              </p>
-            </div>
-
-            <div className="games-table-body">
-              <div className="referral-table-header">
-                <span>Parrain</span>
-                <span>Code</span>
-                <span>Filleuls</span>
-                <span>Derniere utilisation</span>
-                <span>Bonus</span>
-                <span>Actions</span>
+            {/* Search + filters */}
+            <div className="flex flex-col gap-4 rounded-[12px] border border-[#E8E8E4] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+              <input
+                className="w-full max-w-sm rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
+                type="search"
+                placeholder="Pseudo, email ou code de parrainage"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <div className="flex flex-wrap gap-2">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    onClick={() => setFilter(f.value)}
+                    className={`rounded-full border px-4 py-1.5 text-[13px] font-medium transition ${
+                      filter === f.value
+                        ? "border-[#639922] bg-[#639922] text-white"
+                        : "border-[#E0E0DA] bg-white text-[#666] hover:bg-[#F7F7F5]"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
               </div>
+            </div>
 
-              {filteredInviters.length === 0 ? (
-                <p className="feedback neutral">
-                  Aucun parrain ne correspond aux filtres actuels.
-                </p>
-              ) : null}
+            <p className="text-[13px] text-[#666]">
+              {filteredInviters.length} parrain(s) affiché(s) sur {overview.invitersCount} — {visibleGrantedRewards} bonus
+              accordés visibles
+              {overview.lastStatsUpdateLabel ? ` · stats mises à jour ${overview.lastStatsUpdateLabel}` : ""}
+            </p>
 
-              {filteredInviters.map((inviter) => (
-                <ReferralRow key={inviter.userId} inviter={inviter} />
-              ))}
+            {/* Table */}
+            <div className="overflow-x-auto rounded-[12px] border border-[#E8E8E4] bg-white">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="border-b border-[#E8E8E4] text-left text-[11px] uppercase tracking-[0.06em] text-[#999]">
+                    <th className="px-4 py-3 font-medium">Parrain</th>
+                    <th className="px-4 py-3 font-medium">Code</th>
+                    <th className="px-4 py-3 font-medium">Filleuls</th>
+                    <th className="px-4 py-3 font-medium">Dernière utilisation</th>
+                    <th className="px-4 py-3 font-medium">Bonus</th>
+                    <th className="px-4 py-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInviters.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-[#999]">
+                        Aucun parrain ne correspond aux filtres actuels.
+                      </td>
+                    </tr>
+                  )}
+                  {filteredInviters.map((inviter) => (
+                    <tr key={inviter.userId} className="border-b border-[#F0F0EC] last:border-b-0 hover:bg-[#FCFCFB]">
+                      <td className="px-4 py-3">
+                        <span className="block font-medium text-[#1a1a1a]">{inviter.label}</span>
+                        <span className="block text-[11px] text-[#999]">{inviter.email}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="rounded-[6px] bg-[#F7F7F5] px-2 py-1 text-[12px] font-medium text-[#1a1a1a]">
+                          {inviter.latestInviteCode}
+                        </code>
+                        <span className="mt-1 block text-[11px] text-[#999]">
+                          {inviter.inviteCodesCount} code(s) généré(s)
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="block font-medium text-[#1a1a1a]">{inviter.acceptedInviteesCount}</span>
+                        <span className="block text-[11px] text-[#999]">
+                          {inviter.pendingReferralsCount} invitation(s) en attente
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="block text-[#1a1a1a]">{inviter.lastAcceptedAtLabel}</span>
+                        <span className="block text-[11px] text-[#999]">
+                          {inviter.grantedRewardsCount} bonus accordé(s)
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          <BonusBadge inviter={inviter} />
+                          <span className="text-[11px] text-[#999]">
+                            {inviter.bonusStatus === "aucun" ? "Aucune expiration" : inviter.bonusExpiresAtLabel}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/admin/parrainage/${inviter.userId}`}
+                          className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-[#F7F7F5] px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:border-[#CFE5AF] hover:bg-[#EAF3DE] hover:text-[#3B6D11]"
+                        >
+                          Voir détail
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </>
         ) : null}
       </div>
     </section>
-  );
-}
-
-function ReferralRow({ inviter }: { inviter: AdminReferralInviterListItem }) {
-  return (
-    <article className="referral-table-row">
-      <div className="games-cell" data-label="Parrain">
-        <strong>{inviter.label}</strong>
-        <span>{inviter.email}</span>
-      </div>
-
-      <div className="games-cell" data-label="Code">
-        <strong>{inviter.latestInviteCode}</strong>
-        <span>{inviter.inviteCodesCount} code(s) genere(s)</span>
-      </div>
-
-      <div className="games-cell" data-label="Filleuls">
-        <strong>{inviter.acceptedInviteesCount}</strong>
-        <span>{inviter.pendingReferralsCount} invitation(s) en attente</span>
-      </div>
-
-      <div className="games-cell" data-label="Derniere utilisation">
-        <strong>{inviter.lastAcceptedAtLabel}</strong>
-        <span>{inviter.grantedRewardsCount} bonus accorde(s)</span>
-      </div>
-
-      <div className="games-cell" data-label="Bonus">
-        <span className={`referral-status-badge ${inviter.bonusStatus}`}>{inviter.bonusStatusLabel}</span>
-        <span>{inviter.bonusStatus === "aucun" ? "Aucune expiration" : inviter.bonusExpiresAtLabel}</span>
-      </div>
-
-      <div className="games-cell referral-actions-cell" data-label="Actions">
-        <Link className="secondary-button" href={`/admin/parrainage/${inviter.userId}`}>
-          Voir detail
-        </Link>
-      </div>
-    </article>
   );
 }
