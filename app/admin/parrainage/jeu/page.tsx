@@ -134,6 +134,7 @@ export default function AdminReferralGamePage() {
     // Diagnostic temporaire : confirme l'email exact vu par Firebase Auth
     // cote client, pour comparer avec la regle Storage isAdmin(). A retirer
     // une fois le storage/unauthorized elucide.
+    console.log("[DEBUG_ADMIN_EMAIL] storage.app.options.storageBucket =", JSON.stringify(storage.app.options.storageBucket));
     const user = auth.currentUser;
     if (user) {
       console.log("[DEBUG_ADMIN_EMAIL] auth.currentUser.email =", JSON.stringify(user.email));
