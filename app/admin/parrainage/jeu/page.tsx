@@ -15,6 +15,7 @@ type ReferralGame = {
   title: string;
   description: string;
   prizeDescription: string;
+  prizeValue: number;
   imageUrl: string;
   status: ReferralGameStatus;
   startDate: string | null;
@@ -44,6 +45,7 @@ function mapReferralGame(id: string, data: Record<string, unknown>): ReferralGam
     title: readText(data.title) || "Sans titre",
     description: readText(data.description),
     prizeDescription: readText(data.prize_description),
+    prizeValue: readNumber(data.prize_value),
     imageUrl: readText(data.image_url),
     status: (["draft", "active", "ended"] as const).includes(data.status as ReferralGameStatus)
       ? (data.status as ReferralGameStatus)
@@ -104,6 +106,7 @@ const emptyForm = {
   title: "",
   description: "",
   prizeDescription: "",
+  prizeValue: "",
   startDate: "",
   endDate: "",
 };
@@ -186,6 +189,14 @@ export default function AdminReferralGamePage() {
         throw new Error("Les dates de début et de fin sont obligatoires.");
       }
 
+      let prizeValue = 0;
+      if (formState.prizeValue.trim()) {
+        prizeValue = Number(formState.prizeValue.trim().replace(",", "."));
+        if (!Number.isFinite(prizeValue) || prizeValue < 0) {
+          throw new Error("La valeur du lot doit être un nombre positif.");
+        }
+      }
+
       const response = await adminFetch("/api/admin/referral-games", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,6 +204,7 @@ export default function AdminReferralGamePage() {
           title: formState.title.trim(),
           description: formState.description.trim(),
           prize_description: formState.prizeDescription.trim(),
+          prize_value: prizeValue,
           start_date: startPayload,
           end_date: endPayload,
         }),
@@ -442,7 +454,7 @@ export default function AdminReferralGamePage() {
               </div>
             </label>
 
-            <label className="flex flex-col gap-1.5 sm:col-span-2">
+            <label className="flex flex-col gap-1.5">
               <span className="text-[12px] font-medium text-[#666]">Lot à gagner</span>
               <input
                 className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
@@ -452,6 +464,22 @@ export default function AdminReferralGamePage() {
                   setFormState((prev) => ({ ...prev, prizeDescription: event.target.value }))
                 }
                 placeholder="Un week-end pour deux"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] font-medium text-[#666]">Valeur du lot (€)</span>
+              <input
+                className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={formState.prizeValue}
+                onChange={(event) =>
+                  setFormState((prev) => ({ ...prev, prizeValue: event.target.value }))
+                }
+                placeholder="50"
               />
             </label>
 
@@ -541,6 +569,7 @@ export default function AdminReferralGamePage() {
                           <span className="block font-medium text-[#1a1a1a]">{game.title}</span>
                           <span className="block text-[11px] text-[#999]">
                             {game.prizeDescription || "Lot non renseigné"}
+                            {game.prizeValue > 0 ? ` — ${game.prizeValue} €` : ""}
                           </span>
                         </div>
                       </div>
