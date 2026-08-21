@@ -214,8 +214,11 @@ export default function AdminReferralGamePage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ image_url: downloadUrl }),
           });
-        } catch {
-          imageWarning = " (l'image n'a pas pu être envoyée, tu peux réessayer depuis la liste ci-dessous)";
+        } catch (imageUploadError) {
+          console.error("[REFERRAL_GAME_IMAGE_UPLOAD]", imageUploadError);
+          const reason =
+            imageUploadError instanceof Error ? imageUploadError.message : String(imageUploadError);
+          imageWarning = ` (l'image n'a pas pu être envoyée : ${reason} — tu peux réessayer depuis la liste ci-dessous)`;
         }
       }
 
@@ -312,6 +315,7 @@ export default function AdminReferralGamePage() {
         throw new Error(payload?.error?.trim() || "Impossible d'enregistrer l'image.");
       }
     } catch (uploadError) {
+      console.error("[REFERRAL_GAME_IMAGE_UPLOAD]", uploadError);
       setActionError(uploadError instanceof Error ? uploadError.message : "Impossible d'envoyer l'image.");
     } finally {
       setUploadingGameId(null);
