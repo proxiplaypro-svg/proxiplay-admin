@@ -865,6 +865,12 @@ function AdminGamesPageInner() {
             Exporter CSV
           </button>
           <Link
+            className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A] transition hover:bg-[#FAFAF8]"
+            href="/admin/games/assiduite"
+          >
+            Defi d&apos;assiduite
+          </Link>
+          <Link
             className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881d]"
             href="/admin/games/new"
           >
