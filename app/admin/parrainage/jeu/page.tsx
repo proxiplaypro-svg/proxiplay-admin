@@ -131,6 +131,22 @@ export default function AdminReferralGamePage() {
   const [createImagePreviewUrl, setCreateImagePreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    // Diagnostic temporaire : confirme l'email exact vu par Firebase Auth
+    // cote client, pour comparer avec la regle Storage isAdmin(). A retirer
+    // une fois le storage/unauthorized elucide.
+    const user = auth.currentUser;
+    if (user) {
+      console.log("[DEBUG_ADMIN_EMAIL] auth.currentUser.email =", JSON.stringify(user.email));
+      user.getIdTokenResult(true).then((result) => {
+        console.log("[DEBUG_ADMIN_EMAIL] idToken claims.email =", JSON.stringify(result.claims.email));
+        console.log("[DEBUG_ADMIN_EMAIL] idToken claims.admin =", JSON.stringify(result.claims.admin));
+      });
+    } else {
+      console.log("[DEBUG_ADMIN_EMAIL] auth.currentUser is null");
+    }
+  }, []);
+
+  useEffect(() => {
     if (!createImageFile) {
       setCreateImagePreviewUrl(null);
       return;
