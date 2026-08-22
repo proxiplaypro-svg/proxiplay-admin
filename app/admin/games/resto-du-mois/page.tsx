@@ -1,18 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { auth } from "@/lib/firebase/auth";
 import { db } from "@/lib/firebase/client-app";
 
 const initial = { enabled: false, startDate: "", endDate: "", targetDays: "15", restaurantName: "", restaurantRef: "", restaurantImage: "", title: "", description: "", prizeTitle: "", prizeValue: "", prizeDescription: "", imageUrl: "" };
+const defaultDescription = (days: string, restaurant: string) => `Jouez sur Proxiplay pendant au moins ${days || "15"} jours differents pendant la periode du jeu pour tenter de gagner un repas pour 2 chez ${restaurant || "le restaurant du mois"}. Une seule journee est comptabilisee par jour. Les joueurs ayant atteint l'objectif participent automatiquement au tirage au sort organise a la fin du jeu.`;
 
 export default function RestaurantMonthlyChallengePage() {
   const [form, setForm] = useState(initial); const [error, setError] = useState<string | null>(null); const [saved, setSaved] = useState(false);
   const [restaurants, setRestaurants] = useState<Array<{ id: string; name: string; image: string }>>([]);
+  const descriptionCustomized = useRef(false);
+  useEffect(() => { let active = true; void (async () => { try { const user = auth.currentUser; if (!user) return; const response = await fetch("/api/admin/monthly-challenge?type=restaurant", { headers: { Authorization: `Bearer ${await user.getIdToken()}` } }); const payload = await response.json() as { config?: Record<string, unknown> | null }; const config = payload.config; if (!active || !config) return; const date = (value: unknown) => { const timestamp = value as { seconds?: number; _seconds?: number } | null; const seconds = timestamp?.seconds ?? timestamp?._seconds; return typeof seconds === "number" ? new Date(seconds * 1000).toISOString().slice(0, 10) : ""; }; const description = String(config.description ?? "").trim(); descriptionCustomized.current = Boolean(description); setForm((current) => ({ ...current, enabled: config.enabled === true, startDate: date(config.start_date), endDate: date(config.end_date), targetDays: String(config.target_days ?? current.targetDays), restaurantRef: String(config.restaurant_ref ?? ""), restaurantName: String(config.restaurant_name ?? ""), restaurantImage: String(config.restaurant_image ?? ""), title: String(config.title ?? ""), description: description || defaultDescription(String(config.target_days ?? current.targetDays), String(config.restaurant_name ?? "")), prizeTitle: String(config.prize_title ?? ""), prizeDescription: String(config.prize_description ?? ""), prizeValue: String(config.prize_value ?? ""), imageUrl: String(config.image_url ?? "") })); } catch { if (active) setError("Impossible de charger le Resto du mois."); } })(); return () => { active = false; }; }, []);
   useEffect(() => { void getDocs(collection(db, "enseignes")).then((snap) => setRestaurants(snap.docs.map((doc) => { const data = doc.data(); return { id: doc.id, name: String(data.name ?? data.nom ?? data.title ?? doc.id), image: String(data.image_url ?? data.logo ?? data.photo ?? "") }; }).sort((left, right) => left.name.localeCompare(right.name, "fr")))).catch(() => setError("Impossible de charger les enseignes.")); }, []);
-  const update = (key: keyof typeof initial, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
+  const update = (key: keyof typeof initial, value: string | boolean) => {
+    if (key === "description") descriptionCustomized.current = true;
+    setForm((current) => ({ ...current, [key]: value, ...(!descriptionCustomized.current && key === "targetDays" ? { description: defaultDescription(String(value), current.restaurantName) } : {}) }));
+  };
   async function save() {
     setError(null); setSaved(false); const user = auth.currentUser; if (!user) return setError("Connexion admin requise.");
     const start = new Date(`${form.startDate}T00:00`); const end = new Date(`${form.endDate}T00:00`);

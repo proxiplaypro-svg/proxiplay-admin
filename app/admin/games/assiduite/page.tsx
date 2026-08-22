@@ -89,6 +89,10 @@ function validateImageFile(file: File): string | null {
   return null;
 }
 
+function defaultDescription(targetDays: string) {
+  return `Jouez sur Proxiplay pendant au moins ${targetDays || "15"} jours differents pendant la periode du jeu. Une seule journee est comptabilisee, quel que soit le nombre de parties jouees ce jour-la. Les joueurs ayant atteint l'objectif participent automatiquement au tirage au sort organise a la fin du jeu.`;
+}
+
 export default function AdminMonthlyChallengePage() {
   const [form, setForm] = useState<MonthlyChallengeConfig>(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -98,6 +102,7 @@ export default function AdminMonthlyChallengePage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const descriptionCustomized = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -118,13 +123,14 @@ export default function AdminMonthlyChallengePage() {
           startDate: toDateTimeLocalInputValue(config.start_date).slice(0, 10),
           endDate: toDateTimeLocalInputValue(config.end_date).slice(0, 10),
           title: readText(config.title),
-          description: readText(config.description),
+          description: readText(config.description) || defaultDescription(String(readNumber(config.target_days, 15))),
           targetDays: String(readNumber(config.target_days, 15)),
           prizeTitle: readText(config.prize_title),
           prizeDescription: readText(config.prize_description),
           prizeValue: String(readNumber(config.prize_value, 0)),
           imageUrl: readText(config.image_url),
         });
+        descriptionCustomized.current = Boolean(readText(config.description));
       } catch (loadError) {
         if (active) {
           setError(
@@ -296,9 +302,16 @@ export default function AdminMonthlyChallengePage() {
                 type="number"
                 min="1"
                 value={form.targetDays}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, targetDays: event.target.value }))
-                }
+                onChange={(event) => {
+                  const targetDays = event.target.value;
+                  setForm((current) => ({
+                    ...current,
+                    targetDays,
+                    ...(!descriptionCustomized.current && {
+                      description: defaultDescription(targetDays),
+                    }),
+                  }));
+                }}
                 placeholder="15"
               />
             </label>
@@ -319,9 +332,7 @@ export default function AdminMonthlyChallengePage() {
               <textarea
                 className="resize-y rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
                 value={form.description}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
-                }
+                onChange={(event) => { descriptionCustomized.current = true; setForm((prev) => ({ ...prev, description: event.target.value })); }}
                 rows={3}
               />
             </label>

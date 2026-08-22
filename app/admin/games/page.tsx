@@ -857,13 +857,7 @@ function AdminGamesPageInner() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A] transition hover:bg-[#FAFAF8]"
-            onClick={handleExportCsv}
-          >
-            Exporter CSV
-          </button>
+          <Link className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A] transition hover:bg-[#FAFAF8]" href="/admin/parrainage/jeu">Jeu parrainage</Link>
           <Link
             className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A] transition hover:bg-[#FAFAF8]"
             href="/admin/games/assiduite"
@@ -898,6 +892,7 @@ function AdminGamesPageInner() {
         onSearchChange={setSearch}
         onSortChange={setSort}
       />
+      <div className="flex justify-end"><button type="button" className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-2 text-[12px] font-medium text-[#1A1A1A]" onClick={handleExportCsv}>Exporter CSV</button></div>
 
       {error ? (
         <div className="rounded-[12px] border border-[#F09595] bg-[#FCEBEB] px-4 py-3 text-[12px] text-[#A32D2D]">
