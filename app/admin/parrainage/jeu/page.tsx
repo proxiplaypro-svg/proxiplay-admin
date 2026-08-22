@@ -3,12 +3,17 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Timestamp } from "firebase/firestore";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, documentId, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { db, storage } from "@/lib/firebase/client-app";
+import { db, firebaseApp, storage } from "@/lib/firebase/client-app";
 import { auth } from "@/lib/firebase/auth";
 
 type ReferralGameStatus = "draft" | "active" | "ended";
+const referralFunctions = getFunctions(firebaseApp, "us-central1");
+const drawReferralGame = httpsCallable<{ gameId: string }, { status: string }>(referralFunctions, "adminDrawReferralGameWinner");
+const repairReferralGameDraw = httpsCallable<{ gameId: string }, { status: string }>(referralFunctions, "adminRepairReferralGameDraw");
+const reconcileReferralGameTickets = httpsCallable<{ gameId: string }, { created: number; already_exists: number; ineligible: number }>(referralFunctions, "adminReconcileReferralGameTickets");
 
 type ReferralGame = {
   id: string;
@@ -24,6 +29,16 @@ type ReferralGame = {
   winnerTicketCount: number | null;
   totalTicketCount: number | null;
   winnerUid: string | null;
+};
+
+type ReferralParticipant = {
+  userId: string;
+  label: string;
+  email: string;
+  tickets: number;
+  referrals: number;
+  eligibility: string;
+  winner: boolean;
 };
 
 function readTimestamp(value: unknown): Timestamp | null {
@@ -124,6 +139,7 @@ export default function AdminReferralGamePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formState, setFormState] = useState(emptyForm);
+  const [editingGame, setEditingGame] = useState<ReferralGame | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -132,6 +148,9 @@ export default function AdminReferralGamePage() {
   const [createImageFile, setCreateImageFile] = useState<File | null>(null);
   const createImageInputRef = useRef<HTMLInputElement | null>(null);
   const [createImagePreviewUrl, setCreateImagePreviewUrl] = useState<string | null>(null);
+  const [selectedGame, setSelectedGame] = useState<ReferralGame | null>(null);
+  const [participants, setParticipants] = useState<ReferralParticipant[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
 
   useEffect(() => {
     if (!createImageFile) {
@@ -142,6 +161,48 @@ export default function AdminReferralGamePage() {
     setCreateImagePreviewUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [createImageFile]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedGame) {
+      setParticipants([]);
+      return;
+    }
+    void (async () => {
+      setParticipantsLoading(true);
+      try {
+        const entries = await getDocs(collection(db, "referral_games", selectedGame.id, "entries"));
+        const grouped = new Map<string, { tickets: number; referrals: number; eligibility: string }>();
+        entries.docs.forEach((entry) => {
+          const data = entry.data();
+          const uid = readText(data.inviter_uid);
+          if (!uid) return;
+          const current = grouped.get(uid) ?? { tickets: 0, referrals: 0, eligibility: "eligible" };
+          current.tickets += 1;
+          current.referrals += readText(data.referral_id) ? 1 : 0;
+          if (readText(data.eligibility_status)) current.eligibility = readText(data.eligibility_status);
+          grouped.set(uid, current);
+        });
+        const users = new Map<string, Record<string, unknown>>();
+        const ids = [...grouped.keys()];
+        for (let index = 0; index < ids.length; index += 30) {
+          const userSnap = await getDocs(query(collection(db, "users"), where(documentId(), "in", ids.slice(index, index + 30))));
+          userSnap.docs.forEach((user) => users.set(user.id, user.data()));
+        }
+        if (!cancelled) {
+          setParticipants(ids.map((userId) => {
+            const user = users.get(userId) ?? {};
+            const name = [readText(user.first_name), readText(user.last_name)].filter(Boolean).join(" ");
+            const stats = grouped.get(userId)!;
+            return { userId, label: name || readText(user.pseudo) || userId, email: readText(user.email), ...stats, winner: selectedGame.winnerUid === userId };
+          }).sort((left, right) => right.tickets - left.tickets || left.label.localeCompare(right.label, "fr")));
+        }
+      } finally {
+        if (!cancelled) setParticipantsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedGame]);
 
   useEffect(() => {
     // No orderBy here on purpose: Firestore silently drops any document
@@ -247,6 +308,103 @@ export default function AdminReferralGamePage() {
     }
   };
 
+  const handleUpdate = async () => {
+    if (!editingGame) return;
+
+    setSubmitting(true);
+    setFeedback(null);
+    setActionError(null);
+
+    try {
+      if (!formState.title.trim()) {
+        throw new Error("Le titre est obligatoire.");
+      }
+      const startPayload = parseDateInputToTimestampPayload(formState.startDate);
+      const endPayload = parseDateInputToTimestampPayload(formState.endDate);
+      if (!startPayload || !endPayload) {
+        throw new Error("Les dates de debut et de fin sont obligatoires.");
+      }
+      if (startPayload.seconds >= endPayload.seconds) {
+        throw new Error("La date de debut doit etre avant la date de fin.");
+      }
+
+      const prizeValue = formState.prizeValue.trim();
+      if (prizeValue && (!Number.isFinite(Number(prizeValue)) || Number(prizeValue) < 0)) {
+        throw new Error("La valeur du lot doit etre un nombre positif.");
+      }
+
+      const response = await adminFetch(`/api/admin/referral-games/${editingGame.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: formState.title.trim(),
+          description: formState.description.trim(),
+          prize_description: formState.prizeDescription.trim(),
+          prize_value: prizeValue ? Number(prizeValue) : null,
+          start_date: startPayload,
+          end_date: endPayload,
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error?.trim() || "Impossible d'enregistrer le jeu de parrainage.");
+      }
+
+      let imageWarning = "";
+      if (createImageFile) {
+        try {
+          const downloadUrl = await uploadReferralGameImage(editingGame.id, createImageFile);
+          const imageResponse = await adminFetch(`/api/admin/referral-games/${editingGame.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_url: downloadUrl }),
+          });
+          if (!imageResponse.ok) throw new Error("enregistrement de l'image impossible");
+        } catch (imageUploadError) {
+          console.error("[REFERRAL_GAME_IMAGE_UPDATE]", imageUploadError);
+          imageWarning = " L'image n'a pas pu etre mise a jour.";
+        }
+      }
+
+      setFormState(emptyForm);
+      setEditingGame(null);
+      setCreateImageFile(null);
+      if (createImageInputRef.current) createImageInputRef.current.value = "";
+      setFeedback(`Jeu de parrainage mis a jour.${imageWarning}`);
+    } catch (updateError) {
+      setActionError(
+        updateError instanceof Error ? updateError.message : "Impossible d'enregistrer le jeu de parrainage.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEdit = (game: ReferralGame) => {
+    setEditingGame(game);
+    setFormState({
+      title: game.title,
+      description: game.description,
+      prizeDescription: game.prizeDescription,
+      prizeValue: game.prizeValue?.toString() ?? "",
+      startDate: game.startDate?.slice(0, 10) ?? "",
+      endDate: game.endDate?.slice(0, 10) ?? "",
+    });
+    setCreateImageFile(null);
+    if (createImageInputRef.current) createImageInputRef.current.value = "";
+    setFeedback(null);
+    setActionError(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingGame(null);
+    setFormState(emptyForm);
+    setCreateImageFile(null);
+    if (createImageInputRef.current) createImageInputRef.current.value = "";
+    setActionError(null);
+  };
+
   const handleActivate = async (game: ReferralGame) => {
     setActionError(null);
     try {
@@ -267,20 +425,26 @@ export default function AdminReferralGamePage() {
   };
 
   const handleEnd = async (game: ReferralGame) => {
-    if (!window.confirm(`Terminer le jeu de parrainage "${game.title}" ?`)) return;
+    if (!window.confirm(`Tirer le gagnant du jeu de parrainage "${game.title}" ?`)) return;
     setActionError(null);
     try {
-      const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "ended" }),
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error?.trim() || "Impossible de terminer ce jeu.");
-      }
+      const result = await drawReferralGame({ gameId: game.id });
+      setFeedback(result.data.status === "no_eligible_entries" ? "Aucun participant eligible." : "Tirage termine.");
     } catch (endError) {
-      setActionError(endError instanceof Error ? endError.message : "Impossible de terminer ce jeu.");
+      setActionError(endError instanceof Error ? endError.message : "Impossible de tirer le gagnant.");
+    }
+  };
+
+  const handleRepair = async (game: ReferralGame) => {
+    setActionError(null);
+    try {
+      const [tickets, gain] = await Promise.all([
+        reconcileReferralGameTickets({ gameId: game.id }),
+        repairReferralGameDraw({ gameId: game.id }),
+      ]);
+      setFeedback(`Reparation terminee : ${tickets.data.created} ticket(s) cree(s), gain ${gain.data.status}.`);
+    } catch (repairError) {
+      setActionError(repairError instanceof Error ? repairError.message : "Reparation impossible.");
     }
   };
 
@@ -379,11 +543,13 @@ export default function AdminReferralGamePage() {
           className="rounded-[12px] border border-[#E8E8E4] bg-white p-5"
           onSubmit={(event) => {
             event.preventDefault();
-            void handleCreate();
+            void (editingGame ? handleUpdate() : handleCreate());
           }}
         >
           <div className="mb-4">
-            <h2 className="text-[16px] font-medium text-[#1a1a1a]">Nouveau jeu (brouillon)</h2>
+            <h2 className="text-[16px] font-medium text-[#1a1a1a]">
+              {editingGame ? "Voir / modifier le jeu" : "Nouveau jeu (brouillon)"}
+            </h2>
             {hasActiveGame ? (
               <p className="mt-1 text-[13px] text-[#EF9F27]">
                 Un jeu est déjà actif — le nouveau jeu restera en brouillon jusqu&apos;à ce que vous
@@ -514,8 +680,21 @@ export default function AdminReferralGamePage() {
               disabled={submitting}
               className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-5 py-3 text-[14px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50"
             >
-              {submitting ? "Création…" : "Créer en brouillon"}
+              {submitting
+                ? "Enregistrement…"
+                : editingGame
+                  ? "Enregistrer les modifications"
+                  : "Créer en brouillon"}
             </button>
+            {editingGame ? (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="ml-3 inline-flex items-center justify-center rounded-[10px] border border-[#E0E0DA] bg-white px-5 py-3 text-[14px] font-medium text-[#666] hover:bg-[#F7F7F5]"
+              >
+                Annuler
+              </button>
+            ) : null}
           </div>
         </form>
 
@@ -601,6 +780,20 @@ export default function AdminReferralGamePage() {
                         />
                         <button
                           type="button"
+                          onClick={() => handleEdit(game)}
+                          className="inline-flex items-center rounded-[7px] border border-[#639922] bg-white px-3 py-1.5 text-[12px] font-medium text-[#3B6D11] transition hover:bg-[#EAF3DE]"
+                        >
+                          Voir / modifier
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedGame(game)}
+                          className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:bg-[#F7F7F5]"
+                        >
+                          Participants
+                        </button>
+                        <button
+                          type="button"
                           disabled={uploadingGameId === game.id}
                           onClick={() => fileInputRefs.current[game.id]?.click()}
                           className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:bg-[#F7F7F5] disabled:opacity-60"
@@ -622,7 +815,16 @@ export default function AdminReferralGamePage() {
                             onClick={() => void handleEnd(game)}
                             className="inline-flex items-center rounded-[7px] border border-[#E0C87A] bg-[#FBF3DD] px-3 py-1.5 text-[12px] font-medium text-[#8A6A10] transition hover:bg-[#F5E8C4]"
                           >
-                            Terminer
+                            Tirer le gagnant
+                          </button>
+                        ) : null}
+                        {game.status === "ended" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRepair(game)}
+                            className="inline-flex items-center rounded-[7px] border border-[#E0C87A] bg-[#FBF3DD] px-3 py-1.5 text-[12px] font-medium text-[#8A6A10] transition hover:bg-[#F5E8C4]"
+                          >
+                            Reparer le jeu
                           </button>
                         ) : null}
                         {game.status !== "active" ? (
@@ -641,6 +843,31 @@ export default function AdminReferralGamePage() {
               </tbody>
             </table>
           </div>
+        ) : null}
+
+        {selectedGame ? (
+          <section className="overflow-hidden rounded-[12px] border border-[#E8E8E4] bg-white">
+            <div className="flex items-start justify-between border-b border-[#F0F0EC] px-5 py-4">
+              <div>
+                <h2 className="text-[16px] font-medium text-[#1a1a1a]">Participants : {selectedGame.title}</h2>
+                <p className="mt-1 text-[12px] text-[#666]">
+                  {selectedGame.winnerUid ? `Gagnant : ${participants.find((participant) => participant.winner)?.label ?? selectedGame.winnerUid} (${selectedGame.winnerTicketCount ?? 0} tickets).` : "Aucun gagnant tire."}
+                  {selectedGame.status === "ended" ? ` Tirage : ${formatDisplayDate(selectedGame.endDate)}.` : ""}
+                </p>
+              </div>
+              <button type="button" onClick={() => setSelectedGame(null)} className="text-[12px] font-medium text-[#666]">Fermer</button>
+            </div>
+            {participantsLoading ? <p className="px-5 py-6 text-[13px] text-[#666]">Chargement des participants…</p> : null}
+            {!participantsLoading && participants.length === 0 ? <p className="px-5 py-6 text-[13px] text-[#666]">Aucun participant eligible.</p> : null}
+            {!participantsLoading && participants.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <thead><tr className="border-b border-[#F0F0EC] text-left text-[11px] uppercase tracking-[0.06em] text-[#999]"><th className="px-4 py-3">Parrain</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Tickets</th><th className="px-4 py-3">Filleuls</th><th className="px-4 py-3">Eligibilite</th><th className="px-4 py-3">Resultat</th></tr></thead>
+                  <tbody>{participants.map((participant) => <tr key={participant.userId} className="border-b border-[#F0F0EC] last:border-0"><td className="px-4 py-3 font-medium">{participant.label}</td><td className="px-4 py-3 text-[#666]">{participant.email || "—"}</td><td className="px-4 py-3">{participant.tickets}</td><td className="px-4 py-3">{participant.referrals}</td><td className="px-4 py-3">{participant.eligibility}</td><td className="px-4 py-3">{participant.winner ? "Gagnant" : "—"}</td></tr>)}</tbody>
+                </table>
+              </div>
+            ) : null}
+          </section>
         ) : null}
       </div>
     </section>

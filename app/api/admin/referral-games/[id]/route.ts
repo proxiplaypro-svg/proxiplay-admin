@@ -84,10 +84,22 @@ export async function DELETE(
     const { id } = await params;
     const db = getAdminDb();
 
-    const [entriesSnap, prizesSnap] = await Promise.all([
+    const [gameSnap, entriesSnap, prizesSnap] = await Promise.all([
+      db.collection("referral_games").doc(id).get(),
       db.collection("referral_games").doc(id).collection("entries").get(),
       db.collection("prizes").where("referral_game_id", "==", id).get(),
     ]);
+    if (!gameSnap.exists) return NextResponse.json({ error: "Jeu introuvable." }, { status: 404 });
+    const game = gameSnap.data() ?? {};
+    const hasDrawResult = Boolean(
+      game.winner_uid || game.winner_ref || game.prize_ref || game.drawn_at || game.draw_status,
+    );
+    if (game.status !== "draft" || hasDrawResult || !entriesSnap.empty || !prizesSnap.empty) {
+      return NextResponse.json(
+        { error: "Seul un brouillon sans participant ni gain peut etre supprime." },
+        { status: 409 },
+      );
+    }
 
     const CHUNK = 490;
     const allRefs = [
