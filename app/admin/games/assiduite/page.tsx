@@ -8,7 +8,8 @@ import { auth } from "@/lib/firebase/auth";
 
 type MonthlyChallengeConfig = {
   enabled: boolean;
-  month: string;
+  startDate: string;
+  endDate: string;
   title: string;
   description: string;
   targetDays: string;
@@ -16,12 +17,12 @@ type MonthlyChallengeConfig = {
   prizeDescription: string;
   prizeValue: string;
   imageUrl: string;
-  drawDate: string;
 };
 
 const emptyForm: MonthlyChallengeConfig = {
   enabled: false,
-  month: "",
+  startDate: "",
+  endDate: "",
   title: "",
   description: "",
   targetDays: "15",
@@ -29,7 +30,6 @@ const emptyForm: MonthlyChallengeConfig = {
   prizeDescription: "",
   prizeValue: "",
   imageUrl: "",
-  drawDate: "",
 };
 
 function readText(value: unknown): string {
@@ -115,7 +115,8 @@ export default function AdminMonthlyChallengePage() {
         }
         setForm({
           enabled: config.enabled === true,
-          month: readText(config.month),
+          startDate: toDateTimeLocalInputValue(config.start_date).slice(0, 10),
+          endDate: toDateTimeLocalInputValue(config.end_date).slice(0, 10),
           title: readText(config.title),
           description: readText(config.description),
           targetDays: String(readNumber(config.target_days, 15)),
@@ -123,7 +124,6 @@ export default function AdminMonthlyChallengePage() {
           prizeDescription: readText(config.prize_description),
           prizeValue: String(readNumber(config.prize_value, 0)),
           imageUrl: readText(config.image_url),
-          drawDate: toDateTimeLocalInputValue(config.draw_date),
         });
       } catch (loadError) {
         if (active) {
@@ -157,7 +157,7 @@ export default function AdminMonthlyChallengePage() {
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const storageRef = ref(
       storage,
-      `monthly_challenge/${form.month || "config"}/${Date.now()}-${sanitizedFileName}`,
+      `monthly_challenge/${form.startDate || "config"}/${Date.now()}-${sanitizedFileName}`,
     );
     await uploadBytes(storageRef, file, { contentType: file.type });
     return getDownloadURL(storageRef);
@@ -178,14 +178,18 @@ export default function AdminMonthlyChallengePage() {
         imageUrl = await uploadChallengeImage(imageFile);
       }
 
-      const drawDatePayload = parseDateTimeLocalToTimestampPayload(form.drawDate);
+      const startDatePayload = parseDateTimeLocalToTimestampPayload(`${form.startDate}T00:00`);
+      const endDatePayload = parseDateTimeLocalToTimestampPayload(`${form.endDate}T00:00`);
+      if (!startDatePayload || !endDatePayload) throw new Error("Les dates de debut et de fin sont obligatoires.");
 
       const response = await adminFetch("/api/admin/monthly-challenge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           enabled: form.enabled,
-          month: form.month.trim(),
+          type: "attendance",
+          start_date: startDatePayload,
+          end_date: endDatePayload,
           title: form.title.trim(),
           description: form.description.trim(),
           target_days: Number(form.targetDays),
@@ -193,7 +197,6 @@ export default function AdminMonthlyChallengePage() {
           prize_description: form.prizeDescription.trim(),
           prize_value: Number(form.prizeValue) || 0,
           image_url: imageUrl,
-          draw_date: drawDatePayload,
         }),
       });
 
@@ -272,13 +275,18 @@ export default function AdminMonthlyChallengePage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
-              <span className="text-[12px] font-medium text-[#666]">Mois (YYYY-MM)</span>
+              <span className="text-[12px] font-medium text-[#666]">Date de debut</span>
               <input
                 className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
-                type="month"
-                value={form.month}
-                onChange={(event) => setForm((prev) => ({ ...prev, month: event.target.value }))}
+                type="date"
+                value={form.startDate}
+                onChange={(event) => setForm((prev) => ({ ...prev, startDate: event.target.value }))}
               />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] font-medium text-[#666]">Date de fin</span>
+              <input className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" type="date" value={form.endDate} onChange={(event) => setForm((prev) => ({ ...prev, endDate: event.target.value }))} />
             </label>
 
             <label className="flex flex-col gap-1.5">
@@ -307,7 +315,7 @@ export default function AdminMonthlyChallengePage() {
             </label>
 
             <label className="flex flex-col gap-1.5 sm:col-span-2">
-              <span className="text-[12px] font-medium text-[#666]">Description (affichee au joueur)</span>
+              <span className="text-[12px] font-medium text-[#666]">Reglement / explication du jeu</span>
               <textarea
                 className="resize-y rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
                 value={form.description}
@@ -396,19 +404,6 @@ export default function AdminMonthlyChallengePage() {
               </div>
             </label>
 
-            <label className="flex flex-col gap-1.5 sm:col-span-2">
-              <span className="text-[12px] font-medium text-[#666]">
-                Date du tirage (doit etre apres la fin du mois cible)
-              </span>
-              <input
-                className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
-                type="datetime-local"
-                value={form.drawDate}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, drawDate: event.target.value }))
-                }
-              />
-            </label>
           </div>
 
           {error ? <p className="mt-4 text-[13px] text-[#E24B4A]">{error}</p> : null}

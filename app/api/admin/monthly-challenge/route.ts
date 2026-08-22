@@ -3,135 +3,28 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 
-const kMonthlyChallengeConfigPath = "app_config/monthly_challenge";
-const kDefaultTargetDays = 15;
-
-function parseTimestamp(value: unknown): Timestamp | null {
-  if (!value || typeof value !== "object") return null;
-  const obj = value as Record<string, unknown>;
-  const seconds = typeof obj.seconds === "number" ? obj.seconds : null;
-  const nanoseconds = typeof obj.nanoseconds === "number" ? obj.nanoseconds : 0;
-  if (seconds === null) return null;
-  return new Timestamp(seconds, nanoseconds);
-}
-
-function parseMonthKey(monthKey: unknown): { year: number; month: number } | null {
-  const match = /^(\d{4})-(\d{2})$/.exec(typeof monthKey === "string" ? monthKey.trim() : "");
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (month < 1 || month > 12) return null;
-  return { year, month };
-}
-
-function getDaysInMonth(monthKey: unknown): number {
-  const parsed = parseMonthKey(monthKey);
-  if (!parsed) return 0;
-  return new Date(Date.UTC(parsed.year, parsed.month, 0)).getUTCDate();
-}
-
-function getChallengePeriodEnd(monthKey: unknown): Date | null {
-  const parsed = parseMonthKey(monthKey);
-  if (!parsed) return null;
-  return new Date(Date.UTC(parsed.year, parsed.month, 0, 23, 59, 59, 999));
-}
-
-function getMonthlyChallengeDocRef() {
-  return getAdminDb().doc(kMonthlyChallengeConfigPath);
-}
+const legacy = "app_config/monthly_challenge";
+const stamp = (value: unknown) => { const v = value as { seconds?: unknown; nanoseconds?: unknown } | null; return typeof v?.seconds === "number" ? new Timestamp(v.seconds, typeof v.nanoseconds === "number" ? v.nanoseconds : 0) : null; };
+const day = (value: Timestamp) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(value.toDate());
+const parisMidnightAfter = (dayKey: string) => {
+  const [year, month, date] = dayKey.split("-").map(Number); const next = new Date(Date.UTC(year, month - 1, date + 1, 12));
+  const nextDay = next.toISOString().slice(0, 10); const [nextYear, nextMonth, nextDate] = nextDay.split("-").map(Number); const utc = Date.UTC(nextYear, nextMonth - 1, nextDate);
+  const zone = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Paris", timeZoneName: "longOffset" }).formatToParts(new Date(utc)).find((part) => part.type === "timeZoneName")?.value ?? "GMT"; const match = /GMT([+-])(\d{2}):(\d{2})/.exec(zone); const offset = match ? (Number(match[2]) * 60 + Number(match[3])) * 60000 * (match[1] === "+" ? 1 : -1) : 0;
+  return Timestamp.fromMillis(utc - offset);
+};
 
 export async function GET(request: NextRequest) {
-  try {
-    await assertIsAdminRequest(request);
-    const snap = await getMonthlyChallengeDocRef().get();
-    return NextResponse.json({ config: snap.exists ? snap.data() : null });
-  } catch (error) {
-    const authError = handleAdminAuthError(error);
-    if (authError) return authError;
-    console.error("[MONTHLY_CHALLENGE_GET]", error);
-    return NextResponse.json(
-      { error: "Impossible de charger la configuration du defi mensuel." },
-      { status: 500 },
-    );
-  }
+  try { await assertIsAdminRequest(request); const db = getAdminDb(); const type = request.nextUrl.searchParams.get("type") === "restaurant" ? "restaurant" : "attendance"; const month = request.nextUrl.searchParams.get("month"); const snap = month ? await db.collection("monthly_challenges").doc(type === "restaurant" ? `restaurant_${month}` : month).get() : await db.doc(legacy).get(); return NextResponse.json({ config: snap.exists ? snap.data() : null }); } catch (error) { return handleAdminAuthError(error) ?? NextResponse.json({ error: "Impossible de charger la configuration." }, { status: 500 }); }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const decodedToken = await assertIsAdminRequest(request);
-    const body = (await request.json()) as Record<string, unknown>;
-
-    const enabled = body.enabled === true;
-    const month = typeof body.month === "string" ? body.month.trim() : "";
-    const title = typeof body.title === "string" ? body.title.trim() : "";
-    const description = typeof body.description === "string" ? body.description.trim() : "";
-    const targetDaysRaw = Number(body.target_days);
-    const targetDays = Number.isFinite(targetDaysRaw)
-      ? Math.max(1, Math.trunc(targetDaysRaw))
-      : kDefaultTargetDays;
-    const prizeTitle = typeof body.prize_title === "string" ? body.prize_title.trim() : "";
-    const prizeDescription =
-      typeof body.prize_description === "string" ? body.prize_description.trim() : "";
-    const prizeValueRaw = Number(body.prize_value);
-    const prizeValue = Number.isFinite(prizeValueRaw) ? prizeValueRaw : 0;
-    const imageUrl = typeof body.image_url === "string" ? body.image_url.trim() : "";
-    const drawDate = parseTimestamp(body.draw_date);
-
-    if (!/^\d{4}-\d{2}$/.test(month) || !parseMonthKey(month)) {
-      return NextResponse.json({ error: "Le mois doit etre un YYYY-MM valide." }, { status: 400 });
-    }
-
-    const daysInMonth = getDaysInMonth(month);
-    if (targetDays < 1 || targetDays > daysInMonth) {
-      return NextResponse.json(
-        { error: `L'objectif en jours doit etre compris entre 1 et ${daysInMonth}.` },
-        { status: 400 },
-      );
-    }
-
-    if (!drawDate) {
-      return NextResponse.json({ error: "La date de tirage est obligatoire." }, { status: 400 });
-    }
-    const periodEnd = getChallengePeriodEnd(month);
-    if (!periodEnd || drawDate.toDate().getTime() <= periodEnd.getTime()) {
-      return NextResponse.json(
-        { error: "La date de tirage doit etre posterieure a la fin du mois du defi." },
-        { status: 400 },
-      );
-    }
-
-    if (enabled && (!title || !prizeTitle)) {
-      return NextResponse.json(
-        { error: "Titre et lot sont obligatoires lorsque le defi est active." },
-        { status: 400 },
-      );
-    }
-
-    const payload = {
-      enabled,
-      month,
-      title,
-      description,
-      target_days: targetDays,
-      prize_title: prizeTitle,
-      prize_description: prizeDescription,
-      prize_value: prizeValue,
-      image_url: imageUrl,
-      draw_date: drawDate,
-      updated_at: FieldValue.serverTimestamp(),
-      updated_by: decodedToken.email ?? decodedToken.uid,
-    };
-
-    await getMonthlyChallengeDocRef().set(payload, { merge: true });
-
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    const authError = handleAdminAuthError(error);
-    if (authError) return authError;
-    console.error("[MONTHLY_CHALLENGE_UPSERT]", error);
-    return NextResponse.json(
-      { error: "Impossible d'enregistrer la configuration du defi mensuel." },
-      { status: 500 },
-    );
-  }
+    const user = await assertIsAdminRequest(request); const body = await request.json() as Record<string, unknown>; const type = body.type === "restaurant" ? "restaurant" : "attendance"; const start = stamp(body.start_date); const end = stamp(body.end_date);
+    if (!start || !end) return NextResponse.json({ error: "Les dates sont obligatoires." }, { status: 400 });
+    const startDay = day(start); const endDay = day(end); const target = Math.trunc(Number(body.target_days)); const duration = Math.round((Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${startDay}T00:00:00Z`)) / 86400000) + 1;
+    if (endDay < startDay || startDay.slice(0, 7) !== endDay.slice(0, 7) || target < 1 || target > duration) return NextResponse.json({ error: "Periode ou objectif invalide." }, { status: 400 });
+    const restaurantName = typeof body.restaurant_name === "string" ? body.restaurant_name.trim() : ""; const restaurantRef = typeof body.restaurant_ref === "string" ? body.restaurant_ref.trim() : "";
+    if (type === "restaurant" && (!restaurantName || !restaurantRef)) return NextResponse.json({ error: "Le restaurant partenaire est obligatoire." }, { status: 400 });
+    const month = startDay.slice(0, 7); const id = type === "restaurant" ? `restaurant_${month}` : month; const { draw_date: _ignored, ...clientFields } = body; const payload = { ...clientFields, challenge_id: id, type, month, start_date: start, end_date: end, target_days: target, draw_date: parisMidnightAfter(endDay), updated_at: FieldValue.serverTimestamp(), updated_by: user.email ?? user.uid, ...(type === "restaurant" ? { restaurant_name: restaurantName, restaurant_ref: restaurantRef } : {}) }; const db = getAdminDb(); await db.collection("monthly_challenges").doc(id).set(payload, { merge: true }); if (type === "attendance") await db.doc(legacy).set(payload, { merge: true }); return NextResponse.json({ ok: true, config: payload });
+  } catch (error) { return handleAdminAuthError(error) ?? NextResponse.json({ error: "Impossible d'enregistrer la configuration." }, { status: 500 }); }
 }
