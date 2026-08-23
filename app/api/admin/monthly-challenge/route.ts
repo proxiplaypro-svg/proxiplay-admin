@@ -3,28 +3,168 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 
-const legacy = "app_config/monthly_challenge";
-const stamp = (value: unknown) => { const v = value as { seconds?: unknown; nanoseconds?: unknown } | null; return typeof v?.seconds === "number" ? new Timestamp(v.seconds, typeof v.nanoseconds === "number" ? v.nanoseconds : 0) : null; };
-const day = (value: Timestamp) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(value.toDate());
-const parisMidnightAfter = (dayKey: string) => {
-  const [year, month, date] = dayKey.split("-").map(Number); const next = new Date(Date.UTC(year, month - 1, date + 1, 12));
-  const nextDay = next.toISOString().slice(0, 10); const [nextYear, nextMonth, nextDate] = nextDay.split("-").map(Number); const utc = Date.UTC(nextYear, nextMonth - 1, nextDate);
-  const zone = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Paris", timeZoneName: "longOffset" }).formatToParts(new Date(utc)).find((part) => part.type === "timeZoneName")?.value ?? "GMT"; const match = /GMT([+-])(\d{2}):(\d{2})/.exec(zone); const offset = match ? (Number(match[2]) * 60 + Number(match[3])) * 60000 * (match[1] === "+" ? 1 : -1) : 0;
-  return Timestamp.fromMillis(utc - offset);
-};
+const legacyAttendanceConfigPath = "app_config/monthly_challenge";
+const parisTimeZone = "Europe/Paris";
+
+function readTimestamp(value: unknown): Timestamp | null {
+  const timestamp = value as { seconds?: unknown; nanoseconds?: unknown } | null;
+  if (typeof timestamp?.seconds !== "number") return null;
+  return new Timestamp(timestamp.seconds, typeof timestamp.nanoseconds === "number" ? timestamp.nanoseconds : 0);
+}
+
+function getParisDayKey(value: Timestamp): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: parisTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value.toDate());
+}
+
+function getParisMidnightAfter(dayKey: string): Timestamp {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1, 12));
+  const [nextYear, nextMonth, nextDate] = nextDay.toISOString().slice(0, 10).split("-").map(Number);
+  const utcMidnight = Date.UTC(nextYear, nextMonth - 1, nextDate);
+  const offset = new Intl.DateTimeFormat("en-US", {
+    timeZone: parisTimeZone,
+    timeZoneName: "longOffset",
+  }).formatToParts(new Date(utcMidnight)).find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+  const match = /GMT([+-])(\d{2}):(\d{2})/.exec(offset);
+  const offsetMilliseconds = match
+    ? (Number(match[2]) * 60 + Number(match[3])) * 60_000 * (match[1] === "+" ? 1 : -1)
+    : 0;
+  return Timestamp.fromMillis(utcMidnight - offsetMilliseconds);
+}
+
+function getMerchantInput(body: Record<string, unknown>) {
+  return {
+    ref: typeof body.enseigne_ref === "string" ? body.enseigne_ref.trim() : typeof body.restaurant_ref === "string" ? body.restaurant_ref.trim() : "",
+    name: typeof body.enseigne_name === "string" ? body.enseigne_name.trim() : typeof body.restaurant_name === "string" ? body.restaurant_name.trim() : "",
+    image: typeof body.enseigne_image === "string" ? body.enseigne_image.trim() : typeof body.restaurant_image === "string" ? body.restaurant_image.trim() : "",
+  };
+}
+
+async function getMerchantConfig(month: string | null) {
+  const db = getAdminDb();
+  if (month) {
+    const current = await db.collection("monthly_challenges").doc(`merchant_${month}`).get();
+    if (current.exists) return current.data();
+    const legacy = await db.collection("monthly_challenges").doc(`restaurant_${month}`).get();
+    return legacy.exists ? legacy.data() : null;
+  }
+  const current = await db.collection("monthly_challenges").where("type", "==", "merchant").limit(1).get();
+  if (!current.empty) return current.docs[0].data();
+  const legacy = await db.collection("monthly_challenges").where("type", "==", "restaurant").limit(1).get();
+  return legacy.empty ? null : legacy.docs[0].data();
+}
+
+function readReferencePath(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "path" in value && typeof value.path === "string") {
+    return value.path;
+  }
+  return "";
+}
+
+function normalizeMerchantConfigForResponse(
+  config: Record<string, unknown> | null | undefined,
+) {
+  if (!config) return null;
+  const { restaurant_ref, restaurant_name, restaurant_image, restaurant_image_url, ...rest } = config;
+  return {
+    ...rest,
+    type: "merchant",
+    enseigne_ref: readReferencePath(config.enseigne_ref ?? restaurant_ref),
+    enseigne_name: typeof config.enseigne_name === "string"
+      ? config.enseigne_name
+      : typeof restaurant_name === "string"
+        ? restaurant_name
+        : "",
+    enseigne_image: typeof config.enseigne_image === "string"
+      ? config.enseigne_image
+      : typeof restaurant_image === "string"
+        ? restaurant_image
+        : typeof restaurant_image_url === "string"
+          ? restaurant_image_url
+          : "",
+  };
+}
 
 export async function GET(request: NextRequest) {
-  try { await assertIsAdminRequest(request); const db = getAdminDb(); const type = request.nextUrl.searchParams.get("type") === "restaurant" ? "restaurant" : "attendance"; const month = request.nextUrl.searchParams.get("month"); if (type === "restaurant" && !month) { const snap = await db.collection("monthly_challenges").where("type", "==", "restaurant").limit(1).get(); return NextResponse.json({ config: snap.empty ? null : snap.docs[0].data() }); } const snap = month ? await db.collection("monthly_challenges").doc(type === "restaurant" ? `restaurant_${month}` : month).get() : await db.doc(legacy).get(); return NextResponse.json({ config: snap.exists ? snap.data() : null }); } catch (error) { return handleAdminAuthError(error) ?? NextResponse.json({ error: "Impossible de charger la configuration." }, { status: 500 }); }
+  try {
+    await assertIsAdminRequest(request);
+    const requestedType = request.nextUrl.searchParams.get("type");
+    const isMerchant = requestedType === "merchant" || requestedType === "restaurant";
+    const month = request.nextUrl.searchParams.get("month");
+    if (isMerchant) {
+      return NextResponse.json({
+        config: normalizeMerchantConfigForResponse(await getMerchantConfig(month)),
+      });
+    }
+
+    const config = month
+      ? await getAdminDb().collection("monthly_challenges").doc(month).get()
+      : await getAdminDb().doc(legacyAttendanceConfigPath).get();
+    return NextResponse.json({ config: config.exists ? config.data() : null });
+  } catch (error) {
+    return handleAdminAuthError(error) ?? NextResponse.json({ error: "Impossible de charger la configuration." }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await assertIsAdminRequest(request); const body = await request.json() as Record<string, unknown>; const type = body.type === "restaurant" ? "restaurant" : "attendance"; const start = stamp(body.start_date); const end = stamp(body.end_date);
-    if (!start || !end) return NextResponse.json({ error: "Les dates sont obligatoires." }, { status: 400 });
-    const startDay = day(start); const endDay = day(end); const target = Math.trunc(Number(body.target_days)); const duration = Math.round((Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${startDay}T00:00:00Z`)) / 86400000) + 1;
-    if (endDay < startDay || startDay.slice(0, 7) !== endDay.slice(0, 7) || target < 1 || target > duration) return NextResponse.json({ error: "Periode ou objectif invalide." }, { status: 400 });
-    const restaurantName = typeof body.restaurant_name === "string" ? body.restaurant_name.trim() : ""; const restaurantRef = typeof body.restaurant_ref === "string" ? body.restaurant_ref.trim() : "";
-    if (type === "restaurant" && (!restaurantName || !restaurantRef)) return NextResponse.json({ error: "Le restaurant partenaire est obligatoire." }, { status: 400 });
-    const month = startDay.slice(0, 7); const id = type === "restaurant" ? `restaurant_${month}` : month; const clientFields = { ...body }; delete clientFields.draw_date; const payload = { ...clientFields, challenge_id: id, type, month, start_date: start, end_date: end, target_days: target, draw_date: parisMidnightAfter(endDay), updated_at: FieldValue.serverTimestamp(), updated_by: user.email ?? user.uid, ...(type === "restaurant" ? { restaurant_name: restaurantName, restaurant_ref: restaurantRef } : {}) }; const db = getAdminDb(); await db.collection("monthly_challenges").doc(id).set(payload, { merge: true }); if (type === "attendance") await db.doc(legacy).set(payload, { merge: true }); return NextResponse.json({ ok: true, config: payload });
-  } catch (error) { return handleAdminAuthError(error) ?? NextResponse.json({ error: "Impossible d'enregistrer la configuration." }, { status: 500 }); }
+    const user = await assertIsAdminRequest(request);
+    const body = await request.json() as Record<string, unknown>;
+    const type = body.type === "merchant" || body.type === "restaurant" ? "merchant" : "attendance";
+    const startDate = readTimestamp(body.start_date);
+    const endDate = readTimestamp(body.end_date);
+    if (!startDate || !endDate) return NextResponse.json({ error: "Les dates sont obligatoires." }, { status: 400 });
+
+    const startDay = getParisDayKey(startDate);
+    const endDay = getParisDayKey(endDate);
+    const targetDays = Math.trunc(Number(body.target_days));
+    const duration = Math.round((Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${startDay}T00:00:00Z`)) / 86_400_000) + 1;
+    if (endDay < startDay || startDay.slice(0, 7) !== endDay.slice(0, 7) || targetDays < 1 || targetDays > duration) {
+      return NextResponse.json({ error: "Periode ou objectif invalide." }, { status: 400 });
+    }
+
+    const merchant = getMerchantInput(body);
+    if (type === "merchant" && (!merchant.name || !merchant.ref)) {
+      return NextResponse.json({ error: "L'enseigne partenaire est obligatoire." }, { status: 400 });
+    }
+
+    const month = startDay.slice(0, 7);
+    const challengeId = type === "merchant" ? `merchant_${month}` : month;
+    const payload = {
+      challenge_id: challengeId,
+      type,
+      enabled: body.enabled === true,
+      month,
+      start_date: startDate,
+      end_date: endDate,
+      target_days: targetDays,
+      title: typeof body.title === "string" ? body.title.trim() : "",
+      description: typeof body.description === "string" ? body.description.trim() : "",
+      prize_title: typeof body.prize_title === "string" ? body.prize_title.trim() : "",
+      prize_description: typeof body.prize_description === "string" ? body.prize_description.trim() : "",
+      prize_value: Number(body.prize_value) || 0,
+      image_url: typeof body.image_url === "string" ? body.image_url.trim() : "",
+      draw_date: getParisMidnightAfter(endDay),
+      updated_at: FieldValue.serverTimestamp(),
+      updated_by: user.email ?? user.uid,
+      ...(type === "merchant" ? {
+        enseigne_ref: merchant.ref,
+        enseigne_name: merchant.name,
+        enseigne_image: merchant.image,
+      } : {}),
+    };
+
+    const db = getAdminDb();
+    await db.collection("monthly_challenges").doc(challengeId).set(payload, { merge: true });
+    if (type === "attendance") await db.doc(legacyAttendanceConfigPath).set(payload, { merge: true });
+    return NextResponse.json({ ok: true, config: payload });
+  } catch (error) {
+    return handleAdminAuthError(error) ?? NextResponse.json({ error: "Impossible d'enregistrer la configuration." }, { status: 500 });
+  }
 }
