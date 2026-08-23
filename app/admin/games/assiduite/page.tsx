@@ -24,7 +24,7 @@ const emptyForm: MonthlyChallengeConfig = {
   startDate: "",
   endDate: "",
   title: "",
-  description: "",
+  description: defaultDescription("15"),
   targetDays: "15",
   prizeTitle: "",
   prizeDescription: "",

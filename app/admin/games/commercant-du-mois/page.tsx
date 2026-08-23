@@ -33,7 +33,7 @@ const initialForm: MerchantChallengeForm = {
   enseigneName: "",
   enseigneImage: "",
   title: "",
-  description: "",
+  description: defaultDescription("15", ""),
   prizeTitle: "",
   prizeValue: "",
   prizeDescription: "",
