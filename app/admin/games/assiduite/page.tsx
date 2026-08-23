@@ -101,6 +101,8 @@ export default function AdminMonthlyChallengePage() {
   const [error, setError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const descriptionCustomized = useRef(false);
 
@@ -118,6 +120,7 @@ export default function AdminMonthlyChallengePage() {
           if (active) setLoading(false);
           return;
         }
+        setChallengeId(readText(config.challenge_id) || null);
         setForm({
           enabled: config.enabled === true,
           startDate: toDateTimeLocalInputValue(config.start_date).slice(0, 10),
@@ -211,6 +214,8 @@ export default function AdminMonthlyChallengePage() {
         throw new Error(payload?.error?.trim() || "Impossible d'enregistrer le defi mensuel.");
       }
 
+      const responseBody = (await response.json()) as { config?: Record<string, unknown> };
+      setChallengeId(readText(responseBody.config?.challenge_id) || null);
       setForm((prev) => ({ ...prev, imageUrl }));
       setImageFile(null);
       if (imageInputRef.current) imageInputRef.current.value = "";
@@ -221,6 +226,37 @@ export default function AdminMonthlyChallengePage() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!challengeId) return;
+    if (!window.confirm("Supprimer definitivement ce defi d'assiduite ?")) return;
+    setError(null);
+    setFeedback(null);
+    setDeleting(true);
+    try {
+      const response = await adminFetch("/api/admin/monthly-challenge", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "attendance", challenge_id: challengeId }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error?.trim() || "Impossible de supprimer le defi mensuel.");
+      }
+      setForm(emptyForm);
+      setChallengeId(null);
+      setImageFile(null);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+      descriptionCustomized.current = false;
+      setFeedback("Defi d'assiduite supprime.");
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error ? deleteError.message : "Impossible de supprimer le defi mensuel.",
+      );
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -420,7 +456,7 @@ export default function AdminMonthlyChallengePage() {
           {error ? <p className="mt-4 text-[13px] text-[#E24B4A]">{error}</p> : null}
           {feedback ? <p className="mt-4 text-[13px] text-[#3B6D11]">{feedback}</p> : null}
 
-          <div className="mt-5">
+          <div className="mt-5 flex items-center gap-3">
             <button
               type="submit"
               disabled={saving}
@@ -428,6 +464,16 @@ export default function AdminMonthlyChallengePage() {
             >
               {saving ? "Enregistrement…" : "Enregistrer"}
             </button>
+            {challengeId ? (
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void handleDelete()}
+                className="inline-flex items-center justify-center rounded-[10px] border border-[#E24B4A] px-5 py-3 text-[14px] font-medium text-[#E24B4A] hover:bg-[#FDEEEE] disabled:opacity-50"
+              >
+                {deleting ? "Suppression…" : "Supprimer la campagne"}
+              </button>
+            ) : null}
           </div>
         </form>
       </div>

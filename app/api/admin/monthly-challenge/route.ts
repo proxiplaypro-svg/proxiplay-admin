@@ -168,3 +168,20 @@ export async function POST(request: NextRequest) {
     return handleAdminAuthError(error) ?? NextResponse.json({ error: "Impossible d'enregistrer la configuration." }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    await assertIsAdminRequest(request);
+    const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+    const type = body.type === "merchant" || body.type === "restaurant" ? "merchant" : "attendance";
+    const challengeId = typeof body.challenge_id === "string" ? body.challenge_id.trim() : "";
+    if (!challengeId) return NextResponse.json({ error: "Identifiant de campagne manquant." }, { status: 400 });
+
+    const db = getAdminDb();
+    await db.collection("monthly_challenges").doc(challengeId).delete();
+    if (type === "attendance") await db.doc(legacyAttendanceConfigPath).delete();
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return handleAdminAuthError(error) ?? NextResponse.json({ error: "Impossible de supprimer la campagne." }, { status: 500 });
+  }
+}
