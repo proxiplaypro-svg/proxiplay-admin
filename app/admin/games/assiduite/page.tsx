@@ -90,7 +90,7 @@ function validateImageFile(file: File): string | null {
 }
 
 function defaultDescription(targetDays: string) {
-  return `Jouez sur Proxiplay pendant au moins ${targetDays || "15"} jours differents pendant la periode du jeu. Une seule journee est comptabilisee, quel que soit le nombre de parties jouees ce jour-la. Les joueurs ayant atteint l'objectif participent automatiquement au tirage au sort organise a la fin du jeu.`;
+  return `Jouez sur Proxiplay pendant au moins ${targetDays || "15"} jours différents pendant la période du jeu. Une seule journée est comptabilisée, quel que soit le nombre de parties jouées ce jour-là. Les joueurs ayant atteint l'objectif participent automatiquement au tirage au sort organisé à la fin du jeu.`;
 }
 
 export default function AdminMonthlyChallengePage() {
@@ -364,7 +364,7 @@ export default function AdminMonthlyChallengePage() {
             </label>
 
             <label className="flex flex-col gap-1.5 sm:col-span-2">
-              <span className="text-[12px] font-medium text-[#666]">Reglement / explication du jeu</span>
+              <span className="text-[12px] font-medium text-[#666]">Règlement / explication du jeu</span>
               <textarea
                 className="resize-y rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
                 value={form.description}

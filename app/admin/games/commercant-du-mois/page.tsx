@@ -41,7 +41,7 @@ const initialForm: MerchantChallengeForm = {
 };
 
 function defaultDescription(days: string, merchantName: string): string {
-  return `Jouez sur Proxiplay pendant au moins ${days || "15"} jours differents pendant la periode du jeu pour tenter de gagner un lot chez ${merchantName || "le commercant du mois"}. Une seule journee est comptabilisee par jour. Les joueurs ayant atteint l'objectif participent automatiquement au tirage au sort organise a la fin du jeu.`;
+  return `Jouez sur Proxiplay pendant au moins ${days || "15"} jours différents pendant la période du jeu pour tenter de gagner un lot chez ${merchantName || "le commerçant du mois"}. Une seule journée est comptabilisée par jour. Les joueurs ayant atteint l'objectif participent automatiquement au tirage au sort organisé à la fin du jeu.`;
 }
 
 function readDate(value: unknown): string {
@@ -372,7 +372,7 @@ export default function MerchantMonthlyChallengePage() {
           </div>
 
           <label className="mt-4 flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-[#666]">Reglement / explication du jeu</span>
+            <span className="text-[12px] font-medium text-[#666]">Règlement / explication du jeu</span>
             <textarea
               className="min-h-28 rounded-[8px] border px-3 py-2 text-[14px]"
               value={form.description}
