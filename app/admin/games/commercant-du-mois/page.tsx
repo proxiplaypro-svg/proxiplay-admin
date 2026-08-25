@@ -152,6 +152,7 @@ export default function MerchantMonthlyChallengePage() {
   }, [imageFile]);
 
   function update<K extends keyof MerchantChallengeForm>(key: K, value: MerchantChallengeForm[K]) {
+    setMessage(null);
     if (key === "description") descriptionCustomized.current = true;
     setForm((current) => ({
       ...current,

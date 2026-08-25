@@ -306,9 +306,10 @@ export default function AdminMonthlyChallengePage() {
               <input
                 type="checkbox"
                 checked={form.enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, enabled: event.target.checked }))
-                }
+                onChange={(event) => {
+                  setFeedback(null);
+                  setForm((prev) => ({ ...prev, enabled: event.target.checked }));
+                }}
                 className="h-4 w-4 rounded border-[#E0E0DA]"
               />
               Defi actif
