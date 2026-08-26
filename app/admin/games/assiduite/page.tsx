@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { collection, getDocs } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { storage } from "@/lib/firebase/client-app";
+import { db, storage } from "@/lib/firebase/client-app";
 import { auth } from "@/lib/firebase/auth";
+
+type Merchant = { id: string; name: string; image: string };
 
 type MonthlyChallengeConfig = {
   enabled: boolean;
@@ -17,6 +20,9 @@ type MonthlyChallengeConfig = {
   prizeDescription: string;
   prizeValue: string;
   imageUrl: string;
+  enseigneRef: string;
+  enseigneName: string;
+  enseigneImage: string;
 };
 
 const emptyForm: MonthlyChallengeConfig = {
@@ -30,6 +36,9 @@ const emptyForm: MonthlyChallengeConfig = {
   prizeDescription: "",
   prizeValue: "",
   imageUrl: "",
+  enseigneRef: "",
+  enseigneName: "",
+  enseigneImage: "",
 };
 
 function readText(value: unknown): string {
@@ -95,6 +104,7 @@ function defaultDescription(targetDays: string) {
 
 export default function AdminMonthlyChallengePage() {
   const [form, setForm] = useState<MonthlyChallengeConfig>(emptyForm);
+  const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -113,7 +123,7 @@ export default function AdminMonthlyChallengePage() {
       try {
         const response = await adminFetch("/api/admin/monthly-challenge");
         if (!response.ok) {
-          throw new Error("Impossible de charger la configuration du defi mensuel.");
+          throw new Error("Impossible de charger la configuration du Bonus du mois.");
         }
         const { config } = (await response.json()) as { config: Record<string, unknown> | null };
         if (!active || !config) {
@@ -132,6 +142,9 @@ export default function AdminMonthlyChallengePage() {
           prizeDescription: readText(config.prize_description),
           prizeValue: String(readNumber(config.prize_value, 0)),
           imageUrl: readText(config.image_url),
+          enseigneRef: readText(config.enseigne_ref),
+          enseigneName: readText(config.enseigne_name),
+          enseigneImage: readText(config.enseigne_image),
         });
         descriptionCustomized.current = Boolean(readText(config.description));
       } catch (loadError) {
@@ -139,7 +152,7 @@ export default function AdminMonthlyChallengePage() {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "Impossible de charger la configuration du defi mensuel.",
+              : "Impossible de charger la configuration du Bonus du mois.",
           );
         }
       } finally {
@@ -153,6 +166,26 @@ export default function AdminMonthlyChallengePage() {
   }, []);
 
   useEffect(() => {
+    async function loadMerchants() {
+      try {
+        const snapshot = await getDocs(collection(db, "enseignes"));
+        setMerchants(snapshot.docs.map((document) => {
+          const data = document.data();
+          return {
+            id: document.id,
+            name: String(data.name ?? data.nom ?? data.title ?? document.id),
+            image: String(data.image_url ?? data.logo ?? data.photo ?? ""),
+          };
+        }).sort((left, right) => left.name.localeCompare(right.name, "fr")));
+      } catch {
+        setError((current) => current ?? "Impossible de charger les enseignes.");
+      }
+    }
+
+    void loadMerchants();
+  }, []);
+
+  useEffect(() => {
     if (!imageFile) {
       setImagePreviewUrl(null);
       return;
@@ -161,6 +194,16 @@ export default function AdminMonthlyChallengePage() {
     setImagePreviewUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [imageFile]);
+
+  function selectMerchant(merchantId: string) {
+    const merchant = merchants.find((item) => item.id === merchantId);
+    setForm((current) => ({
+      ...current,
+      enseigneRef: merchant ? `enseignes/${merchant.id}` : "",
+      enseigneName: merchant?.name ?? "",
+      enseigneImage: merchant?.image ?? "",
+    }));
+  }
 
   async function uploadChallengeImage(file: File): Promise<string> {
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -196,7 +239,6 @@ export default function AdminMonthlyChallengePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           enabled: form.enabled,
-          type: "attendance",
           start_date: startDatePayload,
           end_date: endDatePayload,
           title: form.title.trim(),
@@ -206,12 +248,15 @@ export default function AdminMonthlyChallengePage() {
           prize_description: form.prizeDescription.trim(),
           prize_value: Number(form.prizeValue) || 0,
           image_url: imageUrl,
+          enseigne_ref: form.enseigneRef,
+          enseigne_name: form.enseigneName,
+          enseigne_image: form.enseigneImage,
         }),
       });
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error?.trim() || "Impossible d'enregistrer le defi mensuel.");
+        throw new Error(payload?.error?.trim() || "Impossible d'enregistrer le Bonus du mois.");
       }
 
       const responseBody = (await response.json()) as { config?: Record<string, unknown> };
@@ -219,10 +264,10 @@ export default function AdminMonthlyChallengePage() {
       setForm((prev) => ({ ...prev, imageUrl }));
       setImageFile(null);
       if (imageInputRef.current) imageInputRef.current.value = "";
-      setFeedback("Defi d'assiduite enregistre.");
+      setFeedback("Bonus du mois enregistre.");
     } catch (saveError) {
       setError(
-        saveError instanceof Error ? saveError.message : "Impossible d'enregistrer le defi mensuel.",
+        saveError instanceof Error ? saveError.message : "Impossible d'enregistrer le Bonus du mois.",
       );
     } finally {
       setSaving(false);
@@ -231,7 +276,7 @@ export default function AdminMonthlyChallengePage() {
 
   const handleDelete = async () => {
     if (!challengeId) return;
-    if (!window.confirm("Supprimer definitivement ce defi d'assiduite ?")) return;
+    if (!window.confirm("Supprimer definitivement ce Bonus du mois ?")) return;
     setError(null);
     setFeedback(null);
     setDeleting(true);
@@ -239,21 +284,21 @@ export default function AdminMonthlyChallengePage() {
       const response = await adminFetch("/api/admin/monthly-challenge", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "attendance", challenge_id: challengeId }),
+        body: JSON.stringify({ challenge_id: challengeId }),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error?.trim() || "Impossible de supprimer le defi mensuel.");
+        throw new Error(payload?.error?.trim() || "Impossible de supprimer le Bonus du mois.");
       }
       setForm(emptyForm);
       setChallengeId(null);
       setImageFile(null);
       if (imageInputRef.current) imageInputRef.current.value = "";
       descriptionCustomized.current = false;
-      setFeedback("Defi d'assiduite supprime.");
+      setFeedback("Bonus du mois supprime.");
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error ? deleteError.message : "Impossible de supprimer le defi mensuel.",
+        deleteError instanceof Error ? deleteError.message : "Impossible de supprimer le Bonus du mois.",
       );
     } finally {
       setDeleting(false);
@@ -265,7 +310,7 @@ export default function AdminMonthlyChallengePage() {
       <section className="min-h-full bg-[#F7F7F5]">
         <div className="mx-auto max-w-[900px] px-4 py-8 text-center text-[#666]">
           <div className="loader" aria-hidden="true" />
-          <p className="mt-3">Chargement du defi mensuel...</p>
+          <p className="mt-3">Chargement du Bonus du mois...</p>
         </div>
       </section>
     );
@@ -277,12 +322,13 @@ export default function AdminMonthlyChallengePage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">
-              Defi d&apos;assiduite (jeu mensuel)
+              Bonus du mois
             </h1>
             <p className="mt-1 text-[14px] text-[#666]">
               Un joueur qui joue au moins une fois par jour, pendant le nombre de jours cibles ce
               mois-ci, participe automatiquement au tirage au sort du lot ci-dessous. Une seule
-              configuration active a la fois.
+              configuration active a la fois — l&apos;enseigne partenaire est facultative et ne
+              fait qu&apos;enrichir le lot.
             </p>
           </div>
           <Link
@@ -312,7 +358,7 @@ export default function AdminMonthlyChallengePage() {
                 }}
                 className="h-4 w-4 rounded border-[#E0E0DA]"
               />
-              Defi actif
+              Bonus actif
             </label>
           </div>
 
@@ -353,6 +399,18 @@ export default function AdminMonthlyChallengePage() {
               />
             </label>
 
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] font-medium text-[#666]">Enseigne partenaire (facultatif)</span>
+              <select
+                className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
+                value={form.enseigneRef.replace("enseignes/", "")}
+                onChange={(event) => selectMerchant(event.target.value)}
+              >
+                <option value="">Aucune enseigne</option>
+                {merchants.map((merchant) => <option key={merchant.id} value={merchant.id}>{merchant.name}</option>)}
+              </select>
+            </label>
+
             <label className="flex flex-col gap-1.5 sm:col-span-2">
               <span className="text-[12px] font-medium text-[#666]">Titre (affiche au joueur)</span>
               <input
@@ -360,7 +418,7 @@ export default function AdminMonthlyChallengePage() {
                 type="text"
                 value={form.title}
                 onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                placeholder="Bonus d'assiduite"
+                placeholder="Bonus du mois"
               />
             </label>
 

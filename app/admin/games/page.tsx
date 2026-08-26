@@ -862,13 +862,7 @@ function AdminGamesPageInner() {
             className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A] transition hover:bg-[#FAFAF8]"
             href="/admin/games/assiduite"
           >
-            Defi d&apos;assiduite
-          </Link>
-          <Link
-            href="/admin/games/commercant-du-mois"
-            className="inline-flex items-center justify-center rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-2 text-[13px] font-medium text-[#666] hover:bg-[#F7F7F5]"
-          >
-            Commercant du mois
+            Bonus du mois
           </Link>
           <Link
             className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881d]"

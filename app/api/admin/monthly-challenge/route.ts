@@ -112,11 +112,38 @@ export async function GET(request: NextRequest) {
   }
 }
 
+async function findOverlappingActiveChallenge(
+  db: FirebaseFirestore.Firestore,
+  excludeChallengeId: string,
+  startDay: string,
+  endDay: string,
+) {
+  const activeSnap = await db.collection("monthly_challenges").where("enabled", "==", true).get();
+  for (const doc of activeSnap.docs) {
+    if (doc.id === excludeChallengeId) continue;
+    const data = doc.data();
+    const otherStart = readTimestamp(data.start_date);
+    const otherEnd = readTimestamp(data.end_date);
+    if (!otherStart || !otherEnd) continue;
+    const otherStartDay = getParisDayKey(otherStart);
+    const otherEndDay = getParisDayKey(otherEnd);
+    if (otherStartDay <= endDay && startDay <= otherEndDay) {
+      return { id: doc.id, title: typeof data.title === "string" ? data.title : "" };
+    }
+  }
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const user = await assertIsAdminRequest(request);
     const body = await request.json() as Record<string, unknown>;
-    const type = body.type === "merchant" || body.type === "restaurant" ? "merchant" : "attendance";
+    // Un seul mecanisme de Bonus du mois (assiduite), l'enseigne partenaire
+    // est un champ optionnel qui enrichit le lot -- ce n'est plus un type de
+    // challenge distinct. "merchant"/"restaurant" restent lus en lecture
+    // (getMerchantConfig, normalizeMerchantConfigForResponse) pour l'ancien
+    // historique, mais l'ecriture ne cree plus que des challenges attendance.
+    const type = "attendance";
     const startDate = readTimestamp(body.start_date);
     const endDate = readTimestamp(body.end_date);
     if (!startDate || !endDate) return NextResponse.json({ error: "Les dates sont obligatoires." }, { status: 400 });
@@ -130,12 +157,20 @@ export async function POST(request: NextRequest) {
     }
 
     const merchant = getMerchantInput(body);
-    if (type === "merchant" && (!merchant.name || !merchant.ref)) {
-      return NextResponse.json({ error: "L'enseigne partenaire est obligatoire." }, { status: 400 });
-    }
 
     const month = startDay.slice(0, 7);
-    const challengeId = type === "merchant" ? `merchant_${month}` : month;
+    const challengeId = month;
+    const db = getAdminDb();
+
+    if (body.enabled === true) {
+      const conflict = await findOverlappingActiveChallenge(db, challengeId, startDay, endDay);
+      if (conflict) {
+        return NextResponse.json({
+          error: `Un autre Bonus du mois est deja actif sur cette periode${conflict.title ? ` ("${conflict.title}")` : ""}. Desactivez-le avant d'activer celui-ci.`,
+        }, { status: 409 });
+      }
+    }
+
     const payload = {
       challenge_id: challengeId,
       type,
@@ -153,16 +188,13 @@ export async function POST(request: NextRequest) {
       draw_date: getParisMidnightAfter(endDay),
       updated_at: FieldValue.serverTimestamp(),
       updated_by: user.email ?? user.uid,
-      ...(type === "merchant" ? {
-        enseigne_ref: merchant.ref,
-        enseigne_name: merchant.name,
-        enseigne_image: merchant.image,
-      } : {}),
+      enseigne_ref: merchant.ref,
+      enseigne_name: merchant.name,
+      enseigne_image: merchant.image,
     };
 
-    const db = getAdminDb();
     await db.collection("monthly_challenges").doc(challengeId).set(payload, { merge: true });
-    if (type === "attendance") await db.doc(legacyAttendanceConfigPath).set(payload, { merge: true });
+    await db.doc(legacyAttendanceConfigPath).set(payload, { merge: true });
     return NextResponse.json({ ok: true, config: payload });
   } catch (error) {
     return handleAdminAuthError(error) ?? NextResponse.json({ error: "Impossible d'enregistrer la configuration." }, { status: 500 });
