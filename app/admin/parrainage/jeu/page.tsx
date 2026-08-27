@@ -432,6 +432,26 @@ export default function AdminReferralGamePage() {
     setActionError(null);
   };
 
+  const handleActivate = async (game: ReferralGame) => {
+    if (!window.confirm(`Activer maintenant le jeu de parrainage "${game.title}" (sans attendre sa date de début) ?`)) return;
+    setActionError(null);
+    try {
+      const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error?.trim() || "Impossible d'activer ce jeu.");
+      }
+    } catch (activateError) {
+      setActionError(
+        activateError instanceof Error ? activateError.message : "Impossible d'activer ce jeu.",
+      );
+    }
+  };
+
   const handleEnd = async (game: ReferralGame) => {
     if (!window.confirm(`Tirer le gagnant du jeu de parrainage "${game.title}" ?`)) return;
     setActionError(null);
@@ -533,8 +553,9 @@ export default function AdminReferralGamePage() {
           <div>
             <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Jeu de parrainage</h1>
             <p className="mt-1 text-[14px] text-[#666]">
-              Un brouillon démarre automatiquement à sa date de début (aucune activation manuelle
-              requise) tant qu&apos;aucun autre jeu n&apos;est déjà actif. Un ticket est créé
+              Un brouillon démarre automatiquement à sa date de début tant qu&apos;aucun autre jeu
+              n&apos;est déjà actif — ou activez-le manuellement avant cette date avec le bouton
+              &laquo;&nbsp;Activer maintenant&nbsp;&raquo;. Un ticket est créé
               automatiquement pour chaque parrainage validé (le filleul crée son compte) tant qu&apos;un
               jeu est actif — sans plafond. Le tirage au sort se fait automatiquement à la date de fin.
               Un seul jeu actif à la fois.
@@ -826,6 +847,15 @@ export default function AdminReferralGamePage() {
                         >
                           {uploadingGameId === game.id ? "Envoi…" : game.imageUrl ? "Changer l'image" : "Ajouter une image"}
                         </button>
+                        {game.status === "draft" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleActivate(game)}
+                            className="inline-flex items-center rounded-[7px] border border-[#639922] bg-[#EAF3DE] px-3 py-1.5 text-[12px] font-medium text-[#3B6D11] transition hover:bg-[#D6ECC0]"
+                          >
+                            Activer maintenant
+                          </button>
+                        ) : null}
                         {game.status === "active" ? (
                           <button
                             type="button"
