@@ -621,6 +621,31 @@ export async function getGamesAdminData(): Promise<GamesAdminData> {
   };
 }
 
+export type GameMerchantOptionsResult = {
+  merchants: GameMerchantOption[];
+  merchantCollection: MerchantCollectionName;
+  gameCollection: GameCollectionName;
+};
+
+/// Liste des commerçants pour un formulaire de création de jeu, sans payer
+/// le coût d'un chargement de toute la collection `games`/`jeux` (contrairement
+/// à `getGamesAdminData`, dont c'est le seul autre appelant aujourd'hui).
+export async function getGameMerchantOptions(): Promise<GameMerchantOptionsResult> {
+  await ensureGamesAuthenticated();
+
+  const [gameCollection, merchantCollection] = await Promise.all([
+    pickCollectionName(["games", "jeux"] as const, "games"),
+    pickCollectionName(["enseignes", "merchants"] as const, "enseignes"),
+  ]);
+
+  const merchantsSnapshot = await getDocs(collection(db, merchantCollection));
+  const merchants = merchantsSnapshot.docs
+    .map((snapshot) => mapMerchantOption(snapshot, merchantCollection))
+    .sort((left, right) => left.name.localeCompare(right.name, "fr"));
+
+  return { merchants, merchantCollection, gameCollection };
+}
+
 export async function updateGameStatus(input: UpdateGameStatusInput) {
   await ensureGamesAuthenticated();
   await updateDoc(doc(db, input.collectionName, input.gameId), buildStatusPatch(input.status));
@@ -728,6 +753,147 @@ export async function updateGame(input: UpdateGameInput) {
     imageUrl: finalImageUrl,
     mainPrizeImage: finalMainPrizeImage,
     secondaryPrizes: finalSecondaryPrizes,
+  };
+}
+
+export type CreateQrOnlyGameInput = {
+  collectionName: GameCollectionName;
+  merchantCollectionName: MerchantCollectionName;
+  merchantId: string;
+  merchantName: string;
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  prizeValue: string;
+  imageFile: File | null;
+  restrictedToAdults: boolean;
+};
+
+export type CreateQrOnlyGameResult = {
+  game: Game;
+};
+
+/// Jeu "à scanner en boutique" (access_mode: qr_only) pour un seul
+/// commerçant : le joueur doit scanner le QR code physique en magasin pour
+/// participer, au lieu de jouer librement dans l'app (access_mode public,
+/// le seul mode que la création commerçant sait produire aujourd'hui).
+/// Écrit les deux conventions de champs déjà utilisées par
+/// duplicateGameDocument (snake_case pour l'app joueur Flutter, camelCase
+/// pour ce dashboard admin) pour rester lisible des deux côtés.
+export async function createQrOnlyGame(
+  input: CreateQrOnlyGameInput,
+): Promise<CreateQrOnlyGameResult> {
+  const user = await ensureGamesAuthenticated();
+
+  if (!input.merchantId) {
+    throw new Error("Choisis un commerçant.");
+  }
+
+  if (!input.title.trim()) {
+    throw new Error("Le titre est obligatoire.");
+  }
+
+  const startDate = new Date(`${input.startDate}T00:00:00`);
+  const endDate = new Date(`${input.endDate}T23:59:59`);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    throw new Error("Les dates de début et de fin sont obligatoires.");
+  }
+
+  if (startDate.getTime() >= endDate.getTime()) {
+    throw new Error("La date de début doit être avant la date de fin.");
+  }
+
+  const prizeValue = input.prizeValue.trim() ? normalizePrizeValue(input.prizeValue) : null;
+
+  if (input.prizeValue.trim() && prizeValue === null) {
+    throw new Error("La valeur du lot doit être un nombre positif.");
+  }
+
+  const merchantRef = getMerchantReference(input.merchantCollectionName, input.merchantId);
+  const gameRef = doc(collection(db, input.collectionName));
+  const now = new Date();
+
+  let imageUrl: string | null = null;
+  if (input.imageFile) {
+    imageUrl = await uploadGameCover(gameRef.id, input.imageFile);
+  }
+
+  const description = input.description.trim();
+  const qrLink = `https://play.proxiplay.fr/j/${gameRef.id}`;
+
+  const payload = {
+    title: input.title,
+    name: input.title,
+    create_by: doc(db, "users", user.uid),
+    description,
+    conditions: description,
+    merchantId: input.merchantId,
+    merchant_id: input.merchantId,
+    merchantName: input.merchantName,
+    enseigne_name: input.merchantName,
+    enseigne_id: merchantRef,
+    merchantRef,
+    startDate: Timestamp.fromDate(startDate),
+    start_date: Timestamp.fromDate(startDate),
+    endDate: Timestamp.fromDate(endDate),
+    end_date: Timestamp.fromDate(endDate),
+    game_type: "scratcher",
+    type: "standard",
+    access_mode: "qr_only",
+    created_time: Timestamp.fromDate(now),
+    hasWinner: false,
+    imageUrl: imageUrl ?? "",
+    photo: imageUrl ?? "",
+    sessionCount: 0,
+    partiesCount: 0,
+    hasMainPrize: prizeValue !== null,
+    main_prize_title: description,
+    main_prize_description: description,
+    ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
+    main_prize_image: "",
+    secondary_prizes: [],
+    prohibited_for_minors: input.restrictedToAdults,
+    restrictedToAdults: input.restrictedToAdults,
+    qr_link: qrLink,
+    qr_target: "game_detail",
+    qr_version: 2,
+    qr_created_at: Timestamp.fromDate(now),
+    views: 0,
+    favorites: 0,
+    participations: 0,
+    ...buildStatusPatch("brouillon"),
+  };
+
+  await setDoc(gameRef, payload);
+
+  return {
+    game: {
+      id: gameRef.id,
+      title: input.title,
+      description,
+      merchantId: input.merchantId,
+      merchantName: input.merchantName,
+      animationId: null,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      startDateValue: startDate.getTime(),
+      endDateValue: endDate.getTime(),
+      status: "brouillon",
+      imageUrl,
+      isPrivate: false,
+      sessionCount: 0,
+      collectionName: input.collectionName,
+      imageMissing: !imageUrl,
+      hasMainPrize: prizeValue !== null,
+      mainPrizeTitle: description,
+      mainPrizeDescription: description,
+      mainPrizeValue: prizeValue === null ? "" : String(prizeValue),
+      mainPrizeImage: null,
+      secondaryPrizes: [],
+      restrictedToAdults: input.restrictedToAdults,
+    },
   };
 }
 
