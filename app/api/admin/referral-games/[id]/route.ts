@@ -21,7 +21,7 @@ export async function PATCH(
   try {
     await assertIsAdminRequest(request);
     const { id } = await params;
-    const { start_date, end_date, status, ...rest } = (await request.json()) as Record<
+    const { start_date, end_date, status, enseigne_id, ...rest } = (await request.json()) as Record<
       string,
       unknown
     >;
@@ -52,6 +52,17 @@ export async function PATCH(
       }
     }
 
+    // enseigne_id est facultatif : simple id de document (pas un chemin),
+    // converti ici en vraie DocumentReference Firestore — meme convention
+    // que GamesRecord.enseigneId cote app joueur. Absent du payload =
+    // champ inchange ; chaine vide = retire le partenaire (FieldValue.delete).
+    const enseigneIdUpdate =
+      enseigne_id === undefined
+        ? {}
+        : typeof enseigne_id === "string" && enseigne_id.trim()
+          ? { enseigne_id: db.collection("enseignes").doc(enseigne_id.trim()) }
+          : { enseigne_id: FieldValue.delete() };
+
     await db
       .collection("referral_games")
       .doc(id)
@@ -60,6 +71,7 @@ export async function PATCH(
         ...(status !== undefined && { status }),
         ...(start_date !== undefined && { start_date: parseTimestamp(start_date) }),
         ...(end_date !== undefined && { end_date: parseTimestamp(end_date) }),
+        ...enseigneIdUpdate,
         updated_at: FieldValue.serverTimestamp(),
       });
 

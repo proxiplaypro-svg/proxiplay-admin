@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   try {
     const decodedToken = await assertIsAdminRequest(request);
     const body = (await request.json()) as Record<string, unknown>;
-    const { start_date, end_date, ...rest } = body;
+    const { start_date, end_date, enseigne_id, ...rest } = body;
 
     const startTimestamp = parseTimestamp(start_date);
     const endTimestamp = parseTimestamp(end_date);
@@ -35,12 +35,18 @@ export async function POST(request: NextRequest) {
 
     const db = getAdminDb();
     const ref = db.collection("referral_games").doc();
+    // enseigne_id est facultatif : simple id de document (pas un chemin),
+    // converti ici en vraie DocumentReference Firestore — meme convention
+    // que GamesRecord.enseigneId cote app joueur, absent du document si
+    // aucun commercant partenaire n'est selectionne.
+    const enseigneId = typeof enseigne_id === "string" ? enseigne_id.trim() : "";
 
     await ref.set({
       ...rest,
       status: "draft",
       start_date: startTimestamp,
       end_date: endTimestamp,
+      ...(enseigneId ? { enseigne_id: db.collection("enseignes").doc(enseigneId) } : {}),
       ticket_count: 0,
       created_by: decodedToken.email ?? decodedToken.uid,
       created_at: FieldValue.serverTimestamp(),

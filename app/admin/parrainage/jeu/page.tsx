@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Timestamp } from "firebase/firestore";
+import { DocumentReference, Timestamp } from "firebase/firestore";
 import { collection, documentId, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
@@ -29,7 +29,10 @@ type ReferralGame = {
   winnerTicketCount: number | null;
   totalTicketCount: number | null;
   winnerUid: string | null;
+  enseigneId: string | null;
 };
+
+type Merchant = { id: string; name: string };
 
 type ReferralParticipant = {
   userId: string;
@@ -71,6 +74,7 @@ function mapReferralGame(id: string, data: Record<string, unknown>): ReferralGam
     winnerTicketCount: data.winner_ticket_count != null ? readNumber(data.winner_ticket_count) : null,
     totalTicketCount: data.total_ticket_count != null ? readNumber(data.total_ticket_count) : null,
     winnerUid: readText(data.winner_uid) || null,
+    enseigneId: data.enseigne_id instanceof DocumentReference ? data.enseigne_id.id : null,
   };
 }
 
@@ -124,6 +128,7 @@ const emptyForm = {
   prizeValue: "",
   startDate: "",
   endDate: "",
+  enseigneId: "",
 };
 
 function StatusBadge({ status }: { status: ReferralGameStatus }) {
@@ -151,6 +156,25 @@ export default function AdminReferralGamePage() {
   const [selectedGame, setSelectedGame] = useState<ReferralGame | null>(null);
   const [participants, setParticipants] = useState<ReferralParticipant[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
+  const [merchants, setMerchants] = useState<Merchant[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "enseignes"));
+        setMerchants(
+          snapshot.docs
+            .map((document) => ({
+              id: document.id,
+              name: readText(document.data().name) || document.id,
+            }))
+            .sort((left, right) => left.name.localeCompare(right.name, "fr")),
+        );
+      } catch (loadError) {
+        console.error("[REFERRAL_GAME_MERCHANTS_LOAD]", loadError);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!createImageFile) {
@@ -268,6 +292,7 @@ export default function AdminReferralGamePage() {
           prize_value: prizeValue,
           start_date: startPayload,
           end_date: endPayload,
+          enseigne_id: formState.enseigneId,
         }),
       });
 
@@ -343,6 +368,7 @@ export default function AdminReferralGamePage() {
           prize_value: prizeValue ? Number(prizeValue) : null,
           start_date: startPayload,
           end_date: endPayload,
+          enseigne_id: formState.enseigneId,
         }),
       });
       if (!response.ok) {
@@ -389,6 +415,7 @@ export default function AdminReferralGamePage() {
       prizeValue: game.prizeValue?.toString() ?? "",
       startDate: game.startDate?.slice(0, 10) ?? "",
       endDate: game.endDate?.slice(0, 10) ?? "",
+      enseigneId: game.enseigneId ?? "",
     });
     setCreateImageFile(null);
     if (createImageInputRef.current) createImageInputRef.current.value = "";
@@ -403,25 +430,6 @@ export default function AdminReferralGamePage() {
     setCreateImageFile(null);
     if (createImageInputRef.current) createImageInputRef.current.value = "";
     setActionError(null);
-  };
-
-  const handleActivate = async (game: ReferralGame) => {
-    setActionError(null);
-    try {
-      const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "active" }),
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error?.trim() || "Impossible d'activer ce jeu.");
-      }
-    } catch (activateError) {
-      setActionError(
-        activateError instanceof Error ? activateError.message : "Impossible d'activer ce jeu.",
-      );
-    }
   };
 
   const handleEnd = async (game: ReferralGame) => {
@@ -525,9 +533,11 @@ export default function AdminReferralGamePage() {
           <div>
             <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Jeu de parrainage</h1>
             <p className="mt-1 text-[14px] text-[#666]">
-              Un ticket est créé automatiquement pour chaque parrainage validé (le filleul crée son compte)
-              tant qu&apos;un jeu est actif — sans plafond. Le tirage au sort se fait automatiquement à la
-              date de fin. Un seul jeu actif à la fois.
+              Un brouillon démarre automatiquement à sa date de début (aucune activation manuelle
+              requise) tant qu&apos;aucun autre jeu n&apos;est déjà actif. Un ticket est créé
+              automatiquement pour chaque parrainage validé (le filleul crée son compte) tant qu&apos;un
+              jeu est actif — sans plafond. Le tirage au sort se fait automatiquement à la date de fin.
+              Un seul jeu actif à la fois.
             </p>
           </div>
           <Link
@@ -552,8 +562,8 @@ export default function AdminReferralGamePage() {
             </h2>
             {hasActiveGame ? (
               <p className="mt-1 text-[13px] text-[#EF9F27]">
-                Un jeu est déjà actif — le nouveau jeu restera en brouillon jusqu&apos;à ce que vous
-                terminiez le jeu actif.
+                Un jeu est déjà actif — le nouveau jeu restera en brouillon et démarrera
+                automatiquement une fois le jeu actif terminé (à sa date de fin).
               </p>
             ) : null}
           </div>
@@ -570,7 +580,23 @@ export default function AdminReferralGamePage() {
               />
             </label>
 
-            <div className="hidden sm:block" />
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] font-medium text-[#666]">Commerçant partenaire (facultatif)</span>
+              <select
+                className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
+                value={formState.enseigneId}
+                onChange={(event) =>
+                  setFormState((prev) => ({ ...prev, enseigneId: event.target.value }))
+                }
+              >
+                <option value="">Aucun (organisé par Proxiplay)</option>
+                {merchants.map((merchant) => (
+                  <option key={merchant.id} value={merchant.id}>
+                    {merchant.name}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <label className="flex flex-col gap-1.5 sm:col-span-2">
               <span className="text-[12px] font-medium text-[#666]">Description (affichée au joueur)</span>
@@ -800,15 +826,6 @@ export default function AdminReferralGamePage() {
                         >
                           {uploadingGameId === game.id ? "Envoi…" : game.imageUrl ? "Changer l'image" : "Ajouter une image"}
                         </button>
-                        {game.status === "draft" ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleActivate(game)}
-                            className="inline-flex items-center rounded-[7px] border border-[#639922] bg-[#EAF3DE] px-3 py-1.5 text-[12px] font-medium text-[#3B6D11] transition hover:bg-[#D6ECC0]"
-                          >
-                            Activer
-                          </button>
-                        ) : null}
                         {game.status === "active" ? (
                           <button
                             type="button"
