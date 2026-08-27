@@ -33,6 +33,28 @@ const emptyForm: FormState = {
   restrictedToAdults: false,
 };
 
+type SecondaryPrizeFormItem = {
+  id: string;
+  name: string;
+  description: string;
+  count: string;
+};
+
+function createSecondaryPrizeId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `secondary-prize-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createEmptySecondaryPrize(): SecondaryPrizeFormItem {
+  return { id: createSecondaryPrizeId(), name: "", description: "", count: "" };
+}
+
+function isSecondaryPrizeEmpty(prize: SecondaryPrizeFormItem) {
+  return !prize.name.trim() && !prize.description.trim() && !prize.count.trim();
+}
+
 function validateImageFile(file: File): string | null {
   if (!file.type.startsWith("image/")) {
     return "Le fichier selectionne doit etre une image valide.";
@@ -58,6 +80,16 @@ export default function NewScratchGamePage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const [secondaryPrizes, setSecondaryPrizes] = useState<SecondaryPrizeFormItem[]>([]);
+
+  const updateSecondaryPrize = (
+    prizeId: string,
+    updater: (current: SecondaryPrizeFormItem) => SecondaryPrizeFormItem,
+  ) => {
+    setSecondaryPrizes((current) =>
+      current.map((prize) => (prize.id === prizeId ? updater(prize) : prize)),
+    );
+  };
 
   useEffect(() => {
     let active = true;
@@ -101,6 +133,17 @@ export default function NewScratchGamePage() {
         throw new Error("Choisis un commerçant.");
       }
 
+      for (const prize of secondaryPrizes) {
+        if (isSecondaryPrizeEmpty(prize)) continue;
+        if (!prize.name.trim()) {
+          throw new Error("Chaque lot secondaire renseigné doit avoir un nom.");
+        }
+        const parsedCount = prize.count.trim() ? Number.parseInt(prize.count, 10) : 0;
+        if (Number.isNaN(parsedCount) || parsedCount < 0) {
+          throw new Error("Chaque lot secondaire doit avoir une quantité valide.");
+        }
+      }
+
       const result = await createGame({
         accessMode: "public",
         collectionName: gameCollection,
@@ -114,6 +157,13 @@ export default function NewScratchGamePage() {
         prizeValue: form.prizeValue,
         imageFile,
         restrictedToAdults: form.restrictedToAdults,
+        secondaryPrizes: secondaryPrizes
+          .filter((prize) => !isSecondaryPrizeEmpty(prize))
+          .map((prize) => ({
+            name: prize.name.trim(),
+            description: prize.description.trim(),
+            count: prize.count.trim(),
+          })),
       });
 
       setCreatedGame({ id: result.game.id, merchantId: merchant.id });
@@ -121,6 +171,7 @@ export default function NewScratchGamePage() {
       setActivateError(null);
       setForm(emptyForm);
       setImageFile(null);
+      setSecondaryPrizes([]);
       if (imageInputRef.current) imageInputRef.current.value = "";
     } catch (saveError) {
       setError(getGamesQueryErrorMessage(saveError));
@@ -346,6 +397,71 @@ export default function NewScratchGamePage() {
                 />
               </div>
             </label>
+          </div>
+
+          <div className="mt-5 rounded-[10px] border border-[#E8E8E4] bg-[#FAFAF8] p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-medium text-[#666]">Lots secondaires (facultatif)</span>
+              <button
+                type="button"
+                onClick={() => setSecondaryPrizes((current) => [...current, createEmptySecondaryPrize()])}
+                className="rounded-[8px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#1A1A1A] hover:bg-[#F7F7F5]"
+              >
+                + Ajouter un lot secondaire
+              </button>
+            </div>
+
+            {secondaryPrizes.length > 0 ? (
+              <div className="mt-3 flex flex-col gap-3">
+                {secondaryPrizes.map((prize, index) => (
+                  <div key={prize.id} className="rounded-[8px] border border-[#E8E8E4] bg-white p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-[#999]">Lot {index + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSecondaryPrizes((current) => current.filter((item) => item.id !== prize.id))
+                        }
+                        className="text-[11px] font-medium text-[#E24B4A] hover:underline"
+                      >
+                        Retirer
+                      </button>
+                    </div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-[2fr_1fr]">
+                      <input
+                        className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
+                        type="text"
+                        placeholder="Nom du lot"
+                        value={prize.name}
+                        onChange={(event) =>
+                          updateSecondaryPrize(prize.id, (current) => ({ ...current, name: event.target.value }))
+                        }
+                      />
+                      <input
+                        className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="Quantité"
+                        value={prize.count}
+                        onChange={(event) =>
+                          updateSecondaryPrize(prize.id, (current) => ({ ...current, count: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <textarea
+                      className="mt-2 w-full resize-y rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]"
+                      rows={2}
+                      placeholder="Description (facultatif)"
+                      value={prize.description}
+                      onChange={(event) =>
+                        updateSecondaryPrize(prize.id, (current) => ({ ...current, description: event.target.value }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {error ? <p className="mt-4 text-[13px] text-[#E24B4A]">{error}</p> : null}

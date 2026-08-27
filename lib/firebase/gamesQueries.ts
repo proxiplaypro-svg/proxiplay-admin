@@ -758,6 +758,12 @@ export async function updateGame(input: UpdateGameInput) {
 
 export type CreateGameAccessMode = "public" | "qr_only";
 
+export type CreateGameSecondaryPrizeInput = {
+  name: string;
+  description: string;
+  count: string;
+};
+
 export type CreateGameInput = {
   accessMode: CreateGameAccessMode;
   collectionName: GameCollectionName;
@@ -771,6 +777,7 @@ export type CreateGameInput = {
   prizeValue: string;
   imageFile: File | null;
   restrictedToAdults: boolean;
+  secondaryPrizes: CreateGameSecondaryPrizeInput[];
 };
 
 export type CreateGameResult = {
@@ -825,6 +832,16 @@ export async function createGame(
   const description = input.description.trim();
   const qrLink = `https://play.proxiplay.fr/j/${gameRef.id}`;
 
+  const secondaryPrizes = input.secondaryPrizes
+    .map((prize) => ({
+      presentation: prize.description.trim(),
+      name: prize.name.trim(),
+      description: prize.description.trim(),
+      count: readNumber(prize.count, 0),
+      image: "",
+    }))
+    .filter((prize) => prize.name || prize.description || prize.count > 0);
+
   const payload = {
     title: input.title,
     name: input.title,
@@ -855,7 +872,7 @@ export async function createGame(
     main_prize_description: description,
     ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
     main_prize_image: "",
-    secondary_prizes: [],
+    secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
     qr_link: qrLink,
@@ -893,7 +910,13 @@ export async function createGame(
       mainPrizeDescription: description,
       mainPrizeValue: prizeValue === null ? "" : String(prizeValue),
       mainPrizeImage: null,
-      secondaryPrizes: [],
+      secondaryPrizes: secondaryPrizes.map((prize, index) => ({
+        id: `secondary-${index}`,
+        name: prize.name,
+        description: prize.description,
+        count: String(prize.count),
+        image: null,
+      })),
       restrictedToAdults: input.restrictedToAdults,
     },
   };
