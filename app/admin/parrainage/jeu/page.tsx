@@ -4,16 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Timestamp } from "firebase/firestore";
 import { collection, documentId, getDocs, onSnapshot, query, where } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { httpsCallable } from "firebase/functions";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { db, firebaseApp, storage } from "@/lib/firebase/client-app";
+import { db, storage } from "@/lib/firebase/client-app";
 import { auth } from "@/lib/firebase/auth";
+import { functionsClient } from "@/lib/firebase/functions";
 
 type ReferralGameStatus = "draft" | "active" | "ended";
-const referralFunctions = getFunctions(firebaseApp, "us-central1");
-const drawReferralGame = httpsCallable<{ gameId: string }, { status: string }>(referralFunctions, "adminDrawReferralGameWinner");
-const repairReferralGameDraw = httpsCallable<{ gameId: string }, { status: string }>(referralFunctions, "adminRepairReferralGameDraw");
-const reconcileReferralGameTickets = httpsCallable<{ gameId: string }, { created: number; already_exists: number; ineligible: number }>(referralFunctions, "adminReconcileReferralGameTickets");
+const drawReferralGame = httpsCallable<{ gameId: string }, { status: string }>(functionsClient, "adminDrawReferralGameWinner");
+const repairReferralGameDraw = httpsCallable<{ gameId: string }, { status: string }>(functionsClient, "adminRepairReferralGameDraw");
+const reconcileReferralGameTickets = httpsCallable<{ gameId: string }, { created: number; already_exists: number; ineligible: number }>(functionsClient, "adminReconcileReferralGameTickets");
 
 type ReferralGame = {
   id: string;
@@ -86,6 +86,10 @@ function parseDateInputToTimestampPayload(value: string) {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return null;
   return { seconds: Math.floor(date.getTime() / 1000), nanoseconds: 0 };
+}
+
+function canDeleteGame(game: ReferralGame) {
+  return game.ticketCount === 0 && !game.winnerUid;
 }
 
 async function getAuthToken(): Promise<string> {
@@ -247,6 +251,9 @@ export default function AdminReferralGamePage() {
       }
       const startPayload = parseDateInputToTimestampPayload(formState.startDate);
       const endPayload = parseDateInputToTimestampPayload(formState.endDate);
+      if (startPayload && endPayload && startPayload.seconds >= endPayload.seconds) {
+        throw new Error("La date de debut doit etre avant la date de fin.");
+      }
       if (!startPayload || !endPayload) {
         throw new Error("Les dates de début et de fin sont obligatoires.");
       }
@@ -501,6 +508,10 @@ export default function AdminReferralGamePage() {
   };
 
   const handleDelete = async (game: ReferralGame) => {
+    if (!canDeleteGame(game)) {
+      setActionError("Seul un jeu sans participant ni gain peut etre supprime.");
+      return;
+    }
     if (!window.confirm(`Supprimer le jeu de parrainage "${game.title}" ?`)) return;
     setFeedback(null);
     setActionError(null);
@@ -776,7 +787,7 @@ export default function AdminReferralGamePage() {
                       ) : null}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           ref={(el) => {
                             fileInputRefs.current[game.id] = el;
@@ -837,12 +848,22 @@ export default function AdminReferralGamePage() {
                         ) : null}
                         <button
                           type="button"
-                          disabled={deletingGameId === game.id}
+                          disabled={deletingGameId === game.id || !canDeleteGame(game)}
                           onClick={() => void handleDelete(game)}
+                          title={
+                            canDeleteGame(game)
+                              ? "Supprimer ce jeu"
+                              : "Suppression disponible seulement si le jeu n'a aucun participant et aucun gain"
+                          }
                           className="inline-flex items-center rounded-[7px] border border-[#F1C7C7] bg-white px-3 py-1.5 text-[12px] font-medium text-[#B42318] transition hover:bg-[#FDF2F2] disabled:opacity-60"
                         >
                           {deletingGameId === game.id ? "Suppression..." : "Supprimer"}
                         </button>
+                        {!canDeleteGame(game) ? (
+                          <span className="text-[11px] text-[#999]">
+                            Suppression verrouillee : participants ou gain deja presents.
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
