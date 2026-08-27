@@ -141,6 +141,7 @@ export default function AdminReferralGamePage() {
   const [formState, setFormState] = useState(emptyForm);
   const [editingGame, setEditingGame] = useState<ReferralGame | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingGameId, setDeletingGameId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [uploadingGameId, setUploadingGameId] = useState<string | null>(null);
@@ -501,7 +502,9 @@ export default function AdminReferralGamePage() {
 
   const handleDelete = async (game: ReferralGame) => {
     if (!window.confirm(`Supprimer le jeu de parrainage "${game.title}" ?`)) return;
+    setFeedback(null);
     setActionError(null);
+    setDeletingGameId(game.id);
     try {
       const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
         method: "DELETE",
@@ -510,10 +513,15 @@ export default function AdminReferralGamePage() {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(payload?.error?.trim() || "Impossible de supprimer ce jeu.");
       }
+      if (selectedGame?.id === game.id) setSelectedGame(null);
+      if (editingGame?.id === game.id) handleCancelEdit();
+      setFeedback("Jeu de parrainage supprime.");
     } catch (deleteError) {
       setActionError(
         deleteError instanceof Error ? deleteError.message : "Impossible de supprimer ce jeu.",
       );
+    } finally {
+      setDeletingGameId(null);
     }
   };
 
@@ -827,15 +835,14 @@ export default function AdminReferralGamePage() {
                             Reparer le jeu
                           </button>
                         ) : null}
-                        {game.status !== "active" ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleDelete(game)}
-                            className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:bg-[#F7F7F5]"
-                          >
-                            Supprimer
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          disabled={deletingGameId === game.id}
+                          onClick={() => void handleDelete(game)}
+                          className="inline-flex items-center rounded-[7px] border border-[#F1C7C7] bg-white px-3 py-1.5 text-[12px] font-medium text-[#B42318] transition hover:bg-[#FDF2F2] disabled:opacity-60"
+                        >
+                          {deletingGameId === game.id ? "Suppression..." : "Supprimer"}
+                        </button>
                       </div>
                     </td>
                   </tr>
