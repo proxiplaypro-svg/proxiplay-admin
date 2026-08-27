@@ -6,6 +6,7 @@ import {
   createGame,
   getGameMerchantOptions,
   getGamesQueryErrorMessage,
+  updateGameStatus,
 } from "@/lib/firebase/gamesQueries";
 import type { GameMerchantOption } from "@/types/dashboard";
 
@@ -51,6 +52,9 @@ export default function NewScratchGamePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdGame, setCreatedGame] = useState<{ id: string; merchantId: string } | null>(null);
+  const [activating, setActivating] = useState(false);
+  const [activated, setActivated] = useState(false);
+  const [activateError, setActivateError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -113,6 +117,8 @@ export default function NewScratchGamePage() {
       });
 
       setCreatedGame({ id: result.game.id, merchantId: merchant.id });
+      setActivated(false);
+      setActivateError(null);
       setForm(emptyForm);
       setImageFile(null);
       if (imageInputRef.current) imageInputRef.current.value = "";
@@ -120,6 +126,25 @@ export default function NewScratchGamePage() {
       setError(getGamesQueryErrorMessage(saveError));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleActivate = async () => {
+    if (!createdGame) return;
+    setActivating(true);
+    setActivateError(null);
+
+    try {
+      await updateGameStatus({
+        gameId: createdGame.id,
+        collectionName: gameCollection,
+        status: "actif",
+      });
+      setActivated(true);
+    } catch (activateGameError) {
+      setActivateError(getGamesQueryErrorMessage(activateGameError));
+    } finally {
+      setActivating(false);
     }
   };
 
@@ -146,14 +171,31 @@ export default function NewScratchGamePage() {
 
         {createdGame ? (
           <div className="rounded-[12px] border border-[#D8E8C4] bg-[#EAF3DE] p-5">
-            <p className="text-[14px] font-medium text-[#3B6D11]">Jeu créé en brouillon.</p>
-            <p className="mt-1 text-[13px] text-[#3B6D11]">
-              Retrouve-le et active-le depuis la liste des jeux de ce commerçant.
+            <p className="text-[14px] font-medium text-[#3B6D11]">
+              {activated ? "Jeu créé et activé." : "Jeu créé en brouillon."}
             </p>
-            <div className="mt-3 flex gap-3">
+            <p className="mt-1 text-[13px] text-[#3B6D11]">
+              {activated
+                ? "Il est maintenant visible dans l'app."
+                : "Active-le pour le rendre visible dans l'app, ou fais-le depuis la liste des jeux."}
+            </p>
+            {activateError ? (
+              <p className="mt-2 text-[13px] text-[#E24B4A]">{activateError}</p>
+            ) : null}
+            <div className="mt-3 flex flex-wrap gap-3">
+              {activated ? null : (
+                <button
+                  type="button"
+                  onClick={() => void handleActivate()}
+                  disabled={activating}
+                  className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50"
+                >
+                  {activating ? "Activation…" : "Activer maintenant"}
+                </button>
+              )}
               <Link
                 href={`/admin/games?merchantId=${createdGame.merchantId}`}
-                className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#5a8b1f]"
+                className="inline-flex items-center justify-center rounded-[10px] border border-[#E0E0DA] bg-white px-4 py-2 text-[13px] font-medium text-[#1A1A1A] hover:bg-[#FAFAF8]"
               >
                 Voir dans Jeux & campagnes
               </Link>
