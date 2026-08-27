@@ -452,6 +452,30 @@ export default function AdminReferralGamePage() {
     }
   };
 
+  const handleDeactivate = async (game: ReferralGame) => {
+    const ticketsWarning =
+      game.ticketCount > 0
+        ? ` Ses ${game.ticketCount} ticket(s) déjà créé(s) resteront en base et compteront si le jeu est réactivé.`
+        : "";
+    if (!window.confirm(`Désactiver le jeu de parrainage "${game.title}" (repasse en brouillon) ?${ticketsWarning}`)) return;
+    setActionError(null);
+    try {
+      const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "draft" }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error?.trim() || "Impossible de désactiver ce jeu.");
+      }
+    } catch (deactivateError) {
+      setActionError(
+        deactivateError instanceof Error ? deactivateError.message : "Impossible de désactiver ce jeu.",
+      );
+    }
+  };
+
   const handleEnd = async (game: ReferralGame) => {
     if (!window.confirm(`Tirer le gagnant du jeu de parrainage "${game.title}" ?`)) return;
     setActionError(null);
@@ -867,6 +891,15 @@ export default function AdminReferralGamePage() {
                             className="inline-flex items-center rounded-[7px] border border-[#E0C87A] bg-[#FBF3DD] px-3 py-1.5 text-[12px] font-medium text-[#8A6A10] transition hover:bg-[#F5E8C4]"
                           >
                             Tirer le gagnant
+                          </button>
+                        ) : null}
+                        {game.status === "active" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleDeactivate(game)}
+                            className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:bg-[#F7F7F5]"
+                          >
+                            Désactiver
                           </button>
                         ) : null}
                         {game.status === "ended" ? (
