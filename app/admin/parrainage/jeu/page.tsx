@@ -528,7 +528,11 @@ export default function AdminReferralGamePage() {
   };
 
   const handleDelete = async (game: ReferralGame) => {
-    if (!window.confirm(`Supprimer le jeu de parrainage "${game.title}" ?`)) return;
+    const warning =
+      game.status === "active"
+        ? ` Ce jeu est actuellement actif — le supprimer y met fin immédiatement.`
+        : "";
+    if (!window.confirm(`Supprimer le jeu de parrainage "${game.title}" ?${warning}`)) return;
     setActionError(null);
     try {
       const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
@@ -874,15 +878,13 @@ export default function AdminReferralGamePage() {
                             Reparer le jeu
                           </button>
                         ) : null}
-                        {game.status !== "active" ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleDelete(game)}
-                            className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:bg-[#F7F7F5]"
-                          >
-                            Supprimer
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(game)}
+                          className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:bg-[#F7F7F5]"
+                        >
+                          Supprimer
+                        </button>
                       </div>
                     </td>
                   </tr>

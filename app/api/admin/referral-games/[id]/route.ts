@@ -106,9 +106,14 @@ export async function DELETE(
     const hasDrawResult = Boolean(
       game.winner_uid || game.winner_ref || game.prize_ref || game.drawn_at || game.draw_status,
     );
-    if (game.status !== "draft" || hasDrawResult || !entriesSnap.empty || !prizesSnap.empty) {
+    // Le statut (brouillon/actif/termine) n'est plus une condition : un jeu
+    // actif ou termine peut etre supprime (utile pour nettoyer un jeu de
+    // test lance par erreur), tant qu'aucun participant ni gain reel n'y
+    // est attache — ca reste bloque pour eviter de perdre des tickets ou
+    // un gagnant deja tire.
+    if (hasDrawResult || !entriesSnap.empty || !prizesSnap.empty) {
       return NextResponse.json(
-        { error: "Seul un brouillon sans participant ni gain peut etre supprime." },
+        { error: "Seul un jeu sans participant ni gain peut etre supprime." },
         { status: 409 },
       );
     }
