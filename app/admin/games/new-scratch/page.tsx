@@ -42,7 +42,7 @@ function validateImageFile(file: File): string | null {
   return null;
 }
 
-export default function NewGamePage() {
+export default function NewScratchGamePage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [merchants, setMerchants] = useState<GameMerchantOption[]>([]);
   const [gameCollection, setGameCollection] = useState<GameCollectionName>("games");
@@ -98,7 +98,7 @@ export default function NewGamePage() {
       }
 
       const result = await createGame({
-        accessMode: "qr_only",
+        accessMode: "public",
         collectionName: gameCollection,
         merchantCollectionName: merchantCollection,
         merchantId: merchant.id,
@@ -129,12 +129,11 @@ export default function NewGamePage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">
-              Nouveau jeu à scanner en boutique
+              Nouveau jeu à gratter
             </h1>
             <p className="mt-1 text-[14px] text-[#666]">
-              Le joueur doit scanner le QR code affiché en magasin pour participer — il ne peut pas
-              lancer ce jeu librement depuis l&apos;app. Réservé à un seul commerçant. Le jeu est
-              créé en brouillon : active-le ensuite depuis la liste des jeux.
+              Le joueur joue librement depuis l&apos;app, sans scanner de QR code. Réservé à un seul
+              commerçant. Le jeu est créé en brouillon : active-le ensuite depuis la liste des jeux.
             </p>
           </div>
           <Link
@@ -204,7 +203,7 @@ export default function NewGamePage() {
                 type="text"
                 value={form.title}
                 onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                placeholder="Cadeau à scanner en boutique"
+                placeholder="Grattage en boutique"
                 required
               />
             </label>

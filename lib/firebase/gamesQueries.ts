@@ -756,7 +756,10 @@ export async function updateGame(input: UpdateGameInput) {
   };
 }
 
-export type CreateQrOnlyGameInput = {
+export type CreateGameAccessMode = "public" | "qr_only";
+
+export type CreateGameInput = {
+  accessMode: CreateGameAccessMode;
   collectionName: GameCollectionName;
   merchantCollectionName: MerchantCollectionName;
   merchantId: string;
@@ -770,20 +773,19 @@ export type CreateQrOnlyGameInput = {
   restrictedToAdults: boolean;
 };
 
-export type CreateQrOnlyGameResult = {
+export type CreateGameResult = {
   game: Game;
 };
 
-/// Jeu "à scanner en boutique" (access_mode: qr_only) pour un seul
-/// commerçant : le joueur doit scanner le QR code physique en magasin pour
-/// participer, au lieu de jouer librement dans l'app (access_mode public,
-/// le seul mode que la création commerçant sait produire aujourd'hui).
-/// Écrit les deux conventions de champs déjà utilisées par
-/// duplicateGameDocument (snake_case pour l'app joueur Flutter, camelCase
-/// pour ce dashboard admin) pour rester lisible des deux côtés.
-export async function createQrOnlyGame(
-  input: CreateQrOnlyGameInput,
-): Promise<CreateQrOnlyGameResult> {
+/// Création d'un jeu à gratter pour un seul commerçant, en mode public
+/// (jouable librement dans l'app) ou qr_only (le joueur doit scanner le QR
+/// code physique en boutique pour participer). Écrit les deux conventions de
+/// champs déjà utilisées par duplicateGameDocument (snake_case pour l'app
+/// joueur Flutter, camelCase pour ce dashboard admin) pour rester lisible
+/// des deux côtés.
+export async function createGame(
+  input: CreateGameInput,
+): Promise<CreateGameResult> {
   const user = await ensureGamesAuthenticated();
 
   if (!input.merchantId) {
@@ -841,7 +843,7 @@ export async function createQrOnlyGame(
     end_date: Timestamp.fromDate(endDate),
     game_type: "scratcher",
     type: "standard",
-    access_mode: "qr_only",
+    access_mode: input.accessMode,
     created_time: Timestamp.fromDate(now),
     hasWinner: false,
     imageUrl: imageUrl ?? "",

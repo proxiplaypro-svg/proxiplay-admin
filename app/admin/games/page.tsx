@@ -865,8 +865,14 @@ function AdminGamesPageInner() {
             Bonus du mois
           </Link>
           <Link
-            className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881d]"
+            className="rounded-[8px] border border-[#2C2F5B] bg-[#2C2F5B] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#242754]"
             href="/admin/games/new"
+          >
+            Jeux à scanner
+          </Link>
+          <Link
+            className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881d]"
+            href="/admin/games/new-scratch"
           >
             + Nouveau jeu
           </Link>
