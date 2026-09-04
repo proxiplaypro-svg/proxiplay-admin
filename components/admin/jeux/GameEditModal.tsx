@@ -2,9 +2,11 @@
 
 import { FirebaseError } from "firebase/app";
 import { httpsCallable } from "firebase/functions";
+import { deleteField, doc, getDoc, Timestamp, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
 import { openGameFacebookPostWindowWithMerchant, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
+import { db } from "@/lib/firebase/client-app";
 import { functionsClient } from "@/lib/firebase/functions";
 import type {
   AnimationOption,
@@ -114,6 +116,15 @@ function toInputDate(value: string | null) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function timestampToInputDate(value: unknown) {
+  if (!(value instanceof Timestamp)) return "";
+  const date = value.toDate();
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
@@ -305,6 +316,8 @@ export function GameEditModal({
   const [generalForm, setGeneralForm] = useState<GeneralFormState>(() => buildInitialGeneralForm(game));
   const [mainPrizeForm, setMainPrizeForm] = useState<MainPrizeFormState>(() => buildInitialMainPrizeForm(game));
   const [secondaryPrizes, setSecondaryPrizes] = useState<SecondaryPrizeFormItem[]>(() => buildInitialSecondaryPrizes(game));
+  const [prizeUsageDeadline, setPrizeUsageDeadline] = useState("");
+  const [deadlineLoading, setDeadlineLoading] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [backfillLoading, setBackfillLoading] = useState<"dryRun" | "confirm" | null>(null);
@@ -320,6 +333,33 @@ export function GameEditModal({
       setBackfillLoading(null);
       setBackfillFeedback(null);
     }
+  }, [game, open]);
+
+  useEffect(() => {
+    if (!open || !game) {
+      setPrizeUsageDeadline("");
+      return;
+    }
+
+    let active = true;
+    setDeadlineLoading(true);
+
+    void getDoc(doc(db, game.collectionName, game.id))
+      .then((snapshot) => {
+        if (!active) return;
+        setPrizeUsageDeadline(timestampToInputDate(snapshot.data()?.prize_usage_deadline));
+      })
+      .catch(() => {
+        if (!active) return;
+        setPrizeUsageDeadline("");
+      })
+      .finally(() => {
+        if (active) setDeadlineLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [game, open]);
 
   const coverPreviewUrl = useMemo(() => buildPreviewUrl(generalForm.imageFile, generalForm.imageUrl), [generalForm.imageFile, generalForm.imageUrl]);
@@ -506,6 +546,11 @@ export function GameEditModal({
       return;
     }
 
+    if (prizeUsageDeadline && generalForm.endDate && prizeUsageDeadline < generalForm.endDate) {
+      setValidationError("La date limite d utilisation du lot doit etre posterieure ou egale a la date de fin du jeu.");
+      return;
+    }
+
     if (mainPrizeForm.hasMainPrize) {
       if (mainPrizeForm.value.trim()) {
         const normalizedValue = Number.parseFloat(mainPrizeForm.value.replace(",", "."));
@@ -544,6 +589,22 @@ export function GameEditModal({
     }
 
     setValidationError(null);
+
+    try {
+      await updateDoc(
+        doc(db, game.collectionName, game.id),
+        prizeUsageDeadline
+          ? {
+              prize_usage_deadline: Timestamp.fromDate(
+                new Date(`${prizeUsageDeadline}T23:59:59`),
+              ),
+            }
+          : { prize_usage_deadline: deleteField() },
+      );
+    } catch {
+      setValidationError("Impossible d enregistrer la date limite d utilisation du lot.");
+      return;
+    }
 
     const filteredSecondaryPrizes = secondaryPrizes.filter((prize) => !isSecondaryPrizeEmpty(prize));
 
@@ -628,7 +689,6 @@ export function GameEditModal({
               </div>
             ) : null}
 
-            {/* ── Section : Informations du jeu ── */}
             <section className={sectionClassName}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
@@ -679,6 +739,23 @@ export function GameEditModal({
                     <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Date fin</span>
                     <input className={inputClassName} type="date" value={generalForm.endDate} onChange={(event) => updateGeneralForm("endDate", event.target.value)} />
                   </label>
+
+                  <label className="flex flex-col gap-1 sm:col-span-2">
+                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Date limite d utilisation du lot (facultatif)</span>
+                    <input
+                      className={inputClassName}
+                      type="date"
+                      min={generalForm.endDate || undefined}
+                      value={prizeUsageDeadline}
+                      onChange={(event) => setPrizeUsageDeadline(event.target.value)}
+                      disabled={saving || deadlineLoading}
+                    />
+                    <span className="text-[11px] text-[#666666]">
+                      {deadlineLoading
+                        ? "Chargement de la date actuelle..."
+                        : "Le gagnant devra retirer ou utiliser son lot avant cette date."}
+                    </span>
+                  </label>
                 </div>
 
                 <label className="flex flex-col gap-1">
@@ -709,7 +786,6 @@ export function GameEditModal({
                   </p>
                 ) : null}
 
-                {/* Toggle : Interdire aux mineurs */}
                 <label className="flex items-center justify-between gap-3 rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-3">
                   <div>
                     <span className="text-[13px] font-medium text-[#1A1A1A]">Interdire aux mineurs</span>
@@ -735,7 +811,6 @@ export function GameEditModal({
               </div>
             </section>
 
-            {/* ── Section : Lot principal ── */}
             <section className={sectionClassName}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
@@ -757,11 +832,9 @@ export function GameEditModal({
                     <input className={inputClassName} type="number" min="0" step="0.01" value={mainPrizeForm.value} onChange={(event) => updateMainPrizeForm("value", event.target.value)} disabled={!mainPrizeForm.hasMainPrize} />
                   </label>
                 </div>
-
               </div>
             </section>
 
-            {/* ── Section : Lots secondaires ── */}
             <section className={sectionClassName}>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
@@ -824,7 +897,6 @@ export function GameEditModal({
                         <textarea className={`${inputClassName} min-h-20 resize-none`} value={prize.description} onChange={(event) => updateSecondaryPrize(prize.id, (current) => ({ ...current, description: event.target.value }))} />
                       </label>
                     </div>
-                    {/* Pas d'image pour les lots secondaires — cohérence avec l'app Flutter */}
                   </article>
                 ))}
               </div>
@@ -920,7 +992,7 @@ export function GameEditModal({
               <button type="button" className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] font-medium text-[#1A1A1A]" onClick={onClose} disabled={saving}>
                 Annuler
               </button>
-              <button type="submit" form="game-edit-form" className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-70" disabled={saving}>
+              <button type="submit" form="game-edit-form" className="rounded-[8px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-70" disabled={saving || deadlineLoading}>
                 {saving ? "Enregistrement..." : submitLabel}
               </button>
             </div>
