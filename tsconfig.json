@@ -19,6 +19,8 @@
       }
     ],
     "paths": {
+      "@/lib/firebase/gamesQueries": ["./lib/firebase/gamesQueriesFixed.ts"],
+      "@/lib/firebase/adminActions": ["./lib/firebase/adminActionsFixed.ts"],
       "@/*": ["./*"]
     }
   },
