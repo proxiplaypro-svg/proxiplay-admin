@@ -308,7 +308,7 @@ export default function MerchantEditPage({ params }: MerchantEditPageProps) {
 
       await updateDoc(merchantRef, {
         name: form.name.trim() || deleteField(),
-        owner: ownerUserId ? `/users/${ownerUserId}` : deleteField(),
+        owner: ownerUserId ? doc(db, "users", ownerUserId) : deleteField(),
         contact_name: contactName || deleteField(),
         owner_id: ownerUserId ? doc(db, "users", ownerUserId) : deleteField(),
         email: form.email.trim() || deleteField(),

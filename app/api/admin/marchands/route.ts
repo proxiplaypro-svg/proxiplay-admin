@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       created_at: FieldValue.serverTimestamp(),
       status: "active",
       commercial_status: "actif",
-      owner: `/users/${userRecord.uid}`,
+      owner: adminDb.doc(`users/${userRecord.uid}`),
       owner_id: adminDb.doc(`users/${userRecord.uid}`),
     });
 
