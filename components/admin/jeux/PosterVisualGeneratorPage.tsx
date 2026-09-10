@@ -7,6 +7,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { PosterOverlayEditor } from "@/components/admin/jeux/PosterOverlayEditor";
 import { PosterPreview } from "@/components/admin/jeux/PosterPreview";
 import { buildGamePosterDeepLink } from "@/lib/admin/gamePoster";
+import { resolveGameQrLink } from "@/lib/admin/gameQrClient";
 import {
   composePosterWithOverlay,
   buildPosterFallbackBackground,
@@ -200,14 +201,14 @@ export function PosterVisualGeneratorPage({ gameId }: PosterVisualGeneratorPageP
         }
 
         const game = gameSnapshot.data() as FirestoreGameDocument;
-        const deepLink = buildGamePosterDeepLink({
+        const deepLink = await resolveGameQrLink(gameId, buildGamePosterDeepLink({
           id: gameId,
           merchantId: readText(game.merchantId),
           animationId: readText(game.animation_id, game.campaign_id) || null,
-        });
+        }));
         const qrCodeOptions = {
           width: 720,
-          margin: 0,
+          margin: gameSnapshot.data()?.access_mode === "qr_only" ? 4 : 0,
           color: {
             dark: "#1A1A1A",
             light: "#FFFFFF",

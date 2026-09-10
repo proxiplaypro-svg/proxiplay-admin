@@ -16,6 +16,7 @@ import {
   type Timestamp,
 } from "firebase/firestore";
 import { openGameFacebookPostWindow, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
+import { GameQrSection } from "@/components/admin/jeux/GameQrSection";
 import { db, firebaseApp } from "@/lib/firebase/client-app";
 
 type GameDetailsPageProps = {
@@ -23,6 +24,7 @@ type GameDetailsPageProps = {
 };
 
 type FirestoreGameDetailsDocument = {
+  access_mode?: string;
   name?: string;
   title?: string;
   description?: string;
@@ -65,6 +67,7 @@ type FirestoreParticipantDocument = {
 };
 
 type AdminGameDetails = {
+  qrOnly: boolean;
   id: string;
   name: string;
   merchantId: string | null;
@@ -212,6 +215,7 @@ function buildDetails(
 
   return {
     id: gameId,
+    qrOnly: game.access_mode === "qr_only",
     name: (game.title ?? game.name ?? "").trim() || "Jeu sans titre",
     merchantId: game.enseigne_id?.id ?? game.merchantId ?? null,
     merchantName: (game.merchantName ?? game.enseigne_name ?? "").trim() || "Marchand inconnu",
@@ -462,6 +466,15 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      {game.qrOnly && <GameQrSection game={{
+        id: game.id, title: game.name, merchantName: game.merchantName,
+        merchantId: game.merchantId, animationId: game.animationId,
+        description: game.description, imageUrl: game.imageUrl,
+        startDateLabel: game.startDateLabel, endDateLabel: game.endDateLabel,
+        restrictedToAdults: game.restrictedToAdults, mainPrizeTitle: game.mainPrizeTitle,
+        secondaryPrizeTitle: game.secondaryPrizes[0]?.name,
+        secondaryPrizeSummary: game.secondaryPrizes.map(prize => `${prize.name} (${prize.count})`).join(", "),
+      }} />}
 
       {/* Duplication banner */}
       {isDuplicated && (
@@ -469,7 +482,7 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
           <span className="text-[16px]">✅</span>
           <div>
             <p className="text-[14px] font-medium text-[#3B6D11]">Votre précédent jeu a été dupliqué.</p>
-            <p className="mt-0.5 text-[13px] text-[#5a8b1f]">Il ne vous reste plus qu'à modifier le lot et les dates.</p>
+            <p className="mt-0.5 text-[13px] text-[#5a8b1f]">Il ne vous reste plus qu&apos;à modifier le lot et les dates.</p>
           </div>
         </div>
       )}
@@ -554,13 +567,13 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
           >
             Voir les gagnants
           </Link>
-          <button
+          {!game.qrOnly && <button
             type="button"
             className="rounded-[8px] border border-[#185FA5] bg-white px-3 py-2 text-[12px] font-medium text-[#185FA5] hover:bg-[#F5FAFE]"
             onClick={() => void handlePrintPoster()}
           >
             Imprimer l affiche
-          </button>
+          </button>}
           <Link
             href={`/admin/games/${game.id}/visual-generator`}
             className="rounded-[8px] border border-[#639922] bg-white px-3 py-2 text-[12px] font-medium text-[#639922] hover:bg-[#F4FAEC]"

@@ -22,6 +22,9 @@ import {
 import Link from "next/link";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
+import { GameQrSection } from "@/components/admin/jeux/GameQrSection";
+import type { PrintableGamePosterData } from "@/lib/admin/gamePoster";
+import { issueGameQr, resolveGameQrLink } from "@/lib/admin/gameQrClient";
 import { auth } from "@/lib/firebase/auth";
 import { db } from "@/lib/firebase/client-app";
 
@@ -674,6 +677,7 @@ export default function AdminCampaignsPage() {
   const [prizeActionFeedback] = useState<string | null>(null);
   const [qrCodeUrls, setQrCodeUrls] = useState<Record<string, string>>({});
   const [qrCodesLoading, setQrCodesLoading] = useState(false);
+  const [createdQrGames, setCreatedQrGames] = useState<PrintableGamePosterData[]>([]);
   const [qrCodesError, setQrCodesError] = useState<string | null>(null);
   const [merchantImagePreviewUrls, setMerchantImagePreviewUrls] = useState<Record<string, string>>({});
 
@@ -933,12 +937,12 @@ export default function AdminCampaignsPage() {
       setQrCodesError(null);
 
       try {
-        const entries = await Promise.all(
+        const results = await Promise.allSettled(
           linkedCampaignGames.map(async (game) => [
             game.id,
-            await QRCode.toDataURL(buildGameDeepLinkUrl(game), {
+            await QRCode.toDataURL(await resolveGameQrLink(game.id, buildGameDeepLinkUrl(game)), {
               width: 200,
-              margin: 1,
+              margin: 4,
             }),
           ] as const),
         );
@@ -947,11 +951,15 @@ export default function AdminCampaignsPage() {
           return;
         }
 
+        const entries = results.filter(result => result.status === "fulfilled").map(result => result.value);
         setQrCodeUrls(Object.fromEntries(entries));
+        if (results.some(result => result.status === "rejected")) {
+          setQrCodesError("Certains QR sont indisponibles. Ouvrez la fiche des jeux concernés pour vérifier leur accès sécurisé et préparer la réimpression.");
+        }
       } catch (error) {
         console.error(error);
         if (!cancelled) {
-          setQrCodesError("Impossible de generer les QR codes.");
+          setQrCodesError("Certains QR sont indisponibles. Ouvrez la fiche du jeu pour vérifier son accès sécurisé et, si nécessaire, générer un QR pour réimpression.");
           setQrCodeUrls({});
         }
       } finally {
@@ -1060,7 +1068,7 @@ export default function AdminCampaignsPage() {
       pdf.addImage(qrCodeUrls[game.id], "PNG", qrX, 150, qrSize, qrSize);
 
       pdf.setFontSize(11);
-      pdf.text(buildGameDeepLinkUrl(game), pageWidth / 2, 382, { align: "center" });
+      pdf.text(`Jeu : ${game.id}`, pageWidth / 2, 382, { align: "center" });
     });
 
     pdf.save(`proxiplay-${sanitizeFileName(selectedCampaign.name)}-qr-codes.pdf`);
@@ -1330,7 +1338,7 @@ export default function AdminCampaignsPage() {
       const gameStatus = buildAnimationGameStatus(formState.status);
       const isPublicGame = formState.status === "active";
 
-      const syncedGames = await Promise.all(
+      const syncResults = await Promise.allSettled(
         participantMerchants.map(async (merchant) => {
           const parsedPrizeCount = Number.parseInt(merchant.prizeCount || "0", 10);
           const prizeCount = Number.isNaN(parsedPrizeCount)
@@ -1433,6 +1441,16 @@ export default function AdminCampaignsPage() {
             ...gamePayload,
             created_at: serverTimestamp(),
           });
+          setCreatedQrGames(current => [...current, {
+            id: gameRef.id, title: gameName, merchantName: merchant.merchantName,
+            merchantId: merchant.merchantId, animationId: campaignId,
+            description: formState.description.trim(), imageUrl: photoUrl || null,
+            startDateLabel: gameStartDate.toDate().toISOString(), endDateLabel: gameEndDate.toDate().toISOString(),
+            secondaryPrizeTitle: merchant.secondaryPrize.trim(),
+          }]);
+          // Creation is already persisted: an issuance failure must not invite a duplicate creation.
+          // The dedicated confirmation reads the result and offers a retry on this same game.
+          try { await issueGameQr(gameRef.id); } catch { /* Handled by GameQrSection. */ }
 
           if (prizeCount > 0) {
             try {
@@ -1469,6 +1487,7 @@ export default function AdminCampaignsPage() {
         }),
       );
 
+      const syncedGames = syncResults.filter(result => result.status === "fulfilled").map(result => result.value);
       setGames((current) => {
         const nextGames = current.filter(
           (game) =>
@@ -1481,6 +1500,10 @@ export default function AdminCampaignsPage() {
       });
 
       setSelectedCampaignId(campaignId);
+      setFormState(current => ({ ...current, id: campaignId }));
+      if (syncResults.some(result => result.status === "rejected")) {
+        throw new Error("Un ou plusieurs jeux n’ont pas pu être enregistrés. Les jeux déjà créés sont conservés.");
+      }
       setFormFeedback("Animation enregistree avec succes.");
       setFormFeedbackTone("success");
     } catch (error) {
@@ -1545,6 +1568,18 @@ export default function AdminCampaignsPage() {
       setDeleteActionLoadingId(null);
     }
   };
+
+  if (createdQrGames.length > 0 && !saving) {
+    return <div className="mx-auto flex max-w-5xl flex-col gap-5">
+      <h1 className="text-2xl font-semibold">Vos jeux QR boutique</h1>
+      {formFeedbackTone === "error" && <p role="alert">Certains jeux ont été créés, mais l’enregistrement complet a échoué : {formFeedback}</p>}
+      {createdQrGames.map(game => <GameQrSection key={game.id} game={game} created />)}
+      <div className="flex gap-4">
+        <Link href="/admin/games" className="rounded-lg border px-4 py-3">Terminer / Retour aux jeux</Link>
+        <button type="button" onClick={() => setCreatedQrGames([])} className="underline">Retour à l’animation</button>
+      </div>
+    </div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -2390,7 +2425,8 @@ export default function AdminCampaignsPage() {
                   <div className="mt-4 rounded-[10px] border border-[#F5C9C9] bg-[#FFF5F5] px-4 py-3 text-[12px] text-[#A32D2D]">
                     {qrCodesError}
                   </div>
-                ) : qrCodesLoading ? (
+                ) : null}
+                {qrCodesLoading ? (
                   <div className="mt-4 text-[12.5px] text-[#999999]">
                     Generation des QR codes...
                   </div>
@@ -2444,6 +2480,7 @@ export default function AdminCampaignsPage() {
                           >
                             Affiche
                           </Link>
+                          {!qrCodeUrls[game.id] && <Link href={`/admin/games/${game.id}`} className={buttonSecondaryClassName}>Vérifier le QR</Link>}
                         </div>
                       </div>
                     ))}

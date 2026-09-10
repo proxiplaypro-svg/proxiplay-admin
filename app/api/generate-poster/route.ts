@@ -2,6 +2,9 @@ import { jsPDF } from "jspdf";
 import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { getAdminDb } from "@/lib/firebase/admin-app";
+import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
+import { readSecureGameQr } from "@/lib/admin/secureGameQrServer";
+import { QR_REGENERATION_MESSAGE } from "@/lib/admin/secureGameQr";
 
 type GeneratePosterRequestBody = {
   gameId?: string;
@@ -20,6 +23,7 @@ type SecondaryPrizeLike =
   | string;
 
 type FirestoreGameDocument = {
+  access_mode?: string;
   title?: string;
   name?: string;
   description?: string;
@@ -485,7 +489,13 @@ export async function POST(request: Request) {
     console.log("1. Firestore fetch OK");
 
     const merchantId = readText(game.merchantId) || null;
-    const qrCodeUrl = readText(game.qrCodeUrl);
+    let qrCodeUrl = readText(game.qrCodeUrl);
+    if (game.access_mode === "qr_only") {
+      await assertIsAdminRequest(request);
+      const qr = await readSecureGameQr(gameId);
+      if (qr.state !== "ready" || !qr.url) return NextResponse.json({ error: QR_REGENERATION_MESSAGE }, { status: 409 });
+      qrCodeUrl = qr.url;
+    }
     console.log("1a. Route payload", {
       gameId,
       merchantId,
@@ -512,10 +522,10 @@ export async function POST(request: Request) {
 
     const qrCodeOptions = {
       width: 220,
-      margin: 1,
+      margin: game.access_mode === "qr_only" ? 4 : 1,
       color: {
-        dark: "#FFFFFF",
-        light: "#2D2A6E",
+        dark: game.access_mode === "qr_only" ? "#000000" : "#FFFFFF",
+        light: game.access_mode === "qr_only" ? "#FFFFFF" : "#2D2A6E",
       },
     } as unknown as Parameters<typeof QRCode.toDataURL>[1];
     let qrCodeDataUrl = "";
@@ -523,7 +533,6 @@ export async function POST(request: Request) {
     try {
       console.log("2a. Generating QR", {
         qrCodeUrlLength: qrCodeUrl.length,
-        qrCodeUrlPreview: qrCodeUrl.slice(0, 120),
       });
       qrCodeDataUrl = await QRCode.toDataURL(qrCodeUrl, qrCodeOptions);
       console.log("2. QR generated", { qrCodeDataUrlLength: qrCodeDataUrl.length });
@@ -599,10 +608,13 @@ export async function POST(request: Request) {
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         "Content-Type": "application/pdf",
+        "Cache-Control": "private, no-store",
         "Content-Disposition": `attachment; filename="affiche-${gameId}.pdf"`,
       },
     });
   } catch (error) {
+    const authError = handleAdminAuthError(error);
+    if (authError) return authError;
     console.error("[GENERATE_POSTER_ERROR]", error);
     return NextResponse.json(
       { error: "Impossible de generer l affiche PDF pour le moment." },

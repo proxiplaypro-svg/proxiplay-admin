@@ -1,5 +1,9 @@
 "use client";
 
+import { resolveGameQrLink } from "./gameQrClient";
+import { auth } from "@/lib/firebase/auth";
+import QRCode from "qrcode";
+
 export type PrintableGamePosterData = {
   id: string;
   title: string;
@@ -81,7 +85,7 @@ export async function downloadGamePosterPdf(gameId: string) {
 
   const response = await fetch("/api/generate-poster", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(auth.currentUser ? { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } : {}) },
     body: JSON.stringify({ gameId: normalizedGameId }),
   });
 
@@ -351,7 +355,17 @@ export async function openGamePosterPrintWindow(
     throw new Error("Impossible d'ouvrir la fenetre d'impression.");
   }
 
-  const deepLink = buildGamePosterDeepLink(game);
+  let deepLink: string;
+  let secureQrImage = "";
+  try {
+    deepLink = await resolveGameQrLink(game.id, buildGamePosterDeepLink(game));
+    if (new URL(deepLink).searchParams.has("qr_token")) {
+      secureQrImage = await QRCode.toDataURL(deepLink, { width: 1024, margin: 4, errorCorrectionLevel: "M" });
+    }
+  } catch (error) {
+    printWindow.close();
+    throw error;
+  }
   const safeTitle = escapeHtml(game.title.trim() || "Jeu ProxiPlay");
   const safeMerchantName = escapeHtml(merchant.trim() || game.merchantName.trim() || "Commercant");
   const safeDescription = escapeHtml(game.description.trim());
@@ -666,7 +680,7 @@ export async function openGamePosterPrintWindow(
         </div>
         <aside class="header-right">
           <p class="qr-title">Tentez votre chance</p>
-          <div id="qr-container" aria-label="QR code vers le jeu"></div>
+          <div id="qr-container" aria-label="QR code vers le jeu">${secureQrImage ? `<img src="${secureQrImage}" alt="QR code boutique" />` : ""}</div>
           <div class="deadline-badge">Fin le ${safeEndDate}</div>
         </aside>
       </header>
@@ -718,12 +732,12 @@ export async function openGamePosterPrintWindow(
         </div>
       </section>
     </main>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    ${secureQrImage ? "" : '<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>'}
     <script>
       window.onload = () => {
         document.title = "affiche-${safeFileName}";
         const container = document.getElementById("qr-container");
-        if (container && typeof QRCode !== "undefined") {
+        if (container && !container.children.length && typeof QRCode !== "undefined") {
           new QRCode(container, {
             text: ${JSON.stringify(deepLink)},
             width: 120,
