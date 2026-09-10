@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:admin-api": "firebase emulators:exec --only firestore,auth \"tsx --test referral-games-api.test.ts\""
+    "test:admin-api": "firebase emulators:exec --only firestore,auth \"tsx --test referral-games-api.test.ts\"",
+    "test:admin-qr": "firebase emulators:exec --project demo-admin-qr --only firestore,auth \"tsx --test secure-game-qr.test.ts\""
   },
   "dependencies": {
     "@sparticuz/chromium-min": "^147.0.0",
