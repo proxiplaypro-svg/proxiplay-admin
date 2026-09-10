@@ -84,34 +84,32 @@ export async function DELETE(
     const { id } = await params;
     const db = getAdminDb();
 
-    const [gameSnap, entriesSnap, prizesSnap] = await Promise.all([
-      db.collection("referral_games").doc(id).get(),
-      db.collection("referral_games").doc(id).collection("entries").get(),
-      db.collection("prizes").where("referral_game_id", "==", id).get(),
-    ]);
-    if (!gameSnap.exists) return NextResponse.json({ error: "Jeu introuvable." }, { status: 404 });
-    const game = gameSnap.data() ?? {};
-    const hasDrawResult = Boolean(
-      game.winner_uid || game.winner_ref || game.prize_ref || game.drawn_at || game.draw_status,
-    );
-    if (hasDrawResult || !entriesSnap.empty || !prizesSnap.empty) {
+    const gameRef = db.collection("referral_games").doc(id);
+    // Keep the guard and deletion atomic: activation during this transaction
+    // changes the game document and forces a retry against its current status.
+    const outcome = await db.runTransaction(async (transaction) => {
+      const [gameSnap, entriesSnap, prizesSnap] = await Promise.all([
+        transaction.get(gameRef),
+        transaction.get(gameRef.collection("entries").limit(1)),
+        transaction.get(db.collection("prizes").where("referral_game_id", "==", id).limit(1)),
+      ]);
+      if (!gameSnap.exists) return "missing";
+      const game = gameSnap.data() ?? {};
+      const hasDrawResult = Boolean(
+        game.winner_uid || game.winner_ref || game.prize_ref || game.drawn_at || game.draw_status,
+      );
+      if (game.status !== "draft" || hasDrawResult || !entriesSnap.empty || !prizesSnap.empty) {
+        return "blocked";
+      }
+      transaction.delete(gameRef);
+      return "deleted";
+    });
+    if (outcome === "missing") return NextResponse.json({ error: "Jeu introuvable." }, { status: 404 });
+    if (outcome === "blocked") {
       return NextResponse.json(
-        { error: "Seul un jeu sans participant ni gain peut etre supprime." },
+        { error: "Seul un brouillon sans participant ni gain peut etre supprime." },
         { status: 409 },
       );
-    }
-
-    const CHUNK = 490;
-    const allRefs = [
-      ...entriesSnap.docs.map((d) => d.ref),
-      ...prizesSnap.docs.map((d) => d.ref),
-      db.collection("referral_games").doc(id),
-    ];
-
-    for (let i = 0; i < allRefs.length; i += CHUNK) {
-      const batch = db.batch();
-      allRefs.slice(i, i + CHUNK).forEach((ref) => batch.delete(ref));
-      await batch.commit();
     }
 
     return NextResponse.json({ ok: true });

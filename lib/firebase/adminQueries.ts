@@ -95,6 +95,7 @@ type FirestoreParticipantDocument = {
 };
 
 type FirestorePrizeDocument = {
+  fulfillment_type?: string;
   winner_id?: DocumentReference | null;
   game_id?: DocumentReference | null;
   created_at?: Timestamp;
@@ -164,6 +165,7 @@ export type AdminGameListItem = {
 };
 
 export type AdminWinnerListItem = {
+  fulfillmentType: string | null;
   id: string;
   winnerId: string | null;
   winnerLabel: string;
@@ -1663,6 +1665,7 @@ export async function getWinnersList(): Promise<AdminWinnerListItem[]> {
 
     return {
       id: prizeDoc.id,
+      fulfillmentType: prize.fulfillment_type ?? null,
       winnerId,
       winnerLabel: getWinnerLabel(winnerId, winner),
       winnerEmail: readDisplayText(winner?.email, "Non renseigne"),

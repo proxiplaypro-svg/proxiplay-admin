@@ -671,10 +671,7 @@ export default function AdminCampaignsPage() {
   });
   const [prizeStatusFilter, setPrizeStatusFilter] =
     useState<CampaignPrizeStatusFilter>("tous");
-  const [prizeActionLoadingIds, setPrizeActionLoadingIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const [prizeActionFeedback, setPrizeActionFeedback] = useState<string | null>(null);
+  const [prizeActionFeedback] = useState<string | null>(null);
   const [qrCodeUrls, setQrCodeUrls] = useState<Record<string, string>>({});
   const [qrCodesLoading, setQrCodesLoading] = useState(false);
   const [qrCodesError, setQrCodesError] = useState<string | null>(null);
@@ -1069,58 +1066,8 @@ export default function AdminCampaignsPage() {
     pdf.save(`proxiplay-${sanitizeFileName(selectedCampaign.name)}-qr-codes.pdf`);
   };
 
-  const updatePrizeStatus = async (
-    prize: CampaignPrizeRow,
-    nextStatus: "claimed" | "expired",
-  ) => {
-    const confirmationMessage =
-      nextStatus === "claimed"
-        ? `Confirmer la remise du lot a ${prize.playerLabel} ?`
-        : `Confirmer le passage du lot de ${prize.playerLabel} en expire ?`;
-
-    if (!window.confirm(confirmationMessage)) {
-      return;
-    }
-
-    setPrizeActionFeedback(null);
-    setPrizeActionLoadingIds((current) => new Set(current).add(prize.id));
-
-    const previousPrizes = detailState.prizes;
-
-    setDetailState((current) => ({
-      ...current,
-      prizes: current.prizes.map((entry) =>
-        entry.id === prize.id ? { ...entry, status: nextStatus } : entry,
-      ),
-    }));
-
-    try {
-      await updateDoc(doc(db, "prizes", prize.id), {
-        status: nextStatus === "claimed" ? "reclame" : "expire",
-        ...(nextStatus === "claimed" ? { claimed_at: serverTimestamp() } : {}),
-      });
-
-      setPrizeActionFeedback(
-        nextStatus === "claimed"
-          ? `Lot marque comme reclame pour ${prize.playerLabel}.`
-          : `Lot marque comme expire pour ${prize.playerLabel}.`,
-      );
-    } catch (error) {
-      console.error(error);
-      setDetailState((current) => ({
-        ...current,
-        prizes: previousPrizes,
-      }));
-      setPrizeActionFeedback(
-        toErrorMessage(error, "Impossible de mettre a jour le statut du lot."),
-      );
-    } finally {
-      setPrizeActionLoadingIds((current) => {
-        const next = new Set(current);
-        next.delete(prize.id);
-        return next;
-      });
-    }
+  const openPrizeWithdrawal = () => {
+    window.location.assign("/admin/winners");
   };
 
   const coverPreviewUrl = useMemo(
@@ -2402,20 +2349,9 @@ export default function AdminCampaignsPage() {
                                   <button
                                     type="button"
                                     className="rounded-[8px] border border-[#639922] bg-[#639922] px-3 py-[8px] text-[11px] font-medium text-white transition hover:bg-[#57881D] disabled:cursor-not-allowed disabled:opacity-50"
-                                    disabled={prizeActionLoadingIds.has(prize.id)}
-                                    onClick={() => void updatePrizeStatus(prize, "claimed")}
+                                    onClick={() => void openPrizeWithdrawal()}
                                   >
-                                    {prizeActionLoadingIds.has(prize.id)
-                                      ? "Mise a jour..."
-                                      : "Valider reclamation"}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="rounded-[8px] border border-[#D8D7D1] bg-white px-3 py-[8px] text-[11px] font-medium text-[#666666] transition hover:bg-[#F7F7F5] disabled:cursor-not-allowed disabled:opacity-50"
-                                    disabled={prizeActionLoadingIds.has(prize.id)}
-                                    onClick={() => void updatePrizeStatus(prize, "expired")}
-                                  >
-                                    Marquer expire
+                                    Ouvrir le retrait dans Gagnants
                                   </button>
                                 </div>
                               ) : (

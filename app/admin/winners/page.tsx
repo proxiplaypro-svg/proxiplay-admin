@@ -26,12 +26,7 @@ function formatCount(value: number) {
   return new Intl.NumberFormat("fr-FR").format(value);
 }
 
-function formatShortDate(date: Date) {
-  return new Intl.DateTimeFormat("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-  }).format(date);
-}
+
 
 function formatDateDay(value: number) {
   if (!value) {
@@ -289,48 +284,34 @@ export default function AdminWinnersPage() {
   };
 
   const markAsRetired = async (winnerIds: string[]) => {
-    if (winnerIds.length === 0) {
+    if (winnerIds.length !== 1) {
+      setActionFeedback("Validez un seul lot a la fois avec le code presente par son beneficiaire.");
       return;
     }
-
-    const previousWinners = winners;
-    const now = new Date();
-    const retiredAtLabel = formatShortDate(now);
-
+    const winner = winners.find(row => row.id === winnerIds[0]);
+    if (!winner?.winnerId || !isPendingPrize(winner)) {
+      setActionFeedback("Lot deja utilise ou beneficiaire introuvable.");
+      return;
+    }
+    if (!['platform', 'partner'].includes(winner.fulfillmentType ?? '')) {
+      setActionFeedback("Ce lot releve du retrait commercant ou necessite une revue de son mode de remise.");
+      return;
+    }
+    const code = window.prompt("Code presente par " + winner.winnerLabel + " pour " + winner.prizeLabel + " :");
+    if (!code?.trim()) return;
     setActionFeedback(null);
-    setMarkingIds((current) => new Set([...current, ...winnerIds]));
-    setWinners((current) =>
-      current.map((winner) =>
-        winnerIds.includes(winner.id)
-          ? {
-              ...winner,
-              statusKey: "retire",
-              statusLabel: "Retire",
-              retiredAtLabel,
-            }
-          : winner,
-      ),
-    );
-
+    setMarkingIds(current => new Set(current).add(winner.id));
     try {
-      const result = await markPrizesAsRetiredAction({ prizeIds: winnerIds });
-
-      setSelection((current) => {
-        const next = new Set(current);
-        winnerIds.forEach((id) => next.delete(id));
-        return next;
-      });
-      setActionFeedback(`${result.updatedCount} lot(s) marque(s) comme retires dans Firestore.`);
-    } catch (markError) {
-      console.error(markError);
-      setWinners(previousWinners);
-      setActionFeedback(getMarkPrizesAsRetiredErrorMessage(markError));
+      await markPrizesAsRetiredAction({prizeId: winner.id, winnerId: winner.winnerId,
+        code: code.trim(), requestId: crypto.randomUUID()});
+      setActionFeedback("Retrait confirme par le serveur.");
+      setSelection(current => { const next = new Set(current); next.delete(winner.id); return next; });
+    } catch (error) {
+      setActionFeedback(getMarkPrizesAsRetiredErrorMessage(error));
     } finally {
-      setMarkingIds((current) => {
-        const next = new Set(current);
-        winnerIds.forEach((id) => next.delete(id));
-        return next;
-      });
+      // Never show an optimistic claim. Refresh even after a lost response.
+      try { setWinners(await getWinnersList()); } catch { setActionFeedback("Actualisation impossible. Rechargez la liste avant toute nouvelle action."); }
+      setMarkingIds(current => { const next = new Set(current); next.delete(winner.id); return next; });
     }
   };
 
@@ -404,11 +385,11 @@ export default function AdminWinnersPage() {
           </button>
           <button
             type="button"
-            disabled={selectedVisibleIds.length === 0}
+            disabled={selectedVisibleIds.length !== 1}
             onClick={() => void markAsRetired(selectedVisibleIds)}
             className="rounded-[10px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#57881D]"
           >
-            Marquer selection retiree
+            Valider un lot par code
           </button>
         </div>
       </div>
@@ -558,7 +539,7 @@ export default function AdminWinnersPage() {
                 onClick={() => void markAsRetired(selectedVisibleIds)}
                             className="rounded-[8px] bg-[#EAF3DE] px-3 py-[9px] text-[12px] font-medium text-[#3B6D11] transition hover:bg-[#DDEAC7]"
               >
-                Marquer retires
+                Valider par code
               </button>
               <button
                 type="button"
@@ -650,7 +631,7 @@ export default function AdminWinnersPage() {
                             onClick={() => void markAsRetired([winner.id])}
                             className="rounded-[6px] bg-[#EAF3DE] px-2 py-[6px] text-[11px] font-medium text-[#3B6D11] transition hover:bg-[#DDEAC7] disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {markingIds.has(winner.id) ? "Mise a jour..." : "Marquer retire"}
+                            {markingIds.has(winner.id) ? "Mise a jour..." : "Valider par code"}
                           </button>
                         ) : winner.retiredAtLabel ? (
                           <p className="text-[11px] text-[#999999]">Retire le {winner.retiredAtLabel}</p>

@@ -85,8 +85,10 @@ test("suppression admin autorisee uniquement pour un draft vide", async () => {
 
 test("suppression admin refuse jeu actif, tire ou draft avec participant", async () => {
   await seedGame(gameA, { status: "active" });
+  const before = (await db.collection("referral_games").doc(gameA).get()).data();
   let response = await DELETE(request(`http://localhost/api/admin/referral-games/${gameA}`, "DELETE"), context(gameA));
   assert.equal(response.status, 409);
+  assert.deepEqual((await db.collection("referral_games").doc(gameA).get()).data(), before);
   await db.collection("referral_games").doc(gameA).set({ status: "draft", winner_uid: "winner" }, { merge: true });
   response = await DELETE(request(`http://localhost/api/admin/referral-games/${gameA}`, "DELETE"), context(gameA));
   assert.equal(response.status, 409);
@@ -102,4 +104,23 @@ test("suppression admin refuse jeu actif, tire ou draft avec participant", async
   assert.equal(response.status, 409);
   assert.equal((await db.collection("referral_games").doc(gameA).get()).exists, true);
   assert.equal((await db.collection("referral_games").doc(gameA).collection("entries").doc("referral-1").get()).exists, true);
+});
+
+
+test("suppression refuse un statut termine ou historique ambigu sans modifier le jeu", async () => {
+  for (const status of ["ended", null, "unknown"]) {
+    await seedGame(gameA, { status });
+    const before = (await db.collection("referral_games").doc(gameA).get()).data();
+    const response = await DELETE(request("http://localhost/api/admin/referral-games/" + gameA, "DELETE"), context(gameA));
+    assert.equal(response.status, 409);
+    assert.deepEqual((await db.collection("referral_games").doc(gameA).get()).data(), before);
+  }
+});
+
+test("supprimer deux fois un brouillon vide renvoie 200 puis 404", async () => {
+  await seedGame(gameA);
+  const first = await DELETE(request("http://localhost/api/admin/referral-games/" + gameA, "DELETE"), context(gameA));
+  const second = await DELETE(request("http://localhost/api/admin/referral-games/" + gameA, "DELETE"), context(gameA));
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 404);
 });

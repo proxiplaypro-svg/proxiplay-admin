@@ -1,5 +1,6 @@
 "use client";
 
+import { claimOperatorPrizeAction, type OperatorClaimInput } from "./operatorPrizeClaim";
 import { FirebaseError } from "firebase/app";
 import {
   addDoc,
@@ -10,7 +11,6 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { auth } from "./auth";
 import { db } from "./client-app";
 import { functionsClient } from "./functions";
 import type { AdminFollowUpChannel, AdminFollowUpStatus } from "./adminQueries";
@@ -121,9 +121,7 @@ export type SendBulkReminderResult = {
   remindedMerchantIds: string[];
 };
 
-export type MarkPrizesAsRetiredPayload = {
-  prizeIds: string[];
-};
+export type MarkPrizesAsRetiredPayload = OperatorClaimInput;
 
 export type MarkPrizesAsRetiredResult = {
   updatedCount: number;
@@ -398,34 +396,9 @@ export async function markPlayersAsContactedAction(payload: MarkPlayersAsContact
   );
 }
 
-export async function markPrizesAsRetiredAction(
-  payload: MarkPrizesAsRetiredPayload,
-): Promise<MarkPrizesAsRetiredResult> {
-  const currentUser = auth.currentUser;
-
-  if (!currentUser) {
-    throw new Error("Connexion admin requise pour marquer ce lot comme retire.");
-  }
-
-  const idToken = await currentUser.getIdToken(true);
-  const response = await fetch("/api/admin/winners/retire", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${idToken}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const result = (await response.json()) as { error?: string; updatedCount?: number };
-
-  if (!response.ok) {
-    throw new Error(result.error || "Impossible de marquer ce ou ces lots comme retires.");
-  }
-
-  return {
-    updatedCount: result.updatedCount ?? 0,
-  };
+export async function markPrizesAsRetiredAction(payload: MarkPrizesAsRetiredPayload): Promise<MarkPrizesAsRetiredResult> {
+  await claimOperatorPrizeAction(payload);
+  return {updatedCount: 1};
 }
 
 export async function sendBulkReminder(): Promise<SendBulkReminderResult> {
