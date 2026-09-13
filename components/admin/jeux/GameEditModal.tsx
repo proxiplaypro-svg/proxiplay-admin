@@ -1,12 +1,12 @@
 "use client";
 
 import { FirebaseError } from "firebase/app";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField, doc, getDoc, Timestamp, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
 import { openGameFacebookPostWindowWithMerchant, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
-import { db, firebaseApp } from "@/lib/firebase/client-app";
+import { db } from "@/lib/firebase/client-app";
+import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
 import type {
   AnimationOption,
   Game,
@@ -76,18 +76,6 @@ type SecondaryPrizeFormItem = GameSecondaryPrize & {
   imageFile: File | null;
 };
 
-type BackfillInstantWinnersPayload = {
-  gameId: string;
-};
-
-type BackfillInstantWinnersResult = {
-  ok?: boolean;
-  status?: string;
-  createdCount?: number;
-  desiredCount?: number;
-  existingCount?: number;
-};
-
 type BackfillFeedback = {
   tone: "success" | "info" | "error";
   message: string;
@@ -99,11 +87,6 @@ const inputClassName =
   "w-full rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-[10px] text-[13px] text-[#1A1A1A] outline-none placeholder:text-[#999999] disabled:bg-[#F0F0EC] disabled:text-[#999999]";
 const sectionClassName =
   "rounded-[10px] border border-[#E8E8E4] bg-white p-4";
-const instantWinnersFunctions = getFunctions(firebaseApp, "us-central1");
-const generateInstantWinnersCallable = httpsCallable<
-  BackfillInstantWinnersPayload,
-  BackfillInstantWinnersResult
->(instantWinnersFunctions, "generateInstantWinnersForGame");
 
 function toInputDate(value: string | null) {
   if (!value) return "";
@@ -411,9 +394,9 @@ export function GameEditModal({
     setBackfillFeedback(null);
 
     try {
-      const result = await generateInstantWinnersCallable({ gameId: game.id });
-      const createdCount = typeof result.data?.createdCount === "number" ? result.data.createdCount : 0;
-      const existingCount = typeof result.data?.existingCount === "number" ? result.data.existingCount : 0;
+      const result = await generateInstantWinnersForGame(game.id);
+      const createdCount = typeof result?.createdCount === "number" ? result.createdCount : 0;
+      const existingCount = typeof result?.existingCount === "number" ? result.existingCount : 0;
 
       if (createdCount > 0) {
         setBackfillFeedback({

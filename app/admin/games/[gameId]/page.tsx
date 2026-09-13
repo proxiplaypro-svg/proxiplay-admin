@@ -1,7 +1,6 @@
 "use client";
 
 import { FirebaseError } from "firebase/app";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -17,7 +16,8 @@ import {
 } from "firebase/firestore";
 import { openGameFacebookPostWindow, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { GameQrSection } from "@/components/admin/jeux/GameQrSection";
-import { db, firebaseApp } from "@/lib/firebase/client-app";
+import { db } from "@/lib/firebase/client-app";
+import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
 
 type GameDetailsPageProps = {
   params: Promise<{ gameId: string }>;
@@ -94,28 +94,10 @@ type AdminGameDetails = {
   restrictedToAdults: boolean;
 };
 
-type BackfillInstantWinnersPayload = {
-  gameId: string;
-};
-
-type BackfillInstantWinnersResult = {
-  ok?: boolean;
-  status?: string;
-  createdCount?: number;
-  desiredCount?: number;
-  existingCount?: number;
-};
-
 type BackfillFeedback = {
   tone: "success" | "info" | "error";
   message: string;
 };
-
-const instantWinnersFunctions = getFunctions(firebaseApp, "us-central1");
-const generateInstantWinnersCallable = httpsCallable<
-  BackfillInstantWinnersPayload,
-  BackfillInstantWinnersResult
->(instantWinnersFunctions, "generateInstantWinnersForGame");
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("fr-FR", {
@@ -414,9 +396,9 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
     setBackfillFeedback(null);
 
     try {
-      const result = await generateInstantWinnersCallable({ gameId: game.id });
-      const createdCount = typeof result.data?.createdCount === "number" ? result.data.createdCount : 0;
-      const existingCount = typeof result.data?.existingCount === "number" ? result.data.existingCount : 0;
+      const result = await generateInstantWinnersForGame(game.id);
+      const createdCount = typeof result?.createdCount === "number" ? result.createdCount : 0;
+      const existingCount = typeof result?.existingCount === "number" ? result.existingCount : 0;
 
       if (createdCount > 0) {
         setBackfillFeedback({
