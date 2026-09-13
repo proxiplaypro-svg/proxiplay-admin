@@ -93,33 +93,26 @@ type AdminGameDetails = {
 
 type BackfillInstantWinnersPayload = {
   gameId: string;
-  dryRun: boolean;
 };
 
 type BackfillInstantWinnersResult = {
-  success?: boolean;
-  created?: number;
-  existingInstantWinners?: number;
-  error?: string | null;
+  ok?: boolean;
+  status?: string;
+  createdCount?: number;
+  desiredCount?: number;
+  existingCount?: number;
 };
 
-type BackfillFeedback =
-  | {
-      tone: "success" | "info";
-      message: string;
-      canConfirm: boolean;
-    }
-  | {
-      tone: "error";
-      message: string;
-      canConfirm: false;
-    };
+type BackfillFeedback = {
+  tone: "success" | "info" | "error";
+  message: string;
+};
 
-const functionsClient = getFunctions(firebaseApp, "europe-west1");
-const backfillInstantWinnersCallable = httpsCallable<
+const instantWinnersFunctions = getFunctions(firebaseApp, "us-central1");
+const generateInstantWinnersCallable = httpsCallable<
   BackfillInstantWinnersPayload,
   BackfillInstantWinnersResult
->(functionsClient, "backfillInstantWinnersForGame");
+>(instantWinnersFunctions, "generateInstantWinnersForGame");
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("fr-FR", {
@@ -264,7 +257,7 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [backfillLoading, setBackfillLoading] = useState<"dryRun" | "confirm" | null>(null);
+  const [backfillLoading, setBackfillLoading] = useState(false);
   const [backfillFeedback, setBackfillFeedback] = useState<BackfillFeedback | null>(null);
 
   useEffect(() => {
@@ -412,51 +405,37 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
     });
   };
 
-  const runBackfillInstantWinners = async (dryRun: boolean) => {
-    setBackfillLoading(dryRun ? "dryRun" : "confirm");
+  const runGenerateInstantWinners = async () => {
+    setBackfillLoading(true);
     setBackfillFeedback(null);
 
     try {
-      const result = await backfillInstantWinnersCallable({
-        gameId: game.id,
-        dryRun,
-      });
-      const created = typeof result.data?.created === "number" ? result.data.created : 0;
-      const existingInstantWinners = typeof result.data?.existingInstantWinners === "number"
-        ? result.data.existingInstantWinners
-        : 0;
+      const result = await generateInstantWinnersCallable({ gameId: game.id });
+      const createdCount = typeof result.data?.createdCount === "number" ? result.data.createdCount : 0;
+      const existingCount = typeof result.data?.existingCount === "number" ? result.data.existingCount : 0;
 
-      if (existingInstantWinners > 0) {
+      if (createdCount > 0) {
         setBackfillFeedback({
-          tone: "info",
-          message: `${formatCount(existingInstantWinners)} instant winners deja presents, rien a faire`,
-          canConfirm: false,
-        });
-        return;
-      }
-
-      if (dryRun) {
-        setBackfillFeedback({
-          tone: "info",
-          message: `${formatCount(created)} instant winners seraient crees`,
-          canConfirm: created > 0,
+          tone: "success",
+          message: `${formatCount(createdCount)} instant winners crees`,
         });
         return;
       }
 
       setBackfillFeedback({
-        tone: "success",
-        message: `${formatCount(created)} instant winners crees`,
-        canConfirm: false,
+        tone: "info",
+        message:
+          existingCount > 0
+            ? `${formatCount(existingCount)} instant winners deja presents, rien a faire`
+            : "Aucun instant winner a creer pour ce jeu",
       });
     } catch (backfillError) {
       setBackfillFeedback({
         tone: "error",
         message: getBackfillErrorMessage(backfillError),
-        canConfirm: false,
       });
     } finally {
-      setBackfillLoading(null);
+      setBackfillLoading(false);
     }
   };
 
@@ -641,21 +620,11 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
                 <button
                   type="button"
                   className="rounded-[8px] border border-[#185FA5] bg-white px-3 py-2 text-[12px] font-medium text-[#185FA5] hover:bg-[#F5FAFE] disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => void runBackfillInstantWinners(true)}
-                  disabled={backfillLoading !== null}
+                  onClick={() => void runGenerateInstantWinners()}
+                  disabled={backfillLoading}
                 >
-                  {backfillLoading === "dryRun" ? "Analyse..." : "Backfill instant winners"}
+                  {backfillLoading ? "Creation..." : "Backfill instant winners"}
                 </button>
-                {backfillFeedback?.canConfirm ? (
-                  <button
-                    type="button"
-                    className="rounded-[8px] border border-[#639922] bg-[#639922] px-3 py-2 text-[12px] font-medium text-white hover:bg-[#57881d] disabled:cursor-not-allowed disabled:opacity-60"
-                    onClick={() => void runBackfillInstantWinners(false)}
-                    disabled={backfillLoading !== null}
-                  >
-                    {backfillLoading === "confirm" ? "Creation..." : "Confirmer"}
-                  </button>
-                ) : null}
               </div>
               {backfillFeedback ? (
                 <div

@@ -1,11 +1,11 @@
 "use client";
 
 import { FirebaseError } from "firebase/app";
-import { httpsCallable } from "firebase/functions";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
 import { openGameFacebookPostWindowWithMerchant, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
-import { functionsClient } from "@/lib/firebase/functions";
+import { firebaseApp } from "@/lib/firebase/client-app";
 import type {
   AnimationOption,
   Game,
@@ -77,27 +77,20 @@ type SecondaryPrizeFormItem = GameSecondaryPrize & {
 
 type BackfillInstantWinnersPayload = {
   gameId: string;
-  dryRun: boolean;
 };
 
 type BackfillInstantWinnersResult = {
-  success?: boolean;
-  created?: number;
-  existingInstantWinners?: number;
-  error?: string | null;
+  ok?: boolean;
+  status?: string;
+  createdCount?: number;
+  desiredCount?: number;
+  existingCount?: number;
 };
 
-type BackfillFeedback =
-  | {
-      tone: "success" | "info";
-      message: string;
-      canConfirm: boolean;
-    }
-  | {
-      tone: "error";
-      message: string;
-      canConfirm: false;
-    };
+type BackfillFeedback = {
+  tone: "success" | "info" | "error";
+  message: string;
+};
 
 const VALID_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 2 * 1024 * 1024;
@@ -105,10 +98,11 @@ const inputClassName =
   "w-full rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-[10px] text-[13px] text-[#1A1A1A] outline-none placeholder:text-[#999999] disabled:bg-[#F0F0EC] disabled:text-[#999999]";
 const sectionClassName =
   "rounded-[10px] border border-[#E8E8E4] bg-white p-4";
-const backfillInstantWinnersCallable = httpsCallable<
+const instantWinnersFunctions = getFunctions(firebaseApp, "us-central1");
+const generateInstantWinnersCallable = httpsCallable<
   BackfillInstantWinnersPayload,
   BackfillInstantWinnersResult
->(functionsClient, "backfillInstantWinnersForGame");
+>(instantWinnersFunctions, "generateInstantWinnersForGame");
 
 function toInputDate(value: string | null) {
   if (!value) return "";
@@ -307,7 +301,7 @@ export function GameEditModal({
   const [secondaryPrizes, setSecondaryPrizes] = useState<SecondaryPrizeFormItem[]>(() => buildInitialSecondaryPrizes(game));
   const [validationError, setValidationError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [backfillLoading, setBackfillLoading] = useState<"dryRun" | "confirm" | null>(null);
+  const [backfillLoading, setBackfillLoading] = useState(false);
   const [backfillFeedback, setBackfillFeedback] = useState<BackfillFeedback | null>(null);
 
   useEffect(() => {
@@ -317,7 +311,7 @@ export function GameEditModal({
       setSecondaryPrizes(buildInitialSecondaryPrizes(game));
       setValidationError(null);
       setDeleteConfirm(false);
-      setBackfillLoading(null);
+      setBackfillLoading(false);
       setBackfillFeedback(null);
     }
   }, [game, open]);
@@ -373,51 +367,37 @@ export function GameEditModal({
     onValidFile(file);
   };
 
-  const runBackfillInstantWinners = async (dryRun: boolean) => {
-    setBackfillLoading(dryRun ? "dryRun" : "confirm");
+  const runGenerateInstantWinners = async () => {
+    setBackfillLoading(true);
     setBackfillFeedback(null);
 
     try {
-      const result = await backfillInstantWinnersCallable({
-        gameId: game.id,
-        dryRun,
-      });
-      const created = typeof result.data?.created === "number" ? result.data.created : 0;
-      const existingInstantWinners = typeof result.data?.existingInstantWinners === "number"
-        ? result.data.existingInstantWinners
-        : 0;
+      const result = await generateInstantWinnersCallable({ gameId: game.id });
+      const createdCount = typeof result.data?.createdCount === "number" ? result.data.createdCount : 0;
+      const existingCount = typeof result.data?.existingCount === "number" ? result.data.existingCount : 0;
 
-      if (existingInstantWinners > 0) {
+      if (createdCount > 0) {
         setBackfillFeedback({
-          tone: "info",
-          message: `${formatCount(existingInstantWinners)} instant winners deja presents, rien a faire`,
-          canConfirm: false,
-        });
-        return;
-      }
-
-      if (dryRun) {
-        setBackfillFeedback({
-          tone: "info",
-          message: `${formatCount(created)} instant winners seraient crees`,
-          canConfirm: created > 0,
+          tone: "success",
+          message: `${formatCount(createdCount)} instant winners crees`,
         });
         return;
       }
 
       setBackfillFeedback({
-        tone: "success",
-        message: `${formatCount(created)} instant winners crees`,
-        canConfirm: false,
+        tone: "info",
+        message:
+          existingCount > 0
+            ? `${formatCount(existingCount)} instant winners deja presents, rien a faire`
+            : "Aucun instant winner a creer pour ce jeu",
       });
     } catch (backfillError) {
       setBackfillFeedback({
         tone: "error",
         message: getBackfillErrorMessage(backfillError),
-        canConfirm: false,
       });
     } finally {
-      setBackfillLoading(null);
+      setBackfillLoading(false);
     }
   };
 
@@ -834,21 +814,11 @@ export function GameEditModal({
                     <button
                       type="button"
                       className="rounded-[8px] border border-[#185FA5] bg-white px-3 py-2 text-[11px] font-medium text-[#185FA5] hover:bg-[#F5FAFE] disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => void runBackfillInstantWinners(true)}
-                      disabled={saving || backfillLoading !== null}
+                      onClick={() => void runGenerateInstantWinners()}
+                      disabled={saving || backfillLoading}
                     >
-                      {backfillLoading === "dryRun" ? "Analyse..." : "Generer les lots instantanes"}
+                      {backfillLoading ? "Creation..." : "Generer les lots instantanes"}
                     </button>
-                    {backfillFeedback?.canConfirm ? (
-                      <button
-                        type="button"
-                        className="rounded-[8px] border border-[#639922] bg-[#639922] px-3 py-2 text-[11px] font-medium text-white hover:bg-[#57881d] disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => void runBackfillInstantWinners(false)}
-                        disabled={saving || backfillLoading !== null}
-                      >
-                        {backfillLoading === "confirm" ? "Creation..." : "Confirmer"}
-                      </button>
-                    ) : null}
                   </div>
                   {backfillFeedback ? (
                     <div
