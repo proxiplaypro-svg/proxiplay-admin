@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import OpenAppRedirect from "./OpenAppRedirect";
+import { buildSecureGameQrLink, buildSecureGameAppLinks } from "@/lib/admin/secureGameQr";
 
 type TimestampLike = {
   toMillis?: () => number;
 };
 
 type FirestoreGameDocument = {
+  access_mode?: string;
   title?: string;
   name?: string;
   description?: string;
@@ -25,6 +27,7 @@ type FirestoreGameDocument = {
 };
 
 type PublicGame = {
+  qrOnly: boolean;
   id: string;
   title: string;
   description: string;
@@ -150,6 +153,7 @@ async function getPublicGame(gameId: string): Promise<PublicGame | null> {
 
     return {
       id: snapshot.id,
+      qrOnly: data.access_mode === "qr_only",
       title: readText(data.title, data.name, "Jeu Proxiplay"),
       description: readText(data.description, data.conditions),
       merchantName: readText(data.merchantName, data.enseigne_name, "Commerce partenaire"),
@@ -193,10 +197,11 @@ export default async function JoinGamePage({
     merchantId?: string;
     animation_id?: string;
     merchant_id?: string;
+    qr_token?: string | string[];
   }>;
 }) {
   const { gameId } = await params;
-  const { animationId, merchantId, animation_id, merchant_id } = await searchParams;
+  const { animationId, merchantId, animation_id, merchant_id, qr_token } = await searchParams;
   const game = await getPublicGame(gameId);
 
   if (!game) {
@@ -206,11 +211,13 @@ export default async function JoinGamePage({
   const resolvedAnimationId = animationId?.trim() || animation_id?.trim() || null;
   const resolvedMerchantId = merchantId?.trim() || merchant_id?.trim() || null;
 
-  const webUrl = buildWebGameUrl(game.id, {
+  const secureToken = game.qrOnly && typeof qr_token === "string" && /^[a-f0-9]{64}$/.test(qr_token) ? qr_token : null;
+  const secureLinks = secureToken ? buildSecureGameAppLinks(game.id, secureToken) : null;
+  const webUrl = secureToken ? buildSecureGameQrLink(game.id, secureToken) : buildWebGameUrl(game.id, {
     animationId: resolvedAnimationId,
     merchantId: resolvedMerchantId,
   });
-  const androidIntentUrl = buildAndroidIntentUrl(game.id, {
+  const androidIntentUrl = secureLinks?.androidIntentUrl ?? buildAndroidIntentUrl(game.id, {
     animationId: resolvedAnimationId,
     merchantId: resolvedMerchantId,
   });
@@ -227,7 +234,7 @@ export default async function JoinGamePage({
           <p className="text-sm text-slate-600">{game.merchantName}</p>
         </div>
 
-        <OpenAppRedirect androidIntentUrl={androidIntentUrl} />
+        <OpenAppRedirect androidIntentUrl={androidIntentUrl} secureAppUrl={secureLinks?.appUrl} />
 
         <section className="overflow-hidden rounded-[28px] bg-white shadow-lg ring-1 ring-slate-200">
           {game.imageUrl ? (
@@ -262,12 +269,12 @@ export default async function JoinGamePage({
             </div>
 
             <div className="flex flex-col gap-3">
-              <a
+              {!secureLinks && <a
                 href={androidIntentUrl}
                 className="rounded-2xl bg-indigo-600 px-5 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500"
               >
                 Ouvrir dans l application
-              </a>
+              </a>}
               <a
                 href={PLAY_STORE_URL}
                 className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-center text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
