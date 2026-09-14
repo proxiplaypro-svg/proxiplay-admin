@@ -11,7 +11,7 @@ interface EmailResult {
   merchantId: string;
   name: string;
   email: string;
-  status: "ok" | "error";
+  status: "ok" | "error" | "skipped";
   error?: string;
 }
 
@@ -42,6 +42,10 @@ function filterMerchants(merchants: MerchantPilotageItem[], filter: BlastFilter)
 }
 
 export function MerchantEmailBlastModal({ open, merchants, onClose }: Props) {
+  return open ? <MerchantEmailBlastContent merchants={merchants} onClose={onClose} /> : null;
+}
+
+function MerchantEmailBlastContent({ merchants, onClose }: Omit<Props, "open">) {
   const [blastFilter, setBlastFilter] = useState<BlastFilter>("tous");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -53,18 +57,13 @@ export function MerchantEmailBlastModal({ open, merchants, onClose }: Props) {
   const targets = filterMerchants(merchants, blastFilter);
 
   useEffect(() => {
-    if (!open) {
-      setSending(false);
-      setResults([]);
-      setDone(false);
-      cancelledRef.current = false;
-    }
-  }, [open]);
-
-  if (!open) return null;
+    cancelledRef.current = false;
+    return () => { cancelledRef.current = true; };
+  }, []);
 
   const sent = results.filter((r) => r.status === "ok").length;
   const errors = results.filter((r) => r.status === "error").length;
+  const skipped = results.filter((r) => r.status === "skipped").length;
   const progress = targets.length > 0 ? results.length / targets.length : 0;
 
   const handleSend = async () => {
@@ -75,7 +74,7 @@ export function MerchantEmailBlastModal({ open, merchants, onClose }: Props) {
     setDone(false);
     cancelledRef.current = false;
 
-    const sendEmail = httpsCallable<{ email: string; subject: string; message: string }, { success: boolean }>(
+    const sendEmail = httpsCallable<{ merchantId: string; merchantCollectionName: string; email: string; subject: string; message: string }, { success: boolean; skipped?: boolean; reason?: string }>(
       functionsClient,
       "sendMerchantEmail",
     );
@@ -92,10 +91,10 @@ export function MerchantEmailBlastModal({ open, merchants, onClose }: Props) {
       }
 
       try {
-        await sendEmail({ email: merchant.email, subject: subject.trim(), message: message.trim() });
+        const result = await sendEmail({ merchantId: merchant.id, merchantCollectionName: merchant.merchantCollectionName, email: merchant.email, subject: subject.trim(), message: message.trim() });
         setResults((prev) => [
           ...prev,
-          { merchantId: merchant.id, name: merchant.name, email: merchant.email, status: "ok" },
+          { merchantId: merchant.id, name: merchant.name, email: merchant.email, status: result.data.skipped ? "skipped" : "ok", error: result.data.skipped ? (result.data.reason === "managed_by_admin" ? "Non envoyé : commerce géré par Proxiplay" : "Non envoyé : coordonnées à vérifier") : undefined },
         ]);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -203,11 +202,12 @@ export function MerchantEmailBlastModal({ open, merchants, onClose }: Props) {
             <div className="max-h-48 overflow-y-auto rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] p-3 text-[12px]">
               {results.map((r) => (
                 <div key={r.merchantId} className="flex items-start gap-2 py-0.5">
-                  <span className={r.status === "ok" ? "text-[#639922]" : "text-[#E24B4A]"}>
+                  <span hidden={r.status === "skipped"} className={r.status === "ok" ? "text-[#639922]" : "text-[#E24B4A]"}>
                     {r.status === "ok" ? "✓" : "✗"}
                   </span>
                   <span className="flex-1 text-[#1a1a1a]">{r.name}</span>
                   {r.status === "error" && <span className="text-[#E24B4A]">{r.error}</span>}
+                  {r.status === "skipped" && <span className="text-[#666]">{r.error}</span>}
                 </div>
               ))}
             </div>
@@ -220,6 +220,7 @@ export function MerchantEmailBlastModal({ open, merchants, onClose }: Props) {
               {errors > 0 ? `, ${errors} erreur${errors !== 1 ? "s" : ""}` : ""}.
             </p>
           )}
+          {skipped > 0 && <p className="text-[13px] text-[#666]">{skipped} envoi(s) ignoré(s), sans erreur.</p>}
         </div>
 
         <div className="flex justify-end gap-3 border-t border-[#E8E8E4] px-6 py-4">
@@ -229,7 +230,7 @@ export function MerchantEmailBlastModal({ open, merchants, onClose }: Props) {
               onClick={handleCancel}
               className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-2 text-[13px] text-[#666] hover:bg-[#FAFAF8]"
             >
-              Annuler l'envoi
+              Annuler l’envoi
             </button>
           ) : (
             <button

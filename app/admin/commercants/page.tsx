@@ -223,12 +223,15 @@ export default function AdminCommercantsPage() {
     : null;
 
   const handleEmailRelance = async (merchant: MerchantPilotageItem) => {
-    const sendEmail = httpsCallable<{ email: string; subject: string; message: string }, { success: boolean }>(
+    const sendEmail = httpsCallable<{ merchantId: string; merchantCollectionName: string; email: string; subject: string; message: string }, { success: boolean; skipped?: boolean; reason?: string }>(
       functionsClient,
       "sendMerchantEmail",
     );
     const body = `Bonjour ${merchant.name},\n\nNous revenons vers vous au sujet de votre activité ProxiPlay et de vos jeux en cours.\n\nBien à vous,\nL'équipe ProxiPlay`;
-    await sendEmail({ email: merchant.email, subject: "Votre jeu ProxiPlay", message: body });
+    const result = await sendEmail({ merchantId: merchant.id, merchantCollectionName: merchant.merchantCollectionName, email: merchant.email, subject: "Votre jeu ProxiPlay", message: body });
+    if (result.data.skipped) {
+      window.alert(result.data.reason === "managed_by_admin" ? "Email non envoyé : ce commerce est géré par Proxiplay." : "Email non envoyé : vérifiez les coordonnées du commerce.");
+    }
   };
 
   const handleOpenExternal = (href: string, target: "_blank" | "_self" = "_self") => {

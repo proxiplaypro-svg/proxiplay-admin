@@ -48,6 +48,7 @@ type FirestoreMerchantDocument = {
   imageUrl?: string;
   logo?: string;
   owner?: DocumentReference | string | null;
+  owner_id?: DocumentReference | null;
   commercial_status?: "" | "actif" | "a_relancer" | "inactif";
   last_contact_at?: Timestamp | null;
   last_contact_channel?: string;
@@ -208,10 +209,13 @@ function readTimestamp(...values: Array<Timestamp | null | undefined>) {
   return values.find((value) => value instanceof Timestamp) ?? null;
 }
 
-async function uploadMerchantPhoto(merchantId: string, file: File): Promise<string> {
+export async function uploadMerchantPhoto(merchantId: string, file: File): Promise<string> {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+    throw new Error("Choisissez une image JPEG, PNG ou WebP de 5 Mo maximum.");
+  }
   const extension =
     file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-  const storageRef = ref(storage, `enseignes/${merchantId}/cover.${extension}`);
+  const storageRef = ref(storage, `enseignes/${merchantId}/cover-${crypto.randomUUID()}.${extension}`);
   await uploadBytes(storageRef, file, { contentType: file.type });
   return getDownloadURL(storageRef);
 }
@@ -588,11 +592,11 @@ function mapMerchantDocument(
     twitterLink: readText(merchant.twitter_link),
     siteWebUrl: readText(merchant.site_web_url),
     imageUrl: readText(merchant.imageUrl, merchant.logo),
-    ownerRef: merchant.owner
+    ownerRef: merchant.owner_id?.id ?? (merchant.owner
       ? typeof merchant.owner === "string"
-        ? merchant.owner
+        ? merchant.owner.match(/^\/?users\/([^/]+)$/)?.[1] ?? merchant.owner
         : merchant.owner.id
-      : null,
+      : null),
     ownerFirstName: "",
     ownerLastName: "",
     ownerEmail: "",

@@ -1,0 +1,54 @@
+diff --git a/firebase/functions/index.js b/firebase/functions/index.js
+index d87b76d..a9f57eb 100644
+--- a/firebase/functions/index.js
++++ b/firebase/functions/index.js
+@@ -1,3 +1,4 @@
++const { resolvePrizeMerchantEmailPolicy } = require("./src/prize_merchant_email_policy");
+ const functions = require("firebase-functions");
+ const admin = require("firebase-admin");
+ const crypto = require("crypto");
+@@ -5406,7 +5407,16 @@ exports.notifyPrizeWon = functions
+       }
+     }
+
+-    if (!merchantEmailDone) {
++    // Operational merchant email only: preserve all player/push processing.
++    const merchantEmailPolicy = !merchantEmailDone
++      ? await resolvePrizeMerchantEmailPolicy(firestore, prizeData, gameData)
++      : null;
++    if (merchantEmailPolicy?.skipped) {
++      updates.merchant_email_skipped = true;
++      updates.merchant_email_skip_reason = merchantEmailPolicy.reason;
++    }
++
++    if (!merchantEmailDone && !merchantEmailPolicy?.skipped) {
+       const lockResult = await acquireMerchantEmailSendRight(statusRef);
+       if (!lockResult.acquired) {
+         console.log(
+diff --git a/firebase/functions/src/prize_merchant_email_policy.js b/firebase/functions/src/prize_merchant_email_policy.js
+new file mode 100644
+--- /dev/null
++++ b/firebase/functions/src/prize_merchant_email_policy.js
+@@ -0,0 +1,22 @@
++"use strict";
++
++function shopPath(value) {
++  const path = typeof value === "string" ? value.replace(/^\//, "") : value?.path;
++  return typeof path === "string" && /^enseignes\/[^/]+$/.test(path) ? path : "";
++}
++
++// Resolve from the actual game before considering denormalized prize data.
++// Missing/contradictory references never authorize operational mail.
++async function resolvePrizeMerchantEmailPolicy(db, prizeData, gameData) {
++  const gamePath = shopPath(gameData?.enseigne_id);
++  const prizePath = shopPath(prizeData?.enseigne_id);
++  const path = gamePath || prizePath;
++  if (!path) return { skipped: true, reason: "merchant_enseigne_unresolved" };
++  const shop = await db.doc(path).get();
++  if (!shop.exists) return { skipped: true, reason: "merchant_enseigne_missing" };
++  return shop.data().managed_by_admin === true
++    ? { skipped: true, reason: "managed_by_admin" }
++    : { skipped: false };
++}
++
++module.exports = { resolvePrizeMerchantEmailPolicy };

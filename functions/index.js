@@ -16,6 +16,7 @@ const {
   createAdminStatsTriggers,
 } = require("./src/admin_stats/triggers");
 const { resyncMerchantStats } = require("./src/merchant_stats");
+const { resolveOperationalMerchantEmail } = require("./src/merchant_email_policy");
 
 setGlobalOptions({
   region: "europe-west1",
@@ -206,9 +207,15 @@ exports.sendMerchantEmail = onCall(
   async (request) => {
     const adminEmail = assertAuthenticatedAdmin(request);
 
-    const email = readTrimmedString(request.data?.email, "email");
     const subject = readTrimmedString(request.data?.subject, "subject");
     const message = readTrimmedString(request.data?.message, "message");
+
+    const delivery = await resolveOperationalMerchantEmail(db, request.data || {});
+    if (delivery.skipped) {
+      logger.info("Merchant operational email skipped", { reason: delivery.reason });
+      return { success: true, skipped: true, reason: delivery.reason, error: null, messageId: null };
+    }
+    const email = delivery.email;
 
     const { transport, from } = getMailerTransport();
 
@@ -228,6 +235,7 @@ exports.sendMerchantEmail = onCall(
 
       return {
         success: true,
+        skipped: false,
         error: null,
         messageId: info.messageId,
       };

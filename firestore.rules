@@ -16,6 +16,7 @@ service cloud.firestore {
 
     function hasAdminClaim() {
       return isSignedIn()
+        && 'admin' in request.auth.token
         && request.auth.token.admin == true;
     }
 
@@ -29,6 +30,7 @@ service cloud.firestore {
       return merchantId != null
         && signedInEmail() != null
         && exists(/databases/$(database)/documents/enseignes/$(merchantId))
+        && get(/databases/$(database)/documents/enseignes/$(merchantId)).data.get('managed_by_admin', false) != true
         && get(/databases/$(database)/documents/enseignes/$(merchantId)).data.email == signedInEmail();
     }
 
@@ -36,22 +38,23 @@ service cloud.firestore {
       return merchantId != null
         && signedInEmail() != null
         && exists(/databases/$(database)/documents/merchants/$(merchantId))
+        && get(/databases/$(database)/documents/merchants/$(merchantId)).data.get('managed_by_admin', false) != true
         && get(/databases/$(database)/documents/merchants/$(merchantId)).data.email == signedInEmail();
     }
 
-    function requestedGameMerchantId() {
-      return request.resource.data.merchantId != null
-        ? request.resource.data.merchantId
-        : request.resource.data.merchant_id != null
-          ? request.resource.data.merchant_id
-          : resource.data.merchantId != null
-            ? resource.data.merchantId
-            : resource.data.merchant_id;
+    function canManageShopReference(shopRef) {
+      return shopRef is path && exists(shopRef)
+        && get(shopRef).data.get('managed_by_admin', false) != true
+        && get(shopRef).data.get('email', '') == signedInEmail();
     }
 
-    function canManageRequestedGameAsMerchant() {
-      let merchantId = requestedGameMerchantId();
-      return ownsEnseigneById(merchantId) || ownsMerchantById(merchantId);
+    function canManageGameAsMerchant(data) {
+      let shopRef = data.get('enseigne_id', null);
+      let merchantId = data.get('merchantId', data.get('merchant_id', null));
+      return isSignedIn() && (shopRef != null
+        ? canManageShopReference(shopRef)
+        : (merchantId != null && exists(/databases/$(database)/documents/enseignes/$(merchantId))
+          ? ownsEnseigneById(merchantId) : ownsMerchantById(merchantId)));
     }
 
     function isCurrentUser(userId) {
@@ -79,9 +82,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    match /enseignes/{document=**} {
+    match /enseignes/{merchantId} {
       allow read: if hasAdminClaim() || isSignedIn();
-      allow write: if hasAdminClaim() || isSignedIn();
+      allow create, delete: if isAdmin() || hasAdminClaim();
+      allow update: if isAdmin() || hasAdminClaim() || (isSignedIn()
+        && resource.data.get('managed_by_admin', false) != true
+        && resource.data.email == signedInEmail()
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['owner', 'owner_id', 'email', 'status', 'managed_by_admin']));
+    }
+
+    // Preserve legacy subcollection access without permitting parent ownership changes.
+    match /enseignes/{merchantId}/{subcollection}/{document=**} {
+      allow read: if hasAdminClaim() || isSignedIn();
+      allow write: if isAdmin() || hasAdminClaim() || (isSignedIn()
+        && get(/databases/$(database)/documents/enseignes/$(merchantId)).data.get('managed_by_admin', false) != true);
     }
 
     match /merchants/{document=**} {
@@ -91,7 +106,10 @@ service cloud.firestore {
 
     match /games/{gameId} {
       allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();
-      allow write: if hasAdminClaim() || canManageRequestedGameAsMerchant();
+      allow create: if isAdmin() || hasAdminClaim() || canManageGameAsMerchant(request.resource.data);
+      allow update: if isAdmin() || hasAdminClaim() || (canManageGameAsMerchant(resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['enseigne_id', 'merchantId', 'merchant_id', 'owner_id']));
+      allow delete: if isAdmin() || hasAdminClaim() || canManageGameAsMerchant(resource.data);
 
       match /instant_winners/{winnerId} {
         allow read: if true;
@@ -108,7 +126,10 @@ service cloud.firestore {
 
     match /jeux/{gameId} {
       allow read: if hasAdminClaim() || isPublicGame() || isSignedIn();
-      allow write: if hasAdminClaim() || canManageRequestedGameAsMerchant();
+      allow create: if isAdmin() || hasAdminClaim() || canManageGameAsMerchant(request.resource.data);
+      allow update: if isAdmin() || hasAdminClaim() || (canManageGameAsMerchant(resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['enseigne_id', 'merchantId', 'merchant_id', 'owner_id']));
+      allow delete: if isAdmin() || hasAdminClaim() || canManageGameAsMerchant(resource.data);
 
       match /instant_winners/{winnerId} {
         allow read: if true;
@@ -141,7 +162,7 @@ service cloud.firestore {
       allow read, write: if isAdmin() || isCurrentUser(userId);
     }
 
-    match /users/{userId}/{document=**} {
+    match /users/{userId}/{subcollection}/{document=**} {
       allow read, write: if isAdmin() || isCurrentUser(userId);
     }
 
@@ -149,7 +170,13 @@ service cloud.firestore {
       // The live app also renders winners on the public home.
       // Keep nested user data protected while allowing top-level profile reads.
       allow read: if isAdmin() || isCurrentUser(userId) || true;
-      allow write: if isAdmin() || isCurrentUser(userId);
+      // Privileged account state is managed by the authenticated admin API.
+      allow create: if isAdmin() || (isCurrentUser(userId)
+        && (!('user_role' in request.resource.data) || request.resource.data.user_role == 'joueur'));
+      allow update: if isAdmin() || (isCurrentUser(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['user_role', 'account_status']));
+      allow delete: if isAdmin() || isCurrentUser(userId);
     }
 
     match /favorites/{document=**} {

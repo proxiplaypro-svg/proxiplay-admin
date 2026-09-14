@@ -1,98 +1,38 @@
-import { randomBytes } from "node:crypto";
-import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin-app";
+﻿import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
+import { createMerchant, manageMerchantAccount, readMerchantAccount } from "@/lib/admin/merchantServer";
+import { MerchantError, textField } from "@/lib/admin/merchantSchema";
 
-type CreateMerchantBody = {
-  email?: string;
-  name?: string;
-};
-
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+export const runtime = "nodejs";
+function failure(error: unknown) {
+  const authError = handleAdminAuthError(error);
+  if (authError) return authError;
+  if (error instanceof MerchantError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
+  const code = (error as { code?: string })?.code;
+  if (code === "auth/email-already-exists") return Response.json({ error: "Cette adresse email est déjà utilisée. Vérifiez le compte avant de réessayer.", code: "email-in-use" }, { status: 409 });
+  if (code?.startsWith("auth/id-token") || code === "auth/argument-error") return Response.json({ error: "Session expirée. Reconnectez-vous." }, { status: 401 });
+  if (error instanceof SyntaxError) return Response.json({ error: "Requête invalide." }, { status: 400 });
+  console.error("Merchant operation failed", { code: code ?? "internal" });
+  return Response.json({ error: "Impossible d’enregistrer le commerçant pour le moment." }, { status: 500 });
 }
-
-function buildTemporaryPassword() {
-  return `Px-${randomBytes(18).toString("base64url")}!9a`;
+function idFrom(request: Request) {
+  const id = textField(new URL(request.url).searchParams.get("merchantId"), "Commerce", 150);
+  if (!id || id.includes("/")) throw new MerchantError("Commerce invalide.");
+  return id;
 }
-
-function getErrorMessage(error: unknown) {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    const code = String(error.code);
-
-    switch (code) {
-      case "auth/email-already-exists":
-        return "Cette adresse email est deja utilisee.";
-      case "auth/invalid-email":
-        return "L adresse email saisie n est pas valide.";
-      default:
-        return "Impossible de creer le compte marchand pour le moment.";
-    }
-  }
-
-  return "Impossible de creer le compte marchand pour le moment.";
+async function bodyFrom(request: Request) {
+  const body = await request.json();
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new MerchantError("Requête invalide.");
+  return body as Record<string, unknown>;
 }
-
 export async function POST(request: Request) {
-  let createdUid: string | null = null;
-
-  try {
-    const adminAuth = getAdminAuth();
-    const adminDb = getAdminDb();
-    const body = (await request.json()) as CreateMerchantBody;
-    const email = body.email?.trim().toLowerCase() ?? "";
-    const name = body.name?.trim() ?? "";
-
-    if (!name) {
-      return NextResponse.json({ error: "Le nom du commerce est obligatoire." }, { status: 400 });
-    }
-
-    if (!email) {
-      return NextResponse.json({ error: "L email du commercant est obligatoire." }, { status: 400 });
-    }
-
-    if (!isValidEmail(email)) {
-      return NextResponse.json({ error: "L adresse email saisie n est pas valide." }, { status: 400 });
-    }
-
-    const userRecord = await adminAuth.createUser({
-      email,
-      displayName: name,
-      password: buildTemporaryPassword(),
-    });
-    createdUid = userRecord.uid;
-
-    await adminDb.collection("enseignes").doc(userRecord.uid).set({
-      uid: userRecord.uid,
-      email,
-      name,
-      created_at: FieldValue.serverTimestamp(),
-      status: "active",
-      commercial_status: "actif",
-      owner: `/users/${userRecord.uid}`,
-      owner_id: adminDb.doc(`users/${userRecord.uid}`),
-    });
-
-    return NextResponse.json({
-      uid: userRecord.uid,
-      email,
-      name,
-    });
-  } catch (error) {
-    const adminAuth = createdUid ? getAdminAuth() : null;
-
-    if (createdUid) {
-      try {
-        await adminAuth?.deleteUser(createdUid);
-      } catch (cleanupError) {
-        console.error("Merchant auth cleanup failed", cleanupError);
-      }
-    }
-
-    console.error("Merchant creation failed", error);
-
-    const message = getErrorMessage(error);
-    const status = message === "Cette adresse email est deja utilisee." ? 409 : 500;
-    return NextResponse.json({ error: message }, { status });
-  }
+  try { await assertIsAdminRequest(request); return Response.json(await createMerchant(await bodyFrom(request)), { status: 201 }); }
+  catch (error) { return failure(error); }
+}
+export async function GET(request: Request) {
+  try { await assertIsAdminRequest(request); return Response.json(await readMerchantAccount(idFrom(request)), { headers: { "Cache-Control": "no-store" } }); }
+  catch (error) { return failure(error); }
+}
+export async function PATCH(request: Request) {
+  try { await assertIsAdminRequest(request); return Response.json(await manageMerchantAccount(idFrom(request), await bodyFrom(request))); }
+  catch (error) { return failure(error); }
 }

@@ -3414,3 +3414,22 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* Merchant forms use compact cards and explicit light-theme contrast. */
+.merchant-form-page, .merchant-form-card { --foreground: #20251c; --muted: #5c6655; }
+.merchant-form-card { padding: 24px; border-radius: 16px; box-shadow: none; background: #fff; color: #20251c; border: 1px solid #e5e7e0; }
+.merchant-form-card .panel-heading { margin-bottom: 20px; }
+.merchant-form-card h1 { font-size: 1.6rem; font-weight: 650; }
+.merchant-form-card h2 { font-size: 1.15rem; font-weight: 650; }
+.merchant-form-card .search-input { background: #fff; color: #20251c; border: 1px solid #cfd4c9; }
+.merchant-form-card .search-label, .merchant-form-card p { color: #5c6655; }
+.merchant-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.merchant-option { display: flex; align-items: center; gap: 10px; margin: 16px 0; }
+.merchant-option input { width: 18px; height: 18px; accent-color: #639922; flex-shrink: 0; }
+.merchant-association { border-top: 1px solid #e5e7e0; padding-top: 24px; margin-top: 24px; }
+.merchant-form-page .secondary-button, .merchant-form-card .secondary-button { width: auto; border-color: #cfd4c9; background: #fff; color: #20251c; border-radius: 10px; }
+.merchant-form-page .primary-button, .merchant-form-card .primary-button { background: #639922; box-shadow: none; border-radius: 10px; }
+.merchant-form-page .dashboard-banner.error, .merchant-form-card .dashboard-banner.error { background: #fcecec; color: #912d2d; border-color: #e9baba; }
+.merchant-form-page .dashboard-banner.success, .merchant-form-card .dashboard-banner.success { background: #eaf3de; color: #3b6d11; border-color: #c0dd97; }
+.merchant-form-page .dashboard-banner p, .merchant-form-card .dashboard-banner p { color: inherit; }
+@media (max-width: 640px) { .merchant-form-card { padding: 18px; } }

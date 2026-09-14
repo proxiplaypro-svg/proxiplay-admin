@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import MerchantAccount from "@/components/admin/commercants/MerchantAccount";
 import { useEffect, useMemo, useState } from "react";
 import {
   getAdminFollowUpErrorMessage,
@@ -396,6 +397,7 @@ export default function MerchantDetailsPage({ params }: MerchantDetailsPageProps
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/admin/commercants/${merchant.id}/edit`} className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] text-[#1A1A1A] transition hover:bg-[#FAFAF8]">Modifier le commerce</Link>
           <Link href="/admin/commercants" className="rounded-[8px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] text-[#1A1A1A] transition hover:bg-[#FAFAF8]">
             ← Retour liste
           </Link>
@@ -431,6 +433,8 @@ export default function MerchantDetailsPage({ params }: MerchantDetailsPageProps
           ))}
         </div>
       </div>
+
+      <MerchantAccount merchantId={merchant.id} />
 
       {merchant.games.length > 0 && (
         <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">

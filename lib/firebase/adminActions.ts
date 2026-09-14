@@ -37,6 +37,8 @@ export type RebuildAdminStatsResult = {
 };
 
 export type SendMerchantEmailPayload = {
+  merchantId: string;
+  merchantCollectionName?: "enseignes" | "merchants";
   email: string;
   subject: string;
   message: string;
@@ -44,8 +46,10 @@ export type SendMerchantEmailPayload = {
 
 export type SendMerchantEmailResult = {
   success: boolean;
+  skipped?: boolean;
+  reason?: string;
   error: string | null;
-  messageId: string;
+  messageId: string | null;
 };
 
 export type SendMerchantNotificationPayload = {
