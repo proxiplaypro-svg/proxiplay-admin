@@ -115,3 +115,46 @@ test("règles Firestore : aucune lecture ou écriture directe publique, utilisat
     assert.equal((await fetch(`${prefix}/${path}`, { method: "PATCH", headers, body: JSON.stringify({ fields: { name: { stringValue: "forbidden" } } }) })).status, 403);
   }
 });
+
+test("ignore persists, blocks stale imports, reactivates and preserves Google data", async () => {
+  const fields = { name: "Excluded", google_place_id: "excluded", google_rating: 4.6, google_user_rating_count: 327, fetched_at: "2026-09-20T12:00:00Z" };
+  for (const token of [null, userToken]) assert.equal((await request("POST", { action: "ignore", fields }, undefined, token)).status, token ? 403 : 401);
+  assert.equal((await request("POST", { action: "ignore", fields })).status, 200);
+  const list = await (await request("GET")).json();
+  assert.equal(list.ignored.length, 1); assert.equal(list.prospects.length, 0); assert.ok(list.ignored[0].ignored_by);
+  const annotated = await (await request("POST", { action: "annotate", selection: [fields] })).json();
+  assert.equal(annotated.results[0].duplicate.kind, "ignored");
+  const blocked = await (await request("POST", { action: "import", selection: [fields] })).json();
+  assert.equal(blocked.created.length, 0); assert.equal(blocked.skipped[0].duplicate.kind, "ignored");
+  assert.equal((await request("POST", { action: "create", fields })).status, 409);
+  for (const token of [null, userToken]) assert.equal((await request("POST", { action: "reactivate", placeId: "excluded" }, undefined, token)).status, token ? 403 : 401);
+  assert.equal((await request("POST", { action: "reactivate", placeId: "excluded" })).status, 200);
+  const after = await (await request("POST", { action: "annotate", selection: [fields] })).json(); assert.equal(after.results[0].duplicate, null);
+  const imported = await (await request("POST", { action: "import", selection: [fields] })).json();
+  const saved = (await db.doc("prospects/" + imported.created[0]).get()).data()!;
+  assert.equal(saved.google_rating, 4.6); assert.equal(saved.google_user_rating_count, 327); assert.equal(saved.fetched_at, new Date(fields.fetched_at).toISOString());
+  assert.equal((await request("POST", { action: "ignore", fields })).status, 409);
+});
+test("ignore/import concurrency cannot leave both a prospect and an exclusion", async () => {
+  const fields = { name: "Race", google_place_id: "race" };
+  const responses = await Promise.all([request("POST", { action: "ignore", fields }), request("POST", { action: "import", selection: [fields] })]);
+  assert.ok(responses.every(response => [200, 409].includes(response.status)));
+  const ignored = await db.doc("prospection_internal/discovery/ignored/race").get();
+  const prospects = await db.collection("prospects").get();
+  assert.equal(Number(ignored.exists) + prospects.size, 1);
+});
+test("exclusion rules deny SDK access, client precedence and invalid IDs", async () => {
+  const fields = { name: "Former exclusion", google_place_id: "former" };
+  assert.equal((await request("POST", { action: "ignore", fields })).status, 200);
+  await db.doc("enseignes/new-client").set(fields);
+  const data = await (await request("POST", { action: "annotate", selection: [fields] })).json();
+  assert.equal(data.results[0].duplicate.kind, "client");
+  assert.equal((await request("POST", { action: "ignore", fields: { name: "Missing ID" } })).status, 400);
+  assert.equal((await request("POST", { action: "reactivate", placeId: "../escape" })).status, 400);
+  const url = "http://" + process.env.FIRESTORE_EMULATOR_HOST + "/v1/projects/demo-prospection/databases/(default)/documents/prospection_internal/discovery/ignored/former";
+  for (const token of [null, userToken, adminToken]) {
+    const headers = { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) };
+    assert.equal((await fetch(url, { headers })).status, 403);
+    assert.equal((await fetch(url, { method: "PATCH", headers, body: JSON.stringify({ fields: {} }) })).status, 403);
+  }
+});

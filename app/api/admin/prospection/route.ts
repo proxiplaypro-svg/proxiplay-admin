@@ -1,6 +1,6 @@
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 import { ProspectService } from "@/lib/prospection/server";
-import { parseSearch, ProspectError, record, text } from "@/lib/prospection/model";
+import { parseFields, parseSearch, ProspectError, record, text } from "@/lib/prospection/model";
 import { getProspectProvider } from "@/lib/prospection/provider";
 
 export const runtime = "nodejs";
@@ -10,12 +10,18 @@ async function handle(request: Request) {
     const service = new ProspectService();
     const url = new URL(request.url); const id = url.searchParams.get("id");
     let result: unknown;
-    if (request.method === "GET") result = id ? await service.detail(id) : { prospects: await service.list(), merchants: await service.merchants(), searchAvailable: Boolean(process.env.GOOGLE_PLACES_API_KEY) };
+    if (request.method === "GET") result = id ? await service.detail(id) : { prospects: await service.list(), ignored: await service.ignored(), merchants: await service.merchants(), searchAvailable: Boolean(process.env.GOOGLE_PLACES_API_KEY) };
     else {
-      const raw = await request.text(); if (raw.length > 200000) throw new ProspectError("Requête trop volumineuse.", 413);
+      const raw = await request.text(); if (raw.length > 1000000) throw new ProspectError("Requête trop volumineuse.", 413);
       let body: Record<string, unknown>; try { body = record(JSON.parse(raw)); } catch { throw new ProspectError("Requête JSON invalide."); }
       if (request.method === "DELETE") { if (!id) throw new ProspectError("Identifiant requis."); result = await service.remove(id, body.revision); }
       else if (request.method === "PATCH") { if (!id) throw new ProspectError("Identifiant requis."); result = await service.update(id, body, admin.uid); }
+      else if (body.action === "ignore") result = await service.ignore(body.fields, admin.uid);
+      else if (body.action === "reactivate") result = await service.reactivate(text(body.placeId));
+      else if (body.action === "annotate") {
+        if (!Array.isArray(body.selection) || body.selection.length > 100) throw new ProspectError("Sélection invalide.");
+        result = { results: await service.annotate(body.selection.map(parseFields)) };
+      }
       else if (body.action === "search") result = { results: await service.annotate(await getProspectProvider().search(parseSearch(body))) };
       else if (body.action === "details") {
         result = { results: await service.annotate([await getProspectProvider().getDetails(text(body.placeId))]) };
@@ -24,7 +30,7 @@ async function handle(request: Request) {
         result = await service.createMany(body.selection, admin.uid);
       } else if (body.action === "create") {
         const created = await service.createMany([body.fields], admin.uid);
-        if (!created.created.length) throw new ProspectError(created.skipped[0]?.duplicate.kind === "client" ? "Déjà client Proxiplay" : "Prospect déjà présent ou doublon possible.", 409);
+        if (!created.created.length) throw new ProspectError(created.skipped[0]?.duplicate.kind === "client" ? "Déjà client Proxiplay" : created.skipped[0]?.duplicate.kind === "ignored" ? "Établissement ignoré : réactivez-le avant import." : "Prospect déjà présent ou doublon possible.", 409);
         result = created;
       } else throw new ProspectError("Action inconnue.");
     }

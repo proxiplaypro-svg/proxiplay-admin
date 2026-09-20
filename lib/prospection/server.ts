@@ -1,6 +1,6 @@
 import { type Firestore, type Transaction } from "firebase-admin/firestore";
 import { getAdminDb } from "../firebase/admin-app";
-import { duplicateOf, normalize, parseFields, ProspectError, record, text, type Duplicate, type Prospect, type ProspectFields } from "./model";
+import { duplicateOf, normalize, parseFields, ProspectError, record, text, type IgnoredPlace, type Duplicate, type Prospect, type ProspectFields } from "./model";
 import { factualDraftProvider, qualifyProspect } from "./qualification";
 
 type Entry = { id: string; kind: Duplicate["kind"]; data: Record<string, unknown> };
@@ -13,7 +13,36 @@ export class ProspectService {
       const snapshot = transaction ? await transaction.get(query) : await query.get();
       return snapshot.docs.map(doc => ({ id: doc.id, kind, data: doc.data() }));
     };
-    return [...await read("enseignes", "client"), ...await read("merchants", "client"), ...await read("prospects", "prospect")];
+    return [...await read("enseignes", "client"), ...await read("merchants", "client"), ...await read("prospects", "prospect"), ...await read("prospection_internal/discovery/ignored", "ignored")];
+  }
+  private ignoredRef(placeId: string) {
+    if (!/^[\w-]{1,300}$/.test(placeId)) throw new ProspectError("Identifiant de lieu invalide.");
+    return this.db.collection("prospection_internal/discovery/ignored").doc(placeId);
+  }
+  async ignored() {
+    const snapshot = await this.db.collection("prospection_internal/discovery/ignored").get();
+    return snapshot.docs.map(doc => doc.data() as IgnoredPlace).sort((a, b) => b.ignored_at.localeCompare(a.ignored_at));
+  }
+  async ignore(input: unknown, actor: string) {
+    const candidate = parseFields(input); const ref = this.ignoredRef(candidate.google_place_id);
+    await this.db.runTransaction(async transaction => {
+      const lock = this.db.doc("prospection_internal/write_lock"); await transaction.get(lock);
+      const duplicate = duplicateOf(candidate, await this.entries(transaction));
+      if (duplicate && duplicate.kind !== "ignored") throw new ProspectError("Cet Établissement est déjà client ou prospect.", 409);
+      if (duplicate) return;
+      const now = new Date().toISOString();
+      transaction.set(ref, { ...candidate, ignored_at: now, ignored_by: actor });
+      transaction.set(lock, { updated_at: now });
+    });
+    return { ignored: candidate.google_place_id };
+  }
+  async reactivate(placeId: string) {
+    const ref = this.ignoredRef(placeId);
+    await this.db.runTransaction(async transaction => {
+      const lock = this.db.doc("prospection_internal/write_lock"); await transaction.get(lock);
+      transaction.delete(ref); transaction.set(lock, { updated_at: new Date().toISOString() });
+    });
+    return { reactivated: placeId };
   }
   async list() {
     const snapshot = await this.db.collection("prospects").orderBy("created_at", "desc").get();
@@ -34,7 +63,7 @@ export class ProspectService {
     return candidates.map(candidate => ({ ...candidate, duplicate: duplicateOf(candidate, entries) }));
   }
   async createMany(inputs: unknown[], actor: string) {
-    if (!inputs.length || inputs.length > 60) throw new ProspectError("Sélectionnez entre 1 et 60 entreprises.");
+    if (!inputs.length || inputs.length > 100) throw new ProspectError("Sélectionnez entre 1 et 100 entreprises.");
     const candidates = inputs.map(input => parseFields(input));
     if (candidates.some(candidate => candidate.status !== "new" || candidate.converted_enseigne_id)) throw new ProspectError("Un nouveau prospect doit avoir le statut Nouveau.");
     const refs = candidates.map(() => this.db.collection("prospects").doc());

@@ -2,12 +2,19 @@ export const STATUSES = { new: "Nouveaux", to_contact: "À contacter", contacted
 export type ProspectStatus = keyof typeof STATUSES;
 export const SECTORS = ["restaurants", "bars/cafés", "commerces", "beauté", "coiffure", "sport", "loisirs", "automobile", "habitat", "artisans B2C", "services locaux"];
 export const TEXT_FIELDS = ["name", "address", "postal_code", "city", "category", "subcategory", "phone", "email", "website", "google_place_id", "google_maps_url", "contact_name", "contact_role", "contact_email", "contact_phone", "source", "source_url", "notes", "assigned_to", "suggested_message", "suggested_angle"] as const;
-export type ProspectFields = Record<(typeof TEXT_FIELDS)[number], string> & { latitude: number | null; longitude: number | null; status: ProspectStatus; last_contact_at: string | null; next_follow_up_at: string | null; fetched_at: string | null; converted_enseigne_id: string | null };
+export type ProspectFields = Record<(typeof TEXT_FIELDS)[number], string> & { google_rating: number | null; google_user_rating_count: number | null; latitude: number | null; longitude: number | null; status: ProspectStatus; last_contact_at: string | null; next_follow_up_at: string | null; fetched_at: string | null; converted_enseigne_id: string | null };
 export type Qualification = { summary: string | null; relevance: number | null; reasons: string[]; suggested_angle: string | null; suggested_message: string | null };
 export type Prospect = ProspectFields & { id: string; normalized_name: string; created_at: string; updated_at: string; revision: number; qualification: Qualification | null; qualification_provider: string | null };
 export type HistoryEvent = { id: string; action: string; actor: string; at: string; detail: string };
-export type Duplicate = { kind: "prospect" | "client"; id: string; name: string; reason: string };
+export type Duplicate = { kind: "prospect" | "client" | "ignored"; id: string; name: string; reason: string };
 export type SearchResult = ProspectFields & { duplicate: Duplicate | null };
+export const RESULT_STATES = { new: "Nouveau", prospect: "Déjà prospect", client: "Déjà client Proxiplay", ignored: "Ignoré" } as const;
+export type IgnoredPlace = ProspectFields & { ignored_at: string; ignored_by: string };
+export function resultState(result: SearchResult): keyof typeof RESULT_STATES { return result.duplicate?.kind ?? "new"; }
+export function importableIndices(results: SearchResult[]): number[] { return results.flatMap((result, index) => resultState(result) === "new" ? [index] : []); }
+export function googleRatingLabel(data: Partial<ProspectFields>): string {
+  return [data.google_rating != null ? "★ " + data.google_rating.toLocaleString("fr-FR") : "", data.google_user_rating_count != null ? data.google_user_rating_count.toLocaleString("fr-FR") + " avis" : ""].filter(Boolean).join(" · ");
+}
 export type SearchInput = { location: string; radius: number; categories: string[]; limit: number };
 export class ProspectError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -43,9 +50,10 @@ export function parseFields(input: unknown): ProspectFields {
     return [key, new Date(value).toISOString()];
   })) as Pick<ProspectFields, "last_contact_at" | "next_follow_up_at" | "fetched_at">;
   const coordinate = (key: string, max: number) => { const value = body[key]; if (value == null || value === "") return null; if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > max) throw new ProspectError("Coordonnées invalides."); return value; };
+  const metric = (key: string, max: number, integer = false) => { const value = body[key]; if (value == null) return null; if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > max || (integer && !Number.isInteger(value))) throw new ProspectError("Donnée Google invalide."); return value; };
   const converted = text(body.converted_enseigne_id) || null;
   if (converted && !/^[\w-]+$/.test(converted)) throw new ProspectError("Identifiant enseigne invalide.");
-  return { ...data, source: data.source || "manual", status: status as ProspectStatus, ...dates, latitude: coordinate("latitude", 90), longitude: coordinate("longitude", 180), converted_enseigne_id: converted };
+  return { ...data, google_rating: metric("google_rating", 5), google_user_rating_count: metric("google_user_rating_count", Number.MAX_SAFE_INTEGER, true), source: data.source || "manual", status: status as ProspectStatus, ...dates, latitude: coordinate("latitude", 90), longitude: coordinate("longitude", 180), converted_enseigne_id: converted };
 }
 export function identityKeys(data: Record<string, unknown>): string[] {
   const read = (...keys: string[]) => keys.map(key => data[key]).find(value => typeof value === "string" && value.trim()) as string | undefined;
@@ -65,15 +73,15 @@ export function identityKeys(data: Record<string, unknown>): string[] {
 }
 export function duplicateOf(candidate: Record<string, unknown>, entries: { id: string; kind: Duplicate["kind"]; data: Record<string, unknown> }[]): Duplicate | null {
   const keys = new Set(identityKeys(candidate));
-  for (const entry of [...entries].sort((a, b) => Number(b.kind === "client") - Number(a.kind === "client"))) {
-    const match = identityKeys(entry.data).find(key => keys.has(key));
+  for (const entry of [...entries].sort((a, b) => ({ client: 0, prospect: 1, ignored: 2 }[a.kind] - { client: 0, prospect: 1, ignored: 2 }[b.kind]))) {
+    const match = identityKeys(entry.data).find(key => keys.has(key) && (entry.kind !== "ignored" || key.startsWith("place:")));
     if (match) return { id: entry.id, kind: entry.kind, name: String(entry.data.name || entry.data.title || "Entreprise"), reason: match.split(":")[0] };
   }
   return null;
 }
 export function parseSearch(input: unknown): SearchInput {
   const body = record(input); const location = text(body.location);
-  if (!location || typeof body.radius !== "number" || body.radius < 1 || body.radius > 50 || !Number.isFinite(body.radius) || !Number.isInteger(body.limit) || Number(body.limit) < 1 || Number(body.limit) > 60) throw new ProspectError("Localisation, rayon (1–50 km) et limite (1–60) requis.");
+  if (!location || typeof body.radius !== "number" || body.radius < 1 || body.radius > 50 || !Number.isFinite(body.radius) || ![20, 50, 100].includes(Number(body.limit)) || typeof body.limit !== "number") throw new ProspectError("Localisation, rayon (1–50 km) et limite (20, 50 ou 100) requis.");
   if (!Array.isArray(body.categories) || !body.categories.length || body.categories.length > 11) throw new ProspectError("Sélectionnez de 1 à 11 secteurs.");
   const categories = [...new Set(body.categories.map(value => text(value, 100)))];
   if (categories.some(value => !value)) throw new ProspectError("Secteur vide.");
@@ -87,6 +95,8 @@ export function enrichMissing(current: Partial<ProspectFields>, details: Prospec
   }
   if (next.latitude == null) next.latitude = details.latitude;
   if (next.longitude == null) next.longitude = details.longitude;
+  if (next.google_rating == null) next.google_rating = details.google_rating;
+  if (next.google_user_rating_count == null) next.google_user_rating_count = details.google_user_rating_count;
   next.source_url = details.source_url;
   next.fetched_at = details.fetched_at;
   return next;
