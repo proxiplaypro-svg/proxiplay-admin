@@ -1,0 +1,47 @@
+"use client";
+import Link from "next/link";
+import { use, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { prospectRequest } from "@/lib/prospection/client";
+import { enrichMissing, STATUSES, type Prospect, type ProspectFields as Fields, type HistoryEvent, type SearchResult } from "@/lib/prospection/model";
+import { ProspectFields } from "@/components/admin/prospection/ProspectFields";
+import s from "../prospection.module.css";
+type Merchant = { id: string; name: string; city: string };
+function localDate(value: string | null) { if (!value) return ""; const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+export default function ProspectPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params); const router = useRouter();
+  const [prospect, setProspect] = useState<Prospect | null>(null); const [draft, setDraft] = useState<Partial<Fields>>({});
+  const [history, setHistory] = useState<HistoryEvent[]>([]); const [merchants, setMerchants] = useState<Merchant[]>([]);
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [note, setNote] = useState("");
+  const reload = useCallback(async () => { const data = await prospectRequest<{ prospect: Prospect; history: HistoryEvent[] }>("GET", undefined, id); setProspect(data.prospect); setDraft(data.prospect); setHistory(data.history); }, [id]);
+  useEffect(() => { Promise.all([reload(), prospectRequest<{ merchants: Merchant[] }>().then(data => setMerchants(data.merchants))]).catch(error => setError(error.message)); }, [reload]);
+  async function run(work: () => Promise<void>) { setBusy(true); setError(""); setNotice(""); try { await work(); } catch (error) { setError(error instanceof Error ? error.message : "L’opération a échoué."); } finally { setBusy(false); } }
+  async function mutate(body: Record<string, unknown>) { await prospectRequest("PATCH", { ...body, revision: prospect?.revision }, id); await reload(); setNotice("Fiche mise à jour."); }
+  async function copy(value: string) { await navigator.clipboard.writeText(value); setNotice("Copié dans le presse-papiers."); }
+  const dirty = prospect && JSON.stringify(draft) !== JSON.stringify(prospect);
+  const maps = draft.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([draft.name, draft.address, draft.city].filter(Boolean).join(" "))}${draft.google_place_id ? `&query_place_id=${encodeURIComponent(draft.google_place_id)}` : ""}`;
+  return <div className={s.module}><div><Link href="/admin/prospection">← Prospection</Link></div>{error && <p role="alert" className={s.error}>{error} <button onClick={() => void run(reload)}>Recharger la fiche</button></p>}{notice && <p role="status" className={s.notice}>{notice}</p>}
+    {!prospect ? <p>Chargement de la fiche…</p> : <><header className={s.toolbar}><div><h1>{prospect.name}</h1><p className={s.muted}>Source : {prospect.source}{prospect.fetched_at ? ` · Récupéré le ${new Date(prospect.fetched_at).toLocaleString("fr-FR")}` : ""}{prospect.source_url && <> · <a href={prospect.source_url} target="_blank" rel="noreferrer">Consulter la source ↗</a></>}</p></div><span className={s.badge}>{STATUSES[prospect.status]}</span></header>
+      <div className={s.actions}>{(draft.contact_phone || draft.phone) && <a className={s.link} href={`tel:${(draft.contact_phone || draft.phone || "").replace(/[^+\d]/g, "")}`}>Appeler</a>}{(draft.contact_email || draft.email) && <button disabled={busy} onClick={() => void run(() => copy(draft.contact_email || draft.email || ""))}>Copier l’email</button>}{draft.website && /^https?:\/\//i.test(draft.website) && <a className={s.link} href={draft.website} target="_blank" rel="noreferrer">Ouvrir le site ↗</a>}<a className={s.link} href={/^https?:\/\//i.test(maps) ? maps : "#"} target="_blank" rel="noreferrer">Google Maps ↗</a><button disabled={busy || Boolean(dirty)} onClick={() => void run(() => mutate({ action: "call" }))}>Noter un appel effectué</button></div>
+      <form className={s.module} onSubmit={event => { event.preventDefault(); void run(() => mutate({ action: "update", fields: draft })); }}>
+        <ProspectFields value={draft} onChange={setDraft} />
+        {draft.google_place_id && <div><button type="button" disabled={busy || Boolean(dirty)} onClick={() => void run(async () => {
+          const data = await prospectRequest<{ results: SearchResult[] }>("POST", { action: "details", placeId: draft.google_place_id });
+          setDraft(enrichMissing(draft, data.results[0]));
+          setNotice("Champs manquants complétés depuis Google Places. Vérifiez puis enregistrez la fiche.");
+        })}>Compléter les coordonnées depuis Google Places</button></div>}
+        <section className={s.panel}><h2>Qualification</h2><p className={s.muted}>Brouillon factuel sans IA externe. Les hypothèses restent à confirmer ; aucun score de solvabilité.</p>{prospect.qualification && <><p>{prospect.qualification.summary}</p><p>Pertinence commerciale : {prospect.qualification.relevance === null ? "non évaluée" : `${prospect.qualification.relevance}/100`}</p><ul>{prospect.qualification.reasons.map((reason, index) => <li key={index}>• {reason}</li>)}</ul></>}<button type="button" disabled={busy || Boolean(dirty)} onClick={() => { if ((!draft.suggested_message && !draft.suggested_angle) || window.confirm("Remplacer l’angle et le message actuels par un nouveau brouillon ?")) void run(() => mutate({ action: "qualify" })); }}>Préparer la qualification et le message</button>{dirty && <p className={s.muted}>Enregistrez vos modifications avant de générer un brouillon ou de journaliser un appel.</p>}</section>
+        <section className={s.panel}><h2>Angle commercial</h2><label>Angle conseillé<textarea maxLength={10000} value={draft.suggested_angle || ""} onChange={event => setDraft({ ...draft, suggested_angle: event.target.value })} /></label></section>
+        <section className={s.panel}><h2>Message proposé</h2><label>Message modifiable<textarea maxLength={10000} value={draft.suggested_message || ""} onChange={event => setDraft({ ...draft, suggested_message: event.target.value })} /></label><button type="button" disabled={busy || !draft.suggested_message} onClick={() => void run(() => copy(draft.suggested_message || ""))}>Copier le message</button><p className={s.muted}>Aucun email ni aucune relance ne sont envoyés par ce module.</p></section>
+        <section className={s.panel}><h2>Suivi</h2><div className={s.grid}>
+          <label>Statut<select value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value as Fields["status"] })}>{Object.entries(STATUSES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+          <label>Attribution (identifiant du commercial)<input maxLength={500} value={draft.assigned_to || ""} onChange={e => setDraft({ ...draft, assigned_to: e.target.value })} /></label>
+          <label>Dernière interaction<input type="datetime-local" value={localDate(draft.last_contact_at || null)} onChange={e => setDraft({ ...draft, last_contact_at: e.target.value ? new Date(e.target.value).toISOString() : null })} /></label>
+          <label>Prochaine relance<input type="datetime-local" value={localDate(draft.next_follow_up_at || null)} onChange={e => setDraft({ ...draft, next_follow_up_at: e.target.value ? new Date(e.target.value).toISOString() : null })} /></label>
+          <label>Associer à une enseigne existante<select value={draft.converted_enseigne_id || ""} required={draft.status === "client"} onChange={e => setDraft({ ...draft, converted_enseigne_id: e.target.value || null })}><option value="">Aucune enseigne associée</option>{merchants.map(m => <option value={m.id} key={m.id}>{m.name} — {m.city}</option>)}</select></label>
+        </div>{draft.converted_enseigne_id && <p><Link href={`/admin/commercants/${draft.converted_enseigne_id}`}>Ouvrir l’enseigne associée ↗</Link></p>}<label>Notes de synthèse<textarea maxLength={10000} value={draft.notes || ""} onChange={e => setDraft({ ...draft, notes: e.target.value })} /></label></section>
+        <div className={s.actions}><button className={s.primary} disabled={busy}>Enregistrer les modifications</button><button type="button" disabled={busy} className={s.danger} onClick={() => { if (window.confirm("Supprimer définitivement ce prospect et tout son historique ?")) void run(async () => { await prospectRequest("DELETE", { revision: prospect.revision }, id); router.push("/admin/prospection"); }); }}>Supprimer le prospect</button></div>
+      </form>
+      <section className={s.panel}><h2>Historique</h2><form onSubmit={e => { e.preventDefault(); void run(async () => { await mutate({ action: "note", note }); setNote(""); }); }}><label>Ajouter une note au journal<textarea required maxLength={10000} value={note} onChange={e => setNote(e.target.value)} /></label><button disabled={busy || Boolean(dirty) || !note.trim()}>Ajouter une note</button></form><ol className={s.history}>{history.map(event => <li key={event.id}><p>{event.detail}</p><p className={s.muted}>{new Date(event.at).toLocaleString("fr-FR")} · Admin {event.actor}</p></li>)}</ol></section>
+    </>}{busy && <p role="status">Enregistrement en cours…</p>}</div>;
+}

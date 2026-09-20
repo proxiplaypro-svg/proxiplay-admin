@@ -77,6 +77,15 @@ service cloud.firestore {
       allow read: if true;
     }
 
+    // Prospection is only accessed through authenticated admin server routes.
+    // Deny direct SDK access, including writes that would bypass deduplication/history.
+    match /prospects/{document=**} {
+      allow read, write: if false;
+    }
+    match /prospection_internal/{document=**} {
+      allow read, write: if false;
+    }
+
     match /admin_stats/{document=**} {
       allow read: if isAdmin();
       allow write: if false;

@@ -98,6 +98,7 @@ function buildSections(counts: {
               : undefined,
         },
         { href: "/admin/campaigns", label: "Animations", icon: "◨" },
+        { href: "/admin/prospection", label: "Prospection", icon: "⌕" },
         {
           href: "/admin/commercants",
           label: "Commercants",
