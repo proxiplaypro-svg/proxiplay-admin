@@ -30,5 +30,22 @@
 .badge { background: #f1f4ec; padding: 4px 8px; border-radius: 5px; font-size: 12px; }
 .history { display: grid; gap: 12px; margin-top: 12px; }
 .history li { border-left: 2px solid #b1ca94; padding-left: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.prospectList { list-style: none; padding: 0; margin: 16px 0 0; }
+.prospectRow { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 18px 0; border-top: 1px solid #eceee8; }
+.rowSelect { margin-top: 5px; }
+.prospectInfo { min-width: 0; overflow-wrap: anywhere; }
+.companyName { font-weight: 650; font-size: 15px; color: #29460d; }
+.companyName:hover { text-decoration: underline; }
+.emailInfo { margin: 5px 0 8px; }
+.emailAddress { font-weight: 500; overflow-wrap: anywhere; }
+.emailFound { color: #355d13; font-size: 13px; }
+.emailFailed { color: #a32d2d; font-size: 13px; }
+.rowMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #72766c; font-size: 13px; }
+.rowActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.emailCounters { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.emailCounters button[aria-pressed=true] { background: #eaf3de; border-color: #507f1b; color: #355d13; }
+.proposalHeading { scroll-margin-top: 24px; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+@media(max-width: 760px) { .prospectRow { grid-template-columns: 20px minmax(0, 1fr); } .rowActions { grid-column: 2; } }
 @media(max-width: 1000px) { .filters, .grid { grid-template-columns: 1fr; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media(max-width: 600px) { .cards { grid-template-columns: 1fr; } .panel { padding: 12px; } }

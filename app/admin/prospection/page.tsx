@@ -1,8 +1,9 @@
 "use client";
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { prospectRequest } from "@/lib/prospection/client";
-import { RESULT_STATES, resultState, importableIndices, googleRatingLabel, type IgnoredPlace, normalize, SECTORS, STATUSES, type Prospect, type ProspectFields as Fields, type SearchResult, type SearchInput } from "@/lib/prospection/model";
+import { RESULT_STATES, resultState, importableIndices, googleRatingLabel, type IgnoredPlace, SECTORS, STATUSES, type Prospect, type ProspectFields as Fields, type SearchResult, type SearchInput } from "@/lib/prospection/model";
+import { EMPTY_FILTERS, EMAIL_FILTERS, matchesProspectFilters, prospectEmailSummary, PROSPECTS_CHANGED } from "@/lib/prospection/list";
+import { ProspectList } from "@/components/admin/prospection/ProspectList";
 import { ProspectFields } from "@/components/admin/prospection/ProspectFields";
 import { ProspectionSettings } from "@/components/admin/prospection/ProspectionSettings";
 import { emailRequest, type EnrichmentBatch } from "@/lib/prospection/emailClient";
@@ -18,17 +19,28 @@ export default function ProspectionPage() {
   const [ignored, setIgnored] = useState<IgnoredPlace[]>([]);
   const [resultFilter, setResultFilter] = useState("");
   const [draft, setDraft] = useState<Partial<Fields>>({});
-  const [filters, setFilters] = useState({ status: "", category: "", city: "", source: "", date: "", query: "" });
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [search, setSearch] = useState<SearchInput>({ location: "Dunkerque", radius: 15, categories: ["restaurants"], limit: 50 });
   const [lastSearch, setLastSearch] = useState<SearchInput | null>(null);
   const [excludedCount, setExcludedCount] = useState(0);
   const [onlyNewBatch, setOnlyNewBatch] = useState(false);
   const [available, setAvailable] = useState(false); const [searched, setSearched] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]); const [selection, setSelection] = useState<Set<number>>(new Set());
-  const reload = useCallback(async () => { const data = await prospectRequest<{ prospects: Prospect[]; ignored: IgnoredPlace[]; searchAvailable: boolean }>(); setProspects(data.prospects); setIgnored(data.ignored); setAvailable(data.searchAvailable); }, []);
+  const reloadVersion = useRef(0);
+  const reload = useCallback(async () => { const version = ++reloadVersion.current; const data = await prospectRequest<{ prospects: Prospect[]; ignored: IgnoredPlace[]; searchAvailable: boolean }>(); if (version !== reloadVersion.current) return; setProspects(data.prospects); setIgnored(data.ignored); setAvailable(data.searchAvailable); }, []);
   useEffect(() => { reload().catch(error => setError(error.message)).finally(() => setLoading(false)); }, [reload]);
+  useEffect(() => {
+    const refresh = () => { void reload().catch(error => setError(error.message)); };
+    const visible = () => { if (document.visibilityState === "visible") refresh(); };
+    const changed = (event: StorageEvent) => { if (event.key === PROSPECTS_CHANGED) refresh(); };
+    window.addEventListener("focus", refresh); window.addEventListener("pageshow", refresh);
+    window.addEventListener(PROSPECTS_CHANGED, refresh); window.addEventListener("storage", changed);
+    document.addEventListener("visibilitychange", visible);
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("pageshow", refresh); window.removeEventListener(PROSPECTS_CHANGED, refresh); window.removeEventListener("storage", changed); document.removeEventListener("visibilitychange", visible); };
+  }, [reload]);
   async function run(work: () => Promise<void>) { setBusy(true); setError(""); setNotice(""); try { await work(); } catch (error) { setError(error instanceof Error ? error.message : "L’opération a échoué."); } finally { setBusy(false); } }
-  const filtered = prospects.filter(p => (!filters.status || p.status === filters.status) && (!filters.category || p.category === filters.category) && (!filters.city || normalize(p.city).includes(normalize(filters.city))) && (!filters.source || p.source === filters.source) && (!filters.date || p.created_at.slice(0, 10) === filters.date) && (!filters.query || normalize([p.name, p.address, p.city, p.email, p.contact_name, p.phone].join(" ")).includes(normalize(filters.query))));
+  const withoutEmailFilter = prospects.filter(p => matchesProspectFilters(p, { ...filters, email: "" }));
+  const filtered = withoutEmailFilter.filter(p => !filters.email || prospectEmailSummary(p).state === filters.email);
   const selectable = importableIndices(results);
   const selected = selectable.filter(index => selection.has(index));
   async function enrichSelection() {
@@ -84,14 +96,16 @@ export default function ProspectionPage() {
     {tab === "list" && <section className={s.panel}><div className={s.filters}>
       <label>Recherche texte<input placeholder="Entreprise, contact, email…" value={filters.query} onChange={e => setFilters({ ...filters, query: e.target.value })} /></label>
       <label>Statut<select value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })}><option value="">Tous les statuts</option>{Object.entries(STATUSES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+      <label>Email<select value={filters.email} onChange={e => setFilters({ ...filters, email: e.target.value })}><option value="">Tous</option>{Object.entries(EMAIL_FILTERS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <label>Secteur<select value={filters.category} onChange={e => setFilters({ ...filters, category: e.target.value })}><option value="">Tous les secteurs</option>{[...new Set(prospects.map(p => p.category).filter(Boolean))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
       <label>Ville<input value={filters.city} onChange={e => setFilters({ ...filters, city: e.target.value })} /></label>
       <label>Source<select value={filters.source} onChange={e => setFilters({ ...filters, source: e.target.value })}><option value="">Toutes les sources</option>{[...new Set(prospects.map(p => p.source))].map(value => <option key={value}>{value}</option>)}</select></label>
       <label>Date d’ajout<input type="date" value={filters.date} onChange={e => setFilters({ ...filters, date: e.target.value })} /></label>
-    </div><div className={s.toolbar}><p className={s.muted}>{filtered.length} prospect(s)</p><button onClick={() => setFilters({ status: "", category: "", city: "", source: "", date: "", query: "" })}>Réinitialiser les filtres</button><button disabled={busy} onClick={() => void run(reload)}>Actualiser</button></div>
+    </div><div className={s.toolbar}><p className={s.muted}>{filtered.length} prospect(s)</p><button onClick={() => setFilters(EMPTY_FILTERS)}>Réinitialiser les filtres</button><button disabled={busy} onClick={() => void run(reload)}>Actualiser</button></div>
       <div className={s.actions}><button disabled={busy || !filtered.length} onClick={() => setEmailSelection(new Set(filtered.slice(0, 50).map(p => p.id)))}>Sélectionner les prospects affichés (50 max.)</button><button disabled={busy} onClick={() => setEmailSelection(new Set())}>Désélectionner</button><button disabled={busy || !emailSelection.size} onClick={() => void run(enrichSelection)}>Rechercher les emails ({emailSelection.size})</button></div>
       {progress && <p role="status">{progress}</p>}
-      <div className={s.table}><table><thead><tr><th>Sélection</th><th>Entreprise</th><th>Secteur / ville</th><th>Statut</th><th>Prochaine relance</th><th>Source</th><th>Ajout</th></tr></thead><tbody>{filtered.map(p => <tr key={p.id}><td><input type="checkbox" aria-label={"Rechercher l’email de " + p.name} disabled={busy || (!emailSelection.has(p.id) && emailSelection.size >= 50)} checked={emailSelection.has(p.id)} onChange={e => setEmailSelection(previous => { const next = new Set(previous); if (e.target.checked) next.add(p.id); else next.delete(p.id); return next; })} /></td><td><Link className={s.link} href={`/admin/prospection/${p.id}`}>{p.name}</Link></td><td>{p.category || "—"}<p className={s.muted}>{p.city}</p></td><td><span className={s.badge}>{STATUSES[p.status]}</span></td><td>{p.next_follow_up_at ? new Date(p.next_follow_up_at).toLocaleString("fr-FR") : "—"}</td><td>{p.source}</td><td>{new Date(p.created_at).toLocaleDateString("fr-FR")}</td></tr>)}</tbody></table></div>{!loading && !filtered.length && <p>Aucun prospect à afficher. Ajoutez une entreprise ou adaptez les filtres.</p>}
+      <div className={s.emailCounters} aria-label="Filtrer par état email">{([['found', 'prospects avec email'], ['not_found', 'sans email public'], ['failed', 'échecs']] as const).map(([state, label]) => <button key={state} aria-pressed={filters.email === state} onClick={() => setFilters({ ...filters, email: state })}>{withoutEmailFilter.filter(p => prospectEmailSummary(p).state === state).length} {label}</button>)}</div>
+      <ProspectList prospects={filtered} selection={emailSelection} busy={busy} onSelect={(id, checked) => setEmailSelection(previous => { const next = new Set(previous); if (checked) next.add(id); else next.delete(id); return next; })} onRetry={id => void run(async () => { await emailRequest({ action: "enrich", id }); await reload(); })} />{!loading && !filtered.length && <p>Aucun prospect à afficher. Ajoutez une entreprise ou adaptez les filtres.</p>}
     </section>}
     {busy && <p role="status">Opération en cours…</p>}
   </div>;

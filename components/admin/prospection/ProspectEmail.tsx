@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { emailRequest } from "@/lib/prospection/emailClient";
 import type { EmailLog, Proposal, Prospect } from "@/lib/prospection/model";
+import { notifyProspectsChanged } from "@/lib/prospection/list";
 import s from "@/app/admin/prospection/prospection.module.css";
 
 export function ProspectEmail({ prospect, logs, reload, disabled }: { prospect: Prospect; logs: EmailLog[]; reload: () => Promise<void>; disabled: boolean }) {
@@ -9,6 +10,8 @@ export function ProspectEmail({ prospect, logs, reload, disabled }: { prospect: 
   const [busy, setBusy] = useState(false); const lock = useRef(false);
   const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   const [confirmation, setConfirmation] = useState<Proposal | null>(null);
+  const proposalHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { if (window.location.hash === "#proposition") { proposalHeading.current?.scrollIntoView(); proposalHeading.current?.focus({ preventScroll: true }); } }, [prospect.id]);
   useEffect(() => { setProposal(prospect.proposal || null); }, [prospect.proposal]);
   async function run(work: () => Promise<void>) {
     if (lock.current) return; lock.current = true; setBusy(true); setError(""); setNotice("");
@@ -40,7 +43,7 @@ export function ProspectEmail({ prospect, logs, reload, disabled }: { prospect: 
       <a href={item.source_url} target="_blank" rel="noreferrer">Source exacte</a> · {new Date(item.discovered_at).toLocaleString("fr-FR")}
     </li>)}</ul></>}
     <label className={s.check}><input type="checkbox" checked={Boolean(prospect.do_not_contact)} disabled={blocked} onChange={e => void run(() => action("do_not_contact", { value: e.target.checked }))} /> Ne pas contacter</label>
-    <h2>Proposition commerciale</h2>
+    <h2 id="proposition" ref={proposalHeading} tabIndex={-1} className={s.proposalHeading}>Proposition commerciale</h2>
     <p className={s.muted}>Brouillon factuel sans IA externe, utilisant les paramètres commerciaux enregistrés. Vérifiez le contenu avant envoi.</p>
     <button disabled={blocked || Boolean(prospect.email_sending_id)} onClick={() => {
       if (proposal && !window.confirm(proposal.status === "draft" ? "Remplacer le brouillon et ses modifications ?" : "Créer une nouvelle proposition pour un nouvel envoi volontaire ? Vérifiez d’abord le journal et votre boîte d’envoi.")) return;
@@ -62,6 +65,7 @@ export function ProspectEmail({ prospect, logs, reload, disabled }: { prospect: 
         <button type="button" disabled={blocked || prospect.do_not_contact} onClick={() => void run(async () => {
           setConfirmation(null);
           const result = await emailRequest<{ status: string }>({ action: "send", id: prospect.id, draftId: confirmation.id, revision: confirmation.revision, confirmed: true });
+          if (result.status === "sent") notifyProspectsChanged();
           await reload(); setNotice(result.status === "sent" ? "Email envoyé" : "Cet envoi a déjà été traité. Consultez son statut dans le journal.");
         })}>Confirmer</button>
         <button type="button" disabled={busy} onClick={() => setConfirmation(null)}>Annuler</button>

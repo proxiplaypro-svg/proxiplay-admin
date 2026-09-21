@@ -10,6 +10,7 @@
     "test:prospection": "tsx --test prospection.test.ts",
     "test:prospection-email": "node --test functions/test/prospect_email.test.cjs",
     "test:prospection-email-ui": "node --test prospection-email-ui.test.mjs",
+    "test:prospection-email-list": "tsx --test prospection-email-list.test.ts && node --test prospection-email-list-ui.test.mjs",
     "test:prospection-email-api": "firebase emulators:exec --project demo-prospection --only firestore,auth \"node --test functions/test/prospect_email_emulator.test.cjs\"",
     "test:prospection-api": "firebase emulators:exec --project demo-prospection --only firestore,auth \"tsx --test prospection-api.test.ts\"",
     "test:admin-merchants": "firebase emulators:exec --project demo-admin-merchants --only firestore,auth \"tsx --test merchant-admin.test.ts\"",
