@@ -19,10 +19,13 @@ async function handle(request: Request) {
       else if (body.action === "ignore") result = await service.ignore(body.fields, admin.uid);
       else if (body.action === "reactivate") result = await service.reactivate(text(body.placeId));
       else if (body.action === "annotate") {
-        if (!Array.isArray(body.selection) || body.selection.length > 100) throw new ProspectError("Sélection invalide.");
+        if (!Array.isArray(body.selection) || body.selection.length > 50) throw new ProspectError("Sélection invalide.");
         result = { results: await service.annotate(body.selection.map(parseFields)) };
       }
-      else if (body.action === "search") result = { results: await service.annotate(await getProspectProvider().search(parseSearch(body))) };
+      else if (body.action === "search") {
+        if (body.onlyNew !== undefined && typeof body.onlyNew !== "boolean") throw new ProspectError("Mode de recherche invalide.");
+        result = await service.discover(parseSearch(body), body.onlyNew === true, getProspectProvider());
+      }
       else if (body.action === "details") {
         result = { results: await service.annotate([await getProspectProvider().getDetails(text(body.placeId))]) };
       } else if (body.action === "import") {

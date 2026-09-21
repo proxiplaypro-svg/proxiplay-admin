@@ -1,7 +1,9 @@
 import { type Firestore, type Transaction } from "firebase-admin/firestore";
 import { getAdminDb } from "../firebase/admin-app";
-import { duplicateOf, normalize, parseFields, ProspectError, record, text, type IgnoredPlace, type Duplicate, type Prospect, type ProspectFields } from "./model";
+import { duplicateOf, normalize, parseFields, ProspectError, record, text, type IgnoredPlace, type Duplicate, type Prospect, type ProspectFields, type SearchInput } from "./model";
 import { factualDraftProvider, qualifyProspect } from "./qualification";
+
+import type { ProspectProvider } from "./provider";
 
 type Entry = { id: string; kind: Duplicate["kind"]; data: Record<string, unknown> };
 export class ProspectService {
@@ -58,12 +60,28 @@ export class ProspectService {
     const history = await ref.collection("history").orderBy("at", "desc").get();
     return { prospect: { ...snapshot.data(), id }, history: history.docs.map(doc => ({ ...doc.data(), id: doc.id })) };
   }
+  async discover(input: SearchInput, onlyNew: boolean, provider: ProspectProvider) {
+    // Persistent state, reloaded for every action, never a browser exclusion list.
+    const entries = await this.entries();
+    const excluded = new Set<string>();
+    const candidates = await provider.search(input, candidate => {
+      if (onlyNew && duplicateOf(candidate, entries)) { excluded.add(candidate.google_place_id); return false; }
+      return true;
+    });
+    // Recheck after Google calls: another admin may have processed a result meanwhile.
+    const annotated = await this.annotate(candidates);
+    const results = annotated.filter(candidate => {
+      if (onlyNew && candidate.duplicate) { excluded.add(candidate.google_place_id); return false; }
+      return true;
+    });
+    return { results, excludedCount: excluded.size };
+  }
   async annotate(candidates: ProspectFields[]) {
     const entries = await this.entries();
     return candidates.map(candidate => ({ ...candidate, duplicate: duplicateOf(candidate, entries) }));
   }
   async createMany(inputs: unknown[], actor: string) {
-    if (!inputs.length || inputs.length > 100) throw new ProspectError("Sélectionnez entre 1 et 100 entreprises.");
+    if (!inputs.length || inputs.length > 50) throw new ProspectError("Sélectionnez entre 1 et 50 entreprises.");
     const candidates = inputs.map(input => parseFields(input));
     if (candidates.some(candidate => candidate.status !== "new" || candidate.converted_enseigne_id)) throw new ProspectError("Un nouveau prospect doit avoir le statut Nouveau.");
     const refs = candidates.map(() => this.db.collection("prospects").doc());

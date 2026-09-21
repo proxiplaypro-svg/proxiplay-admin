@@ -55,7 +55,7 @@ import { googleRatingLabel, importableIndices, resultState, type SearchResult } 
 import { SEARCH_FIELDS, DETAIL_FIELDS, searchCallBudget } from "./lib/prospection/provider";
 const center = { latitude: 51, longitude: 2 };
 const place = (id: number) => ({ id: "p" + id, displayName: { text: "Place " + id }, location: center, rating: 4.6, userRatingCount: 327 });
-for (const limit of [20, 50, 100]) test("discovery " + limit + ": pagination, ceiling and early stop", async () => {
+for (const limit of [20, 50]) test("discovery " + limit + ": pagination, ceiling and early stop", async () => {
   const bodies: Record<string, unknown>[] = [];
   const fetcher: typeof fetch = async (_url, options) => {
     const body = JSON.parse(String(options?.body)); bodies.push(body);
@@ -69,7 +69,6 @@ for (const limit of [20, 50, 100]) test("discovery " + limit + ": pagination, ce
   assert.equal(bodies.length, 1 + Math.ceil(limit / 20));
   assert.equal(results[0].google_rating, 4.6); assert.equal(results[0].google_user_rating_count, 327);
   if (limit > 20) { assert.equal(bodies[2].pageToken, "page2"); const { pageToken: token, ...rest } = bodies[2]; assert.ok(token); assert.deepEqual(rest, bodies[1]); }
-  if (limit === 100) { assert.equal(bodies[4].pageToken, undefined); assert.notDeepEqual(bodies[4].locationBias, bodies[1].locationBias); }
 });
 test("overlapping pages deduplicate by Place ID, filter original radius and stop at 50", async () => {
   let calls = 0;
@@ -80,7 +79,7 @@ test("overlapping pages deduplicate by Place ID, filter original radius and stop
   const results = await new GooglePlacesProvider("secret", fetcher).search({ location: "Dunkerque", radius: 15, categories: ["restaurants"], limit: 50 });
   assert.equal(results.length, 50); assert.equal(calls, 4); assert.ok(!results.some(p => p.google_place_id === "p999"));
 });
-for (const limit of [20, 50, 100]) test("hard budget with endless unique tokens: " + limit, async () => {
+for (const limit of [20, 50]) test("hard budget with endless unique tokens: " + limit, async () => {
   let calls = 0;
   const fetcher: typeof fetch = async () => { calls++; return Response.json(calls === 1 ? { places: [{ location: center }] } : { places: [place(0)], nextPageToken: "t" + calls }); };
   const results = await new GooglePlacesProvider("secret", fetcher).search({ location: "Dunkerque", radius: 15, categories: ["restaurants", "bars", "commerces"], limit });
@@ -143,4 +142,43 @@ test("client dependency graph cannot import the Google provider or its secret", 
   visit(resolve("app/admin/prospection/[id]/page.tsx"));
   assert.ok(visited.size > 3);
   assert.ok(![...visited].some(file => /prospection[\\/](provider|server)\.ts$/.test(file)));
+});
+
+test("100 is rejected before any Google call", async () => {
+  let calls = 0;
+  const provider = new GooglePlacesProvider("secret", async () => { calls++; return Response.json({}); });
+  await assert.rejects(provider.search({ location: "Dunkerque", radius: 15, categories: ["restaurants"], limit: 100 }), /20 ou 50/);
+  assert.equal(calls, 0);
+  assert.ok(!readFileSync("app/admin/prospection/page.tsx", "utf8").includes("[20, 50, 100]"));
+});
+test("next batch skips processed IDs BEFORE counting: only 23 available gives 23", async () => {
+  let calls = 0;
+  const fetcher: typeof fetch = async (_url, options) => {
+    calls++;
+    const body = JSON.parse(String(options?.body));
+    if (body.pageSize === 1) return Response.json({ places: [{ location: center }] });
+    const page = body.pageToken ? Number(body.pageToken) : 0;
+    return Response.json({ places: Array.from({ length: 20 }, (_, i) => place(page * 20 + i)), ...(page < 2 ? { nextPageToken: String(page + 1) } : {}) });
+  };
+  const treated = new Set(Array.from({ length: 37 }, (_, i) => "p" + i));
+  const input = { location: "Dunkerque", radius: 15, categories: ["restaurants"], limit: 50 };
+  const provider = new GooglePlacesProvider("secret", fetcher);
+  const results = await provider.search(input, candidate => !treated.has(candidate.google_place_id));
+  assert.equal(results.length, 23); assert.equal(calls, 4);
+  for (const candidate of results) { assert.ok(!treated.has(candidate.google_place_id)); treated.add(candidate.google_place_id); }
+  calls = 0;
+  assert.deepEqual(await provider.search(input, candidate => !treated.has(candidate.google_place_id)), []);
+  assert.equal(calls, 4);
+});
+test("known duplicates across pages do not count twice and all-known discovery is bounded", async () => {
+  let calls = 0, inspected = 0;
+  const fetcher: typeof fetch = async () => { calls++; return Response.json(calls === 1 ? { places: [{ location: center }] } : { places: [place(0), place(0)], nextPageToken: "token" + calls }); };
+  const results = await new GooglePlacesProvider("secret", fetcher).search({ location: "Dunkerque", radius: 15, categories: ["restaurants", "bars"], limit: 50 }, () => { inspected++; return false; });
+  assert.deepEqual(results, []); assert.equal(calls, 5); assert.equal(inspected, 1);
+});
+test("new batch stops as soon as 50 accepted places are found", async () => {
+  let calls = 0;
+  const fetcher: typeof fetch = async () => { calls++; return Response.json(calls === 1 ? { places: [{ location: center }] } : { places: Array.from({ length: 20 }, (_, i) => place((calls - 2) * 20 + i)), nextPageToken: "token" + calls }); };
+  const results = await new GooglePlacesProvider("secret", fetcher).search({ location: "Dunkerque", radius: 15, categories: ["restaurants", "bars"], limit: 50 }, candidate => candidate.google_place_id !== "p0");
+  assert.equal(results.length, 50); assert.equal(calls, 4); assert.ok(results.every(candidate => candidate.google_place_id !== "p0"));
 });

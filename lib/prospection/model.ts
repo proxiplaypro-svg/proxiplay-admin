@@ -81,7 +81,7 @@ export function duplicateOf(candidate: Record<string, unknown>, entries: { id: s
 }
 export function parseSearch(input: unknown): SearchInput {
   const body = record(input); const location = text(body.location);
-  if (!location || typeof body.radius !== "number" || body.radius < 1 || body.radius > 50 || !Number.isFinite(body.radius) || ![20, 50, 100].includes(Number(body.limit)) || typeof body.limit !== "number") throw new ProspectError("Localisation, rayon (1–50 km) et limite (20, 50 ou 100) requis.");
+  if (!location || typeof body.radius !== "number" || body.radius < 1 || body.radius > 50 || !Number.isFinite(body.radius) || ![20, 50].includes(Number(body.limit)) || typeof body.limit !== "number") throw new ProspectError("Localisation, rayon (1–50 km) et limite (20 ou 50) requis.");
   if (!Array.isArray(body.categories) || !body.categories.length || body.categories.length > 11) throw new ProspectError("Sélectionnez de 1 à 11 secteurs.");
   const categories = [...new Set(body.categories.map(value => text(value, 100)))];
   if (categories.some(value => !value)) throw new ProspectError("Secteur vide.");

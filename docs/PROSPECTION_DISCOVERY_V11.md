@@ -1,5 +1,7 @@
 # Prospection — découverte V1.1
 
+> Historique : cette stratégie jusqu’à 100 est remplacée par [les lots successifs 20/50](PROSPECTION_BATCHES.md).
+
 ## Périmètre et audit
 
 Branche : feat/prospection-discovery-v11, base main/origin/main f67f296a51ca565380fa38fbc223f427c4f3bb9d.

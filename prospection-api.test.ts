@@ -158,3 +158,45 @@ test("exclusion rules deny SDK access, client precedence and invalid IDs", async
     assert.equal((await fetch(url, { method: "PATCH", headers, body: JSON.stringify({ fields: {} }) })).status, 403);
   }
 });
+
+test("successive batches read persistent clients, prospects and ignored across requests", async () => {
+  const batch = db.batch();
+  for (let i = 0; i < 37; i++) {
+    const collection = i < 12 ? "enseignes" : i < 24 ? "prospects" : "prospection_internal/discovery/ignored";
+    batch.set(db.collection(collection).doc("known" + i), { name: "Known " + i, google_place_id: "p" + i, ignored_at: new Date().toISOString() });
+  }
+  await batch.commit();
+  const savedFetch = globalThis.fetch, savedKey = process.env.GOOGLE_PLACES_API_KEY;
+  process.env.GOOGLE_PLACES_API_KEY = "fake-batches-key";
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    if (!String(url).startsWith("https://places.googleapis.com/")) return savedFetch(url, options);
+    calls++; const body = JSON.parse(String(options?.body));
+    if (body.pageSize === 1) return Response.json({ places: [{ location: { latitude: 51, longitude: 2 } }] });
+    const page = body.pageToken ? Number(body.pageToken) : 0;
+    return Response.json({ places: Array.from({ length: 20 }, (_, i) => ({ id: "p" + (page * 20 + i), displayName: { text: "Google name " + i }, location: { latitude: 51, longitude: 2 } })), ...(page < 2 ? { nextPageToken: String(page + 1) } : {}) });
+  };
+  const search = { action: "search", location: "Dunkerque", radius: 15, categories: ["restaurants"], limit: 50 };
+  try {
+    const initial = await (await request("POST", search)).json();
+    assert.equal(initial.results.length, 50); assert.equal(initial.results[0].duplicate.kind, "client");
+    assert.equal(initial.results[12].duplicate.kind, "prospect"); assert.equal(initial.results[24].duplicate.kind, "ignored");
+    calls = 0;
+    const next = await (await request("POST", { ...search, onlyNew: true })).json();
+    assert.equal(next.results.length, 23); assert.equal(next.excludedCount, 37); assert.equal(calls, 4);
+    assert.ok(next.results.every((result: { duplicate: unknown }) => result.duplicate === null));
+    const imported = await (await request("POST", { action: "import", selection: next.results })).json(); assert.equal(imported.created.length, 23);
+    calls = 0;
+    const exhausted = await (await request("POST", { ...search, onlyNew: true })).json();
+    assert.equal(exhausted.results.length, 0); assert.equal(exhausted.excludedCount, 60); assert.equal(calls, 4);
+    calls = 0;
+    assert.equal((await request("POST", { ...search, limit: 100 })).status, 400);
+    assert.equal((await request("POST", { ...search, onlyNew: "yes" })).status, 400); assert.equal(calls, 0);
+  } finally { globalThis.fetch = savedFetch; if (savedKey === undefined) delete process.env.GOOGLE_PLACES_API_KEY; else process.env.GOOGLE_PLACES_API_KEY = savedKey; }
+});
+test("import batch is capped at 50 and accepts exactly 50 unique prospects", async () => {
+  const selection = Array.from({ length: 51 }, (_, i) => ({ name: "Batch " + i, google_place_id: "batch" + i }));
+  assert.equal((await request("POST", { action: "import", selection })).status, 400);
+  const imported = await (await request("POST", { action: "import", selection: selection.slice(0, 50) })).json();
+  assert.equal(imported.created.length, 50);
+});
