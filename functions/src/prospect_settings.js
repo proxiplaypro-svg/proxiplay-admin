@@ -1,7 +1,9 @@
 const { HttpsError } = require("firebase-functions/v2/https");
-const DEFAULT_SETTINGS = Object.freeze({ connections_per_day: 350, download_url: "https://onelink.to/jx4ee7", website_url: "https://www.proxiplay.fr", sender_name: "Pascal", signature: "Proxiplay – Jouez la proximité !" });
+const DEFAULT_SETTINGS = Object.freeze({ connections_per_day: 350, download_url: "https://onelink.to/jx4ee7", website_url: "https://www.proxiplay.fr", sender_name: "Pascal", signature: "Proxiplay – Jouez la proximité !", phone: "07 59 60 69 86" });
 function parseSettings(input) {
   const value = { ...DEFAULT_SETTINGS, ...input };
+  if (typeof value.phone !== "string" || value.phone.length > 50 || /[\r\n]/.test(value.phone)) throw new HttpsError("invalid-argument", "Téléphone invalide.");
+  value.phone = value.phone.trim();
   const count = value.connections_per_day;
   if (count === "" || count === null) value.connections_per_day = null;
   else if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0 || count > 1000000000) throw new HttpsError("invalid-argument", "Connexions par jour : nombre entier positif ou champ vide requis.");

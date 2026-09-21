@@ -21,7 +21,7 @@ const factualProposalGenerator = {
     const personal = company && location ? `Je vous contacte pour présenter ce concept à ${company}, à ${location}.\n\n` : "";
     return {
       subject: `Découvrir Proxiplay${company ? ` — ${company}` : ""}`.slice(0, 200),
-      body: `Bonjour,\n\nJe me permets de vous contacter pour vous présenter Proxiplay, une application locale qui permet aux entreprises du Dunkerquois de se faire connaître de manière ludique auprès d’une communauté locale.\n\n${personal}Le principe est simple : votre entreprise propose un jeu et un lot, et les utilisateurs découvrent votre activité en venant tenter leur chance.\n\n${traffic}Vous pouvez découvrir Proxiplay ici :\n${settings.download_url}\n\nSi le concept peut vous intéresser, je peux vous l’expliquer rapidement.\n\n${settings.sender_name}\n${settings.signature}\n${settings.website_url}`,
+      body: `Bonjour,\n\nJe me permets de vous contacter pour vous présenter Proxiplay, une application locale qui permet aux entreprises du Dunkerquois de se faire connaître de manière ludique auprès d’une communauté locale.\n\n${personal}Le principe est simple : votre entreprise propose un jeu et un lot, et les utilisateurs découvrent votre activité en venant tenter leur chance.\n\n${traffic}Vous pouvez découvrir Proxiplay ici :\n${settings.download_url}\n\nSi le concept peut vous intéresser, je peux vous l’expliquer rapidement.\n\n${settings.sender_name}\n${settings.signature}\n${settings.phone ? `${settings.phone}\n` : ""}${settings.website_url}`,
     };
   },
 };
@@ -29,6 +29,7 @@ const factualProposalGenerator = {
 // EmailSender adapter reuses the existing OVH transport, secrets and From configuration.
 function createOvhEmailSender(getMailerTransport) {
   return {
+    identity() { const { from, replyTo } = getMailerTransport(); return { from, replyTo }; },
     async send(message) {
       const { transport, from, replyTo } = getMailerTransport({ connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 30000, requireTLS: true });
       const info = await transport.sendMail({ from, replyTo, to: message.to, subject: message.subject, text: message.body,
@@ -76,8 +77,51 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
       return { id, status: emails.length ? "found" : result.status, count: emails.length };
     });
   }
+  async function sendEmail(input, actor, batch = null) {
+      const ref = refFor(input.id);
+      if (input.confirmed !== true || !/^[\w-]{1,100}$/.test(input.draftId || "")) fail("invalid-argument", "Confirmation requise.");
+      const logRef = ref.collection("emails").doc(input.draftId);
+      const reservation = await db.runTransaction(async (tx) => {
+        const data = await current(tx, ref); const logged = (await tx.get(logRef)).data();
+        if (data.do_not_contact) fail("failed-precondition", "Ce prospect ne doit pas être contacté.");
+        if (logged && !(batch?.retry && logged.status === "failed" && logged.error_code === "SMTP_REJECTED" && logged.batch_id === batch.id)) return { duplicate: true, status: logged.status };
+        if (data.email_sending_id) fail("failed-precondition", "Un envoi est déjà en cours ou à vérifier.");
+        if (data.proposal?.id !== input.draftId || data.proposal?.revision !== input.revision) fail("failed-precondition", "La proposition a changé. Rechargez-la.");
+        if (batch && (data.emails?.find(e => e.is_primary)?.email?.toLowerCase() !== data.proposal.to.toLowerCase())) fail("failed-precondition", "L’email primaire a changé.");
+        const message = validateMessage(data.proposal);
+        tx.set(logRef, { ...(batch ? { batch_id: batch.id } : {}), ...message, status: "sending", created_at: now(), sent_at: null, provider_message_id: null, error_code: null, actor });
+        update(tx, ref, data, { email_sending_id: input.draftId, proposal: { ...data.proposal, status: "sending" } });
+        return { message: { ...message, id: input.draftId } };
+      });
+      if (reservation.duplicate) return reservation;
+      let delivered;
+      try { delivered = await sender.send(reservation.message); }
+      catch (error) {
+        const rejected = Number.isInteger(error?.responseCode) && error.responseCode >= 400 && error.responseCode <= 599;
+        // SMTP disconnects can be ambiguous. Never automatically retry this key.
+        await db.runTransaction(async (tx) => {
+          const data = await current(tx, ref);
+          tx.update(logRef, { status: "failed", error_code: rejected ? "SMTP_REJECTED" : "SMTP_FAILED_OR_UNKNOWN" });
+          update(tx, ref, data, { email_sending_id: null, proposal: { ...data.proposal, status: "failed" } });
+        });
+        fail("internal", "Envoi échoué ou résultat incertain. Vérifiez la boîte d’envoi avant tout nouvel envoi volontaire.");
+      }
+      // Never mark provider success as SMTP failure if Firestore finalization fails.
+      await db.runTransaction(async (tx) => {
+        const data = await current(tx, ref); const at = now();
+        tx.update(logRef, { status: "sent", sent_at: at, provider_message_id: delivered.provider_message_id });
+        tx.create(ref.collection("history").doc(input.draftId), { ...(batch ? { batch_id: batch.id } : {}), action: "email_sent", actor, at,
+          detail: `Email envoyé à ${reservation.message.to} — ${reservation.message.subject}`, to: reservation.message.to, subject: reservation.message.subject, status: "sent", provider_message_id: delivered.provider_message_id });
+        update(tx, ref, data, { last_contact_at: at, status: ["new", "to_contact"].includes(data.status) ? "contacted" : data.status,
+          email_sending_id: null, proposal: { ...data.proposal, status: "sent", sent_at: at } });
+      });
+      return { status: "sent" };
+    }
+
+  const batches = require("./prospect_batch").createBatchService({ db, generator, sender, sendEmail });
   async function handle(request) {
     assertAdmin(request); const actor = request.auth.uid; const input = request.data || {};
+    if (String(input.action).startsWith("batch_")) return batches.handle(input, actor);
     const settingsRef = db.doc("prospection_internal/commercial_settings");
     const testRef = db.doc(`prospection_internal/email_tests/attempts/${createHash("sha256").update(actor).digest("hex")}`);
     if (input.action === "settings_get") {
@@ -130,43 +174,7 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
     }
     const ref = refFor(input.id);
     if (input.action === "enrich") return enrich(input.id);
-    if (input.action === "send") {
-      if (input.confirmed !== true || !/^[\w-]{1,100}$/.test(input.draftId || "")) fail("invalid-argument", "Confirmation requise.");
-      const logRef = ref.collection("emails").doc(input.draftId);
-      const reservation = await db.runTransaction(async (tx) => {
-        const data = await current(tx, ref); const logged = (await tx.get(logRef)).data();
-        if (data.do_not_contact) fail("failed-precondition", "Ce prospect ne doit pas être contacté.");
-        if (logged) return { duplicate: true, status: logged.status };
-        if (data.email_sending_id) fail("failed-precondition", "Un envoi est déjà en cours ou à vérifier.");
-        if (data.proposal?.id !== input.draftId || data.proposal?.revision !== input.revision) fail("failed-precondition", "La proposition a changé. Rechargez-la.");
-        const message = validateMessage(data.proposal);
-        tx.create(logRef, { ...message, status: "sending", created_at: now(), sent_at: null, provider_message_id: null, error_code: null, actor });
-        update(tx, ref, data, { email_sending_id: input.draftId, proposal: { ...data.proposal, status: "sending" } });
-        return { message: { ...message, id: input.draftId } };
-      });
-      if (reservation.duplicate) return reservation;
-      let delivered;
-      try { delivered = await sender.send(reservation.message); }
-      catch {
-        // SMTP disconnects can be ambiguous. Never automatically retry this key.
-        await db.runTransaction(async (tx) => {
-          const data = await current(tx, ref);
-          tx.update(logRef, { status: "failed", error_code: "SMTP_FAILED_OR_UNKNOWN" });
-          update(tx, ref, data, { email_sending_id: null, proposal: { ...data.proposal, status: "failed" } });
-        });
-        fail("internal", "Envoi échoué ou résultat incertain. Vérifiez la boîte d’envoi avant tout nouvel envoi volontaire.");
-      }
-      // Never mark provider success as SMTP failure if Firestore finalization fails.
-      await db.runTransaction(async (tx) => {
-        const data = await current(tx, ref); const at = now();
-        tx.update(logRef, { status: "sent", sent_at: at, provider_message_id: delivered.provider_message_id });
-        tx.create(ref.collection("history").doc(input.draftId), { action: "email_sent", actor, at,
-          detail: `Email envoyé à ${reservation.message.to} — ${reservation.message.subject}`, to: reservation.message.to, subject: reservation.message.subject, status: "sent", provider_message_id: delivered.provider_message_id });
-        update(tx, ref, data, { last_contact_at: at, status: ["new", "to_contact"].includes(data.status) ? "contacted" : data.status,
-          email_sending_id: null, proposal: { ...data.proposal, status: "sent", sent_at: at } });
-      });
-      return { status: "sent" };
-    }
+    if (input.action === "send") return sendEmail(input, actor);
     return db.runTransaction(async (tx) => {
       const data = await current(tx, ref);
       if (data.email_sending_id) fail("failed-precondition", "Un envoi est en cours ou à vérifier.");

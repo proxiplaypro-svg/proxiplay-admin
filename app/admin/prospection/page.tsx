@@ -4,6 +4,7 @@ import { prospectRequest } from "@/lib/prospection/client";
 import { RESULT_STATES, resultState, importableIndices, googleRatingLabel, type IgnoredPlace, SECTORS, STATUSES, type Prospect, type ProspectFields as Fields, type SearchResult, type SearchInput } from "@/lib/prospection/model";
 import { EMPTY_FILTERS, EMAIL_FILTERS, matchesProspectFilters, prospectEmailSummary, PROSPECTS_CHANGED } from "@/lib/prospection/list";
 import { ProspectList } from "@/components/admin/prospection/ProspectList";
+import { ProspectBulkEmail } from "@/components/admin/prospection/ProspectBulkEmail";
 import { ProspectFields } from "@/components/admin/prospection/ProspectFields";
 import { ProspectionSettings } from "@/components/admin/prospection/ProspectionSettings";
 import { emailRequest, type EnrichmentBatch } from "@/lib/prospection/emailClient";
@@ -104,6 +105,7 @@ export default function ProspectionPage() {
     </div><div className={s.toolbar}><p className={s.muted}>{filtered.length} prospect(s)</p><button onClick={() => setFilters(EMPTY_FILTERS)}>Réinitialiser les filtres</button><button disabled={busy} onClick={() => void run(reload)}>Actualiser</button></div>
       <div className={s.actions}><button disabled={busy || !filtered.length} onClick={() => setEmailSelection(new Set(filtered.slice(0, 50).map(p => p.id)))}>Sélectionner les prospects affichés (50 max.)</button><button disabled={busy} onClick={() => setEmailSelection(new Set())}>Désélectionner</button><button disabled={busy || !emailSelection.size} onClick={() => void run(enrichSelection)}>Rechercher les emails ({emailSelection.size})</button></div>
       {progress && <p role="status">{progress}</p>}
+      <ProspectBulkEmail ids={[...emailSelection]} emailCount={prospects.filter(p => emailSelection.has(p.id) && p.emails?.some(e => e.is_primary)).length} disabled={busy} />
       <div className={s.emailCounters} aria-label="Filtrer par état email">{([['found', 'prospects avec email'], ['not_found', 'sans email public'], ['failed', 'échecs']] as const).map(([state, label]) => <button key={state} aria-pressed={filters.email === state} onClick={() => setFilters({ ...filters, email: state })}>{withoutEmailFilter.filter(p => prospectEmailSummary(p).state === state).length} {label}</button>)}</div>
       <ProspectList prospects={filtered} selection={emailSelection} busy={busy} onSelect={(id, checked) => setEmailSelection(previous => { const next = new Set(previous); if (checked) next.add(id); else next.delete(id); return next; })} onRetry={id => void run(async () => { await emailRequest({ action: "enrich", id }); await reload(); })} />{!loading && !filtered.length && <p>Aucun prospect à afficher. Ajoutez une entreprise ou adaptez les filtres.</p>}
     </section>}

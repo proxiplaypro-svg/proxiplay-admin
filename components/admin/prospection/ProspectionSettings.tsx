@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { emailRequest } from "@/lib/prospection/emailClient";
 import s from "@/app/admin/prospection/prospection.module.css";
-type Settings = { connections_per_day: number | null; download_url: string; website_url: string; sender_name: string; signature: string };
+type Settings = { connections_per_day: number | null; download_url: string; website_url: string; sender_name: string; signature: string; phone: string };
 type TestEmail = { id: string; to: string; subject: string; body: string; status: string };
 type Data = { settings: Settings; revision: number; test?: TestEmail | null };
 export function ProspectionSettings() {
@@ -20,6 +20,8 @@ export function ProspectionSettings() {
       <label>Connexions par jour<input type="number" min={0} max={1000000000} step={1} disabled={busy} value={data.settings.connections_per_day ?? ""} onChange={e => setData({ ...data, settings: { ...data.settings, connections_per_day: e.target.value === "" ? null : Number(e.target.value) } })} /></label>
       <p className={s.muted}>Laissez vide pour ne mentionner aucun chiffre de fréquentation.</p>
       {([['download_url', 'Lien de téléchargement'], ['website_url', 'Site Proxiplay'], ['sender_name', 'Nom du signataire'], ['signature', 'Signature']] as const).map(([key, label]) => <label key={key}>{label}<input required type={key.endsWith("url") ? "url" : "text"} maxLength={key.endsWith("url") ? 2000 : 500} disabled={busy} value={data.settings[key]} onChange={e => setData({ ...data, settings: { ...data.settings, [key]: e.target.value } })} /></label>)}
+      <label>Téléphone commercial<input type="tel" maxLength={50} disabled={busy} value={data.settings.phone ?? ""} onChange={e => setData({ ...data, settings: { ...data.settings, phone: e.target.value } })} /></label>
+      <p className={s.muted}>Laissez vide pour ne pas afficher de téléphone dans les nouveaux brouillons.</p>
       <button disabled={busy}>Enregistrer les paramètres</button>
     </form>
     <h3>Email de test interne</h3><p>Un seul test par compte administrateur, envoyé exclusivement à l’adresse de ce compte. Enregistrez les paramètres avant de préparer le test.</p>

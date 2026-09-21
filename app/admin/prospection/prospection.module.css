@@ -49,3 +49,5 @@
 @media(max-width: 760px) { .prospectRow { grid-template-columns: 20px minmax(0, 1fr); } .rowActions { grid-column: 2; } }
 @media(max-width: 1000px) { .filters, .grid { grid-template-columns: 1fr; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media(max-width: 600px) { .cards { grid-template-columns: 1fr; } .panel { padding: 12px; } }
+.bulkItem { padding: 16px 0; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
+.bulkBody { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
