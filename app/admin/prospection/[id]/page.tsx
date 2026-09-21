@@ -3,17 +3,19 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { prospectRequest } from "@/lib/prospection/client";
-import { enrichMissing, STATUSES, type Prospect, type ProspectFields as Fields, type HistoryEvent, type SearchResult } from "@/lib/prospection/model";
+import { enrichMissing, STATUSES, type Prospect, type ProspectFields as Fields, type HistoryEvent, type EmailLog, type SearchResult } from "@/lib/prospection/model";
 import { ProspectFields } from "@/components/admin/prospection/ProspectFields";
+import { ProspectEmail } from "@/components/admin/prospection/ProspectEmail";
 import s from "../prospection.module.css";
 type Merchant = { id: string; name: string; city: string };
 function localDate(value: string | null) { if (!value) return ""; const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
 export default function ProspectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params); const router = useRouter();
   const [prospect, setProspect] = useState<Prospect | null>(null); const [draft, setDraft] = useState<Partial<Fields>>({});
+  const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
   const [history, setHistory] = useState<HistoryEvent[]>([]); const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [note, setNote] = useState("");
-  const reload = useCallback(async () => { const data = await prospectRequest<{ prospect: Prospect; history: HistoryEvent[] }>("GET", undefined, id); setProspect(data.prospect); setDraft(data.prospect); setHistory(data.history); }, [id]);
+  const reload = useCallback(async () => { const data = await prospectRequest<{ prospect: Prospect; history: HistoryEvent[]; emailLogs: EmailLog[] }>("GET", undefined, id); setProspect(data.prospect); setDraft(data.prospect); setHistory(data.history); setEmailLogs(data.emailLogs || []); }, [id]);
   useEffect(() => { Promise.all([reload(), prospectRequest<{ merchants: Merchant[] }>().then(data => setMerchants(data.merchants))]).catch(error => setError(error.message)); }, [reload]);
   async function run(work: () => Promise<void>) { setBusy(true); setError(""); setNotice(""); try { await work(); } catch (error) { setError(error instanceof Error ? error.message : "L’opération a échoué."); } finally { setBusy(false); } }
   async function mutate(body: Record<string, unknown>) { await prospectRequest("PATCH", { ...body, revision: prospect?.revision }, id); await reload(); setNotice("Fiche mise à jour."); }
@@ -32,7 +34,7 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
         })}>Compléter les coordonnées depuis Google Places</button></div>}
         <section className={s.panel}><h2>Qualification</h2><p className={s.muted}>Brouillon factuel sans IA externe. Les hypothèses restent à confirmer ; aucun score de solvabilité.</p>{prospect.qualification && <><p>{prospect.qualification.summary}</p><p>Pertinence commerciale : {prospect.qualification.relevance === null ? "non évaluée" : `${prospect.qualification.relevance}/100`}</p><ul>{prospect.qualification.reasons.map((reason, index) => <li key={index}>• {reason}</li>)}</ul></>}<button type="button" disabled={busy || Boolean(dirty)} onClick={() => { if ((!draft.suggested_message && !draft.suggested_angle) || window.confirm("Remplacer l’angle et le message actuels par un nouveau brouillon ?")) void run(() => mutate({ action: "qualify" })); }}>Préparer la qualification et le message</button>{dirty && <p className={s.muted}>Enregistrez vos modifications avant de générer un brouillon ou de journaliser un appel.</p>}</section>
         <section className={s.panel}><h2>Angle commercial</h2><label>Angle conseillé<textarea maxLength={10000} value={draft.suggested_angle || ""} onChange={event => setDraft({ ...draft, suggested_angle: event.target.value })} /></label></section>
-        <section className={s.panel}><h2>Message proposé</h2><label>Message modifiable<textarea maxLength={10000} value={draft.suggested_message || ""} onChange={event => setDraft({ ...draft, suggested_message: event.target.value })} /></label><button type="button" disabled={busy || !draft.suggested_message} onClick={() => void run(() => copy(draft.suggested_message || ""))}>Copier le message</button><p className={s.muted}>Aucun email ni aucune relance ne sont envoyés par ce module.</p></section>
+        <section className={s.panel}><h2>Message proposé</h2><label>Message modifiable<textarea maxLength={10000} value={draft.suggested_message || ""} onChange={event => setDraft({ ...draft, suggested_message: event.target.value })} /></label><button type="button" disabled={busy || !draft.suggested_message} onClick={() => void run(() => copy(draft.suggested_message || ""))}>Copier le message</button><p className={s.muted}>Utilisez la section Proposition commerciale pour confirmer un envoi individuel.</p></section>
         <section className={s.panel}><h2>Suivi</h2><div className={s.grid}>
           <label>Statut<select value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value as Fields["status"] })}>{Object.entries(STATUSES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
           <label>Attribution (identifiant du commercial)<input maxLength={500} value={draft.assigned_to || ""} onChange={e => setDraft({ ...draft, assigned_to: e.target.value })} /></label>
@@ -42,6 +44,7 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
         </div>{draft.converted_enseigne_id && <p><Link href={`/admin/commercants/${draft.converted_enseigne_id}`}>Ouvrir l’enseigne associée ↗</Link></p>}<label>Notes de synthèse<textarea maxLength={10000} value={draft.notes || ""} onChange={e => setDraft({ ...draft, notes: e.target.value })} /></label></section>
         <div className={s.actions}><button className={s.primary} disabled={busy}>Enregistrer les modifications</button><button type="button" disabled={busy} className={s.danger} onClick={() => { if (window.confirm("Supprimer définitivement ce prospect et tout son historique ?")) void run(async () => { await prospectRequest("DELETE", { revision: prospect.revision }, id); router.push("/admin/prospection"); }); }}>Supprimer le prospect</button></div>
       </form>
+      <ProspectEmail prospect={prospect} logs={emailLogs} reload={reload} disabled={busy || Boolean(dirty)} />
       <section className={s.panel}><h2>Historique</h2><form onSubmit={e => { e.preventDefault(); void run(async () => { await mutate({ action: "note", note }); setNote(""); }); }}><label>Ajouter une note au journal<textarea required maxLength={10000} value={note} onChange={e => setNote(e.target.value)} /></label><button disabled={busy || Boolean(dirty) || !note.trim()}>Ajouter une note</button></form><ol className={s.history}>{history.map(event => <li key={event.id}><p>{event.detail}</p><p className={s.muted}>{new Date(event.at).toLocaleString("fr-FR")} · Admin {event.actor}</p></li>)}</ol></section>
     </>}{busy && <p role="status">Enregistrement en cours…</p>}</div>;
 }

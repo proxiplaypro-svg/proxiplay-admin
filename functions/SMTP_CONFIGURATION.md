@@ -12,6 +12,13 @@ The `sendMerchantEmail` function reads:
   - `OVH_SMTP_PORT` with default `587`
   - `OVH_SMTP_FROM` with fallback to `OVH_SMTP_USER`
   - `OVH_SMTP_FROM_NAME`
+  - `OVH_SMTP_REPLY_TO` (optional, prospect emails only; falls back to the From address)
+
+The `prospectEmail` callable reuses this transport for individually confirmed admin
+proposals. It does not send campaigns or automatic follow-ups. See
+[`../PROSPECTION_EMAIL_V12.md`](../PROSPECTION_EMAIL_V12.md) for configuration,
+idempotence, delivery uncertainty and local tests. No deployment is implied by
+adding this callable to the source.
 
 ### Recommended setup
 

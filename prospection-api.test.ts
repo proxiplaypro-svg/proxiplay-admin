@@ -31,6 +31,17 @@ test("toutes les méthodes refusent les accès anonymes, non-admin et jetons inv
   }
   assert.equal((await request("GET")).status, 200);
 });
+
+test("journal email privé accessible par la fiche ; suppression bloquée pendant un envoi", async () => {
+  const id = await create({ name: "Email prospect" });
+  await db.doc(`prospects/${id}`).update({ email_sending_id: "pending", do_not_contact: true });
+  await db.doc(`prospects/${id}/emails/pending`).set({ to: "contact@boutique.fr", status: "sending", created_at: new Date().toISOString() });
+  const detail = await (await request("GET", undefined, id)).json();
+  assert.equal(detail.emailLogs.length, 1); assert.equal(detail.emailLogs[0].status, "sending");
+  assert.equal((await request("DELETE", { revision: 1 }, id)).status, 409);
+  await request("PATCH", { revision: 1, fields: { do_not_contact: false } }, id);
+  assert.equal((await db.doc(`prospects/${id}`).get()).get("do_not_contact"), true);
+});
 test("création, modification, statut, suivi et historique avec contrôle de révision", async () => {
   const id = await create({ name: "Café", city: "Dunkerque" });
   const updated = await request("PATCH", { revision: 1, fields: { city: "Calais", status: "follow_up", next_follow_up_at: "2026-10-01T10:00:00Z" } }, id);

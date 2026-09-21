@@ -4,9 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { prospectRequest } from "@/lib/prospection/client";
 import { RESULT_STATES, resultState, importableIndices, googleRatingLabel, type IgnoredPlace, normalize, SECTORS, STATUSES, type Prospect, type ProspectFields as Fields, type SearchResult, type SearchInput } from "@/lib/prospection/model";
 import { ProspectFields } from "@/components/admin/prospection/ProspectFields";
+import { emailRequest, type EnrichmentBatch } from "@/lib/prospection/emailClient";
 import s from "./prospection.module.css";
 
 export default function ProspectionPage() {
+  const [emailSelection, setEmailSelection] = useState<Set<string>>(new Set());
+  const [progress, setProgress] = useState("");
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
   const [error, setError] = useState(""); const [notice, setNotice] = useState("");
@@ -27,6 +30,20 @@ export default function ProspectionPage() {
   const filtered = prospects.filter(p => (!filters.status || p.status === filters.status) && (!filters.category || p.category === filters.category) && (!filters.city || normalize(p.city).includes(normalize(filters.city))) && (!filters.source || p.source === filters.source) && (!filters.date || p.created_at.slice(0, 10) === filters.date) && (!filters.query || normalize([p.name, p.address, p.city, p.email, p.contact_name, p.phone].join(" ")).includes(normalize(filters.query))));
   const selectable = importableIndices(results);
   const selected = selectable.filter(index => selection.has(index));
+  async function enrichSelection() {
+    const ids = [...emailSelection];
+    setProgress(`0 / ${ids.length} analysés`);
+    const totals = { found: 0, not_found: 0, failed: 0, emails: 0 };
+    for (let offset = 0; offset < ids.length; offset += 3) {
+      const chunk = ids.slice(offset, offset + 3);
+      try {
+        const result = await emailRequest<EnrichmentBatch>({ action: "enrich_batch", ids: chunk });
+        for (const key of ["found", "not_found", "failed", "emails"] as const) totals[key] += result[key];
+      } catch { totals.failed += chunk.length; }
+      setProgress(Math.min(offset + 3, ids.length) + " / " + ids.length + " analysés — " + totals.emails + " emails trouvés, " + totals.found + " prospects avec email, " + totals.not_found + " sans email public, " + totals.failed + " échecs");
+    }
+    await reload();
+  }
   async function discover(input: SearchInput, onlyNew = false) {
     const data = await prospectRequest<{ results: SearchResult[]; excludedCount: number }>("POST", { action: "search", ...input, onlyNew });
     setResults(data.results); setSelection(new Set()); setResultFilter(""); setExcludedCount(data.excludedCount);
@@ -70,7 +87,9 @@ export default function ProspectionPage() {
       <label>Source<select value={filters.source} onChange={e => setFilters({ ...filters, source: e.target.value })}><option value="">Toutes les sources</option>{[...new Set(prospects.map(p => p.source))].map(value => <option key={value}>{value}</option>)}</select></label>
       <label>Date d’ajout<input type="date" value={filters.date} onChange={e => setFilters({ ...filters, date: e.target.value })} /></label>
     </div><div className={s.toolbar}><p className={s.muted}>{filtered.length} prospect(s)</p><button onClick={() => setFilters({ status: "", category: "", city: "", source: "", date: "", query: "" })}>Réinitialiser les filtres</button><button disabled={busy} onClick={() => void run(reload)}>Actualiser</button></div>
-      <div className={s.table}><table><thead><tr><th>Entreprise</th><th>Secteur / ville</th><th>Statut</th><th>Prochaine relance</th><th>Source</th><th>Ajout</th></tr></thead><tbody>{filtered.map(p => <tr key={p.id}><td><Link className={s.link} href={`/admin/prospection/${p.id}`}>{p.name}</Link></td><td>{p.category || "—"}<p className={s.muted}>{p.city}</p></td><td><span className={s.badge}>{STATUSES[p.status]}</span></td><td>{p.next_follow_up_at ? new Date(p.next_follow_up_at).toLocaleString("fr-FR") : "—"}</td><td>{p.source}</td><td>{new Date(p.created_at).toLocaleDateString("fr-FR")}</td></tr>)}</tbody></table></div>{!loading && !filtered.length && <p>Aucun prospect à afficher. Ajoutez une entreprise ou adaptez les filtres.</p>}
+      <div className={s.actions}><button disabled={busy || !filtered.length} onClick={() => setEmailSelection(new Set(filtered.slice(0, 50).map(p => p.id)))}>Sélectionner les prospects affichés (50 max.)</button><button disabled={busy} onClick={() => setEmailSelection(new Set())}>Désélectionner</button><button disabled={busy || !emailSelection.size} onClick={() => void run(enrichSelection)}>Rechercher les emails ({emailSelection.size})</button></div>
+      {progress && <p role="status">{progress}</p>}
+      <div className={s.table}><table><thead><tr><th>Sélection</th><th>Entreprise</th><th>Secteur / ville</th><th>Statut</th><th>Prochaine relance</th><th>Source</th><th>Ajout</th></tr></thead><tbody>{filtered.map(p => <tr key={p.id}><td><input type="checkbox" aria-label={"Rechercher l’email de " + p.name} disabled={busy || (!emailSelection.has(p.id) && emailSelection.size >= 50)} checked={emailSelection.has(p.id)} onChange={e => setEmailSelection(previous => { const next = new Set(previous); if (e.target.checked) next.add(p.id); else next.delete(p.id); return next; })} /></td><td><Link className={s.link} href={`/admin/prospection/${p.id}`}>{p.name}</Link></td><td>{p.category || "—"}<p className={s.muted}>{p.city}</p></td><td><span className={s.badge}>{STATUSES[p.status]}</span></td><td>{p.next_follow_up_at ? new Date(p.next_follow_up_at).toLocaleString("fr-FR") : "—"}</td><td>{p.source}</td><td>{new Date(p.created_at).toLocaleDateString("fr-FR")}</td></tr>)}</tbody></table></div>{!loading && !filtered.length && <p>Aucun prospect à afficher. Ajoutez une entreprise ou adaptez les filtres.</p>}
     </section>}
     {busy && <p role="status">Opération en cours…</p>}
   </div>;

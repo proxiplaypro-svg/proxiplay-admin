@@ -58,7 +58,8 @@ export class ProspectService {
     const ref = this.ref(id); const snapshot = await ref.get();
     if (!snapshot.exists || snapshot.data()?.deleting) throw new ProspectError("Prospect introuvable.", 404);
     const history = await ref.collection("history").orderBy("at", "desc").get();
-    return { prospect: { ...snapshot.data(), id }, history: history.docs.map(doc => ({ ...doc.data(), id: doc.id })) };
+    const emails = await ref.collection("emails").orderBy("created_at", "desc").limit(100).get();
+    return { prospect: { ...snapshot.data(), id }, history: history.docs.map(doc => ({ ...doc.data(), id: doc.id })), emailLogs: emails.docs.map(doc => ({ ...doc.data(), id: doc.id })) };
   }
   async discover(input: SearchInput, onlyNew: boolean, provider: ProspectProvider) {
     // Persistent state, reloaded for every action, never a browser exclusion list.
@@ -149,6 +150,7 @@ export class ProspectService {
       const snapshot = await transaction.get(ref);
       if (!snapshot.exists) throw new ProspectError("Prospect introuvable.", 404);
       if (snapshot.data()?.revision !== revision) throw new ProspectError("Cette fiche a changé. Rechargez-la.", 409);
+      if (snapshot.data()?.email_sending_id) throw new ProspectError("Un envoi est en cours ou à vérifier avant suppression.", 409);
       transaction.update(ref, { deleting: true }); transaction.set(lock, { updated_at: new Date().toISOString() });
     });
     // Tombstone prevents concurrent edits during recursive history deletion. Retry is safe.

@@ -125,7 +125,7 @@ test("client dependency graph cannot import the Google provider or its secret", 
   function visit(file: string) {
     if (visited.has(file)) return; visited.add(file);
     const source = readFileSync(file, "utf8");
-    assert.ok(!/GOOGLE_PLACES_API_KEY|places\.googleapis\.com|X-Goog-Api-Key/.test(source), file);
+    assert.ok(!/GOOGLE_PLACES_API_KEY|places\.googleapis\.com|X-Goog-Api-Key|OVH_SMTP_|nodemailer|prospect_crawler|prospect_email|OPENAI_API_KEY/.test(source), file);
     const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
     for (const statement of ast.statements) {
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.importClause?.isTypeOnly) continue;

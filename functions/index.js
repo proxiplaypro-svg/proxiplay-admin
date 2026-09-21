@@ -36,6 +36,7 @@ const OVH_SMTP_USER = defineString("OVH_SMTP_USER");
 const OVH_SMTP_PASS = defineSecret("OVH_SMTP_PASS");
 const OVH_SMTP_FROM = defineString("OVH_SMTP_FROM", { default: "" });
 const OVH_SMTP_FROM_NAME = defineString("OVH_SMTP_FROM_NAME", { default: "" });
+const OVH_SMTP_REPLY_TO = defineString("OVH_SMTP_REPLY_TO", { default: "" });
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "proxiplay.pro@gmail.com")
   .split(",")
@@ -66,7 +67,7 @@ async function getMerchantRefFromGameRef(gameRef) {
   return enseigneRef;
 }
 
-function getMailerTransport() {
+function getMailerTransport(options = {}) {
   const host = OVH_SMTP_HOST.value();
   const port = OVH_SMTP_PORT.value();
   const user = OVH_SMTP_USER.value();
@@ -140,10 +141,16 @@ function getMailerTransport() {
         user,
         pass,
       },
+      ...options,
     }),
     from: fromName ? `${fromName} <${from}>` : from,
+    replyTo: OVH_SMTP_REPLY_TO.value() || from,
   };
 }
+
+const { createProspectEmailService, createOvhEmailSender } = require("./src/prospect_email");
+exports.prospectEmail = onCall({ secrets: [OVH_SMTP_PASS], timeoutSeconds: 120 },
+  createProspectEmailService({ db, assertAdmin: assertAuthenticatedAdmin, sender: createOvhEmailSender(getMailerTransport) }).handle);
 
 function assertAuthenticatedAdmin(request) {
   const auth = request.auth;
