@@ -1,6 +1,8 @@
-const { randomUUID } = require("node:crypto");
+const { randomUUID, createHash } = require("node:crypto");
 const { HttpsError } = require("firebase-functions/v2/https");
 const { crawlWebsite, validEmail } = require("./prospect_crawler");
+
+const { DEFAULT_SETTINGS, parseSettings } = require("./prospect_settings");
 
 const fail = (code, message) => { throw new HttpsError(code, message); };
 const clean = (value, max) => typeof value === "string" && value.trim().length <= max ? value.trim() : "";
@@ -12,12 +14,14 @@ function validateMessage(input) {
 }
 // ProposalGenerator boundary: replace only with a provider accepting these factual inputs.
 const factualProposalGenerator = {
-  async generate({ name, city }) {
+  async generate({ name, city }, settings = DEFAULT_SETTINGS) {
+    settings = parseSettings(settings);
+    const traffic = settings.connections_per_day === null ? "" : `Nous sommes actuellement autour de ${settings.connections_per_day} connexions par jour sur l’application.\n\n`;
     const company = clean(name, 500).replace(/[\r\n]/g, " "); const location = clean(city, 500).replace(/[\r\n]/g, " ");
     const personal = company && location ? `Je vous contacte pour présenter ce concept à ${company}, à ${location}.\n\n` : "";
     return {
       subject: `Découvrir Proxiplay${company ? ` — ${company}` : ""}`.slice(0, 200),
-      body: `Bonjour,\n\nJe me permets de vous contacter pour vous présenter Proxiplay, une application locale qui permet aux entreprises du Dunkerquois de se faire connaître de manière ludique auprès d’une communauté locale.\n\n${personal}Le principe est simple : votre entreprise propose un jeu et un lot, et les utilisateurs découvrent votre activité en venant tenter leur chance.\n\nNous sommes actuellement autour de 350 connexions par jour sur l’application.\n\nVous pouvez découvrir Proxiplay ici :\nhttps://onelink.to/jx4ee7\n\nSi le concept peut vous intéresser, je peux vous l’expliquer rapidement.\n\nPascal\nProxiplay\nJouez la proximité !\nwww.proxiplay.fr`,
+      body: `Bonjour,\n\nJe me permets de vous contacter pour vous présenter Proxiplay, une application locale qui permet aux entreprises du Dunkerquois de se faire connaître de manière ludique auprès d’une communauté locale.\n\n${personal}Le principe est simple : votre entreprise propose un jeu et un lot, et les utilisateurs découvrent votre activité en venant tenter leur chance.\n\n${traffic}Vous pouvez découvrir Proxiplay ici :\n${settings.download_url}\n\nSi le concept peut vous intéresser, je peux vous l’expliquer rapidement.\n\n${settings.sender_name}\n${settings.signature}\n${settings.website_url}`,
     };
   },
 };
@@ -74,6 +78,49 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
   }
   async function handle(request) {
     assertAdmin(request); const actor = request.auth.uid; const input = request.data || {};
+    const settingsRef = db.doc("prospection_internal/commercial_settings");
+    const testRef = db.doc(`prospection_internal/email_tests/attempts/${createHash("sha256").update(actor).digest("hex")}`);
+    if (input.action === "settings_get") {
+      const saved = (await settingsRef.get()).data();
+      return { settings: parseSettings(saved?.values || {}), revision: saved?.revision || 0, test: (await testRef.get()).data() || null };
+    }
+    if (input.action === "settings_save") {
+      const values = parseSettings(input.settings);
+      return db.runTransaction(async tx => {
+        const saved = (await tx.get(settingsRef)).data();
+        if (input.revision !== (saved?.revision || 0)) fail("failed-precondition", "Les paramètres ont changé. Rechargez-les.");
+        const revision = (saved?.revision || 0) + 1;
+        tx.set(settingsRef, { values, revision, updated_at: now(), actor });
+        return { settings: values, revision };
+      });
+    }
+    if (input.action === "test_prepare") {
+      const to = clean(request.auth.token?.email, 254).toLowerCase();
+      if (!validEmail(to)) fail("failed-precondition", "Adresse du compte admin requise.");
+      return db.runTransaction(async tx => {
+        const existing = (await tx.get(testRef)).data();
+        if (existing) return { test: existing };
+        const settings = parseSettings((await tx.get(settingsRef)).data()?.values || {});
+        const draft = await generator.generate({}, settings);
+        const message = { ...draft, subject: `[TEST Proxiplay] ${draft.subject}`, to, id: randomUUID(), status: "draft", actor, created_at: now() };
+        tx.create(testRef, message); return { test: message };
+      });
+    }
+    if (input.action === "test_send") {
+      if (input.confirmed !== true) fail("invalid-argument", "Confirmation requise.");
+      const reserved = await db.runTransaction(async tx => {
+        const message = (await tx.get(testRef)).data();
+        if (!message || message.id !== input.testId || message.to !== request.auth.token?.email?.toLowerCase()) fail("failed-precondition", "Préparez le test avec votre compte admin.");
+        if (message.status !== "draft") return { duplicate: true, status: message.status };
+        tx.update(testRef, { status: "sending" }); return { message };
+      });
+      if (reserved.duplicate) return reserved;
+      let result;
+      try { result = await sender.send({ ...validateMessage(reserved.message), id: reserved.message.id }); }
+      catch { await testRef.update({ status: "failed", error_code: "SMTP_FAILED_OR_UNKNOWN" }); fail("internal", "Test échoué ou résultat incertain. Aucun renvoi automatique."); }
+      await testRef.update({ status: "sent", sent_at: now(), provider_message_id: result.provider_message_id });
+      return { status: "sent" };
+    }
     if (input.action === "enrich_batch") {
       if (!Array.isArray(input.ids) || !input.ids.length || input.ids.length > 3) fail("invalid-argument", "Sélectionnez de 1 à 3 prospects par étape.");
       const results = await Promise.all([...new Set(input.ids)].map(async (id) => {
@@ -133,7 +180,8 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
         update(tx, ref, data, { emails: data.emails.map((item) => ({ ...item, is_primary: item.email === input.email })) });
       } else if (input.action === "generate") {
         if (data.proposal && input.replace !== true) fail("failed-precondition", "Confirmez le remplacement du brouillon.");
-        const proposal = { ...await generator.generate({ name: data.name, city: data.city, category: data.category, website: data.website }),
+        const settings = parseSettings((await tx.get(db.doc("prospection_internal/commercial_settings"))).data()?.values || {});
+        const proposal = { ...await generator.generate({ name: data.name, city: data.city, category: data.category, website: data.website }, settings),
           to: data.contact_email || data.email || data.emails?.find((item) => item.is_primary)?.email || "", id: randomUUID(), revision: 1, status: "draft" };
         update(tx, ref, data, { proposal }); return { proposal };
       } else if (input.action === "save") {

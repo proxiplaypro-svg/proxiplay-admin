@@ -1,5 +1,7 @@
 # Prospection email V1.2
 
+Complément ultérieur : [paramètres commerciaux, audit Firebase Production et test interne](PROSPECTION_EMAIL_SETTINGS.md). Ce complément remplace le chiffre figé du modèle décrit ci-dessous par un paramètre modifiable.
+
 Base auditée : `2714d724041eeae8ebaa54e83799159641401d20`.
 Branche : `feat/prospection-email-v12`. Aucun déploiement ni email réel pendant les tests.
 

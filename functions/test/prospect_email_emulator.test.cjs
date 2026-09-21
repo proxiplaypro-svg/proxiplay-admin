@@ -23,10 +23,30 @@ test.after(async () => { await db.terminate(); await admin.app().delete(); });
 
 test("vraie garde callable : toutes les actions réservées à l’admin", async () => {
   const callable = require("../index").prospectEmail;
-  for (const action of ["send", "generate", "enrich", "enrich_batch", "erase", "primary", "save", "do_not_contact"]) {
+  for (const action of ["send", "generate", "enrich", "enrich_batch", "erase", "primary", "save", "do_not_contact", "settings_get", "settings_save", "test_prepare", "test_send"]) {
     await assert.rejects(callable.run({ data: { action } }), { code: "unauthenticated" });
     await assert.rejects(callable.run({ auth: { uid: "user", token: { email: "user@boutique.fr" } }, data: { action } }), { code: "permission-denied" });
   }
+});
+test("paramètres persistants, contrôle de révision et génération sans chiffre après effacement", async () => {
+  const defaults = await call("settings_get"); assert.equal(defaults.settings.connections_per_day, 350);
+  await call("settings_save", { settings: { ...defaults.settings, connections_per_day: 800 }, revision: 0 });
+  assert.ok((await draft()).body.includes("800 connexions"));
+  await assert.rejects(call("settings_save", { settings: defaults.settings, revision: 0 }), { code: "failed-precondition" });
+  await call("settings_save", { settings: { ...defaults.settings, connections_per_day: null }, revision: 1 });
+  assert.ok(!(await call("generate", { replace: true })).proposal.body.includes("connexions"));
+  assert.equal((await call("settings_get")).settings.connections_per_day, null);
+});
+test("test interne : adresse admin imposée, confirmation et une seule tentative concurrente", async () => {
+  const internal = (action, extra = {}) => service.handle({ auth: { uid: "admin", token: { email: "admin@proxiplay.fr" } }, data: { action, ...extra } });
+  const prepared = (await internal("test_prepare", { to: "prospect@boutique.fr" })).test;
+  assert.equal(prepared.to, "admin@proxiplay.fr"); assert.equal(sent.length, 0);
+  assert.equal((await internal("test_prepare")).test.id, prepared.id);
+  await assert.rejects(internal("test_send", { testId: prepared.id }), { code: "invalid-argument" });
+  await Promise.all(Array.from({ length: 4 }, () => internal("test_send", { confirmed: true, testId: prepared.id, to: "prospect@boutique.fr" })));
+  assert.equal(sent.length, 1); assert.equal(sent[0].to, "admin@proxiplay.fr");
+  assert.equal((await internal("settings_get")).test.status, "sent");
+  assert.equal((await prospectRef().collection("history").get()).size, 0);
 });
 test("envoi réussi, historique, contact et journal ; répétitions concurrentes = un seul email", async () => {
   const proposal = await draft();

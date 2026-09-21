@@ -41,7 +41,7 @@ export function ProspectEmail({ prospect, logs, reload, disabled }: { prospect: 
     </li>)}</ul></>}
     <label className={s.check}><input type="checkbox" checked={Boolean(prospect.do_not_contact)} disabled={blocked} onChange={e => void run(() => action("do_not_contact", { value: e.target.checked }))} /> Ne pas contacter</label>
     <h2>Proposition commerciale</h2>
-    <p className={s.muted}>Brouillon factuel sans IA externe. Le chiffre de 350 connexions par jour est celui fourni pour ce modèle : vérifiez-le avant envoi.</p>
+    <p className={s.muted}>Brouillon factuel sans IA externe, utilisant les paramètres commerciaux enregistrés. Vérifiez le contenu avant envoi.</p>
     <button disabled={blocked || Boolean(prospect.email_sending_id)} onClick={() => {
       if (proposal && !window.confirm(proposal.status === "draft" ? "Remplacer le brouillon et ses modifications ?" : "Créer une nouvelle proposition pour un nouvel envoi volontaire ? Vérifiez d’abord le journal et votre boîte d’envoi.")) return;
       void run(async () => { await action("generate", { replace: Boolean(proposal) }); });

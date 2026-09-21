@@ -2,6 +2,21 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { crawlWebsite, safeTarget, publicIPv4, resolvePublic, fetchPage, MAX_BYTES } = require("../src/prospect_crawler");
 const { validateMessage, factualProposalGenerator, createOvhEmailSender } = require("../src/prospect_email");
+const { DEFAULT_SETTINGS, parseSettings } = require("../src/prospect_settings");
+
+test("paramètres commerciaux : défauts, chiffre modifiable, vide sans chiffre et validation", async () => {
+  assert.equal(parseSettings({}).connections_per_day, 350);
+  const settings = { ...DEFAULT_SETTINGS, connections_per_day: 712, sender_name: "Équipe", signature: "Signature locale", download_url: "https://download.proxiplay.fr", website_url: "https://site.proxiplay.fr" };
+  const draft = await factualProposalGenerator.generate({}, settings);
+  for (const value of ["712 connexions", "Équipe", "Signature locale", settings.download_url, settings.website_url]) assert.ok(draft.body.includes(value));
+  assert.ok(!draft.body.includes("350"));
+  for (const connections_per_day of ["", null]) {
+    const empty = await factualProposalGenerator.generate({}, { ...settings, connections_per_day });
+    assert.ok(!empty.body.includes("connexions")); assert.ok(!empty.body.includes("712"));
+  }
+  for (const count of [-1, 1.5, "350", NaN]) assert.throws(() => parseSettings({ connections_per_day: count }));
+  assert.throws(() => parseSettings({ website_url: "javascript:alert(1)" }));
+});
 
 test("homepage, Contact, Mentions légales : sources exactes, classement, dédoublonnage", async () => {
   const pages = {

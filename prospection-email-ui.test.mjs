@@ -9,9 +9,15 @@ import puppeteer from "puppeteer-core";
 const fixture = `import React, {useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {ProspectEmail} from './components/admin/prospection/ProspectEmail';
+import {ProspectionSettings} from './components/admin/prospection/ProspectionSettings';
 let current = {id:'prospect-demo',name:'Boutique',email:'contact@boutique.fr',proposal:null,emails:[]};
 let sends=0, saves=0;
+let settings={connections_per_day:350,download_url:'https://download.proxiplay.fr',website_url:'https://www.proxiplay.fr',sender_name:'Pascal',signature:'Proxiplay'}; let settingsRevision=0; let internalTest=null;
 window.fixtureRequest = async input => {
+  if(input.action==='settings_get') return {settings,revision:settingsRevision,test:internalTest};
+  if(input.action==='settings_save') {settings=input.settings;settingsRevision++;document.getElementById('saved-count').textContent=JSON.stringify(settings.connections_per_day);return {settings,revision:settingsRevision};}
+  if(input.action==='test_prepare') {internalTest={id:'test',to:'admin@proxiplay.fr',subject:'Test',body:'Test interne',status:'draft'};return {test:internalTest};}
+  if(input.action==='test_send') {if(!input.confirmed) throw new Error('Missing confirmation');internalTest={...internalTest,status:'sent'};return {status:'sent'};}
   if(input.id !== 'prospect-demo') throw new Error('Wrong prospect identifier');
   if(input.action==='generate') current={...current,proposal:{id:'draft-demo',revision:1,status:'draft',to:current.email,subject:'Proxiplay',body:'Bonjour, decouvrez Proxiplay.'}};
   if(input.action==='save') { saves++; current={...current,proposal:{...current.proposal,to:input.to,subject:input.subject,body:input.body,revision:current.proposal.revision+1}}; }
@@ -23,7 +29,7 @@ window.fixtureRequest = async input => {
   document.getElementById('counts').textContent=JSON.stringify({sends,saves});
   return input.action==='send'?{status:'sent'}:{proposal:current.proposal};
 };
-function Fixture(){const [p,setP]=useState(current);return <ProspectEmail prospect={p} logs={[]} reload={async()=>setP({...current})} disabled={false}/>;}
+function Fixture(){const [p,setP]=useState(current);return <><ProspectionSettings/><ProspectEmail prospect={p} logs={[]} reload={async()=>setP({...current})} disabled={false}/></>;}
 createRoot(document.getElementById('root')).render(<Fixture/>);`;
 
 test("éditeur réel : génération sans envoi, annulation, édition, confirmation unique et opposition", async () => {
@@ -40,7 +46,7 @@ test("éditeur réel : génération sans envoi, annulation, édition, confirmati
   assert.ok(!/OVH_SMTP_|nodemailer|firebaseapp\.com|cloudfunctions\.net/.test(js));
   const server = createServer((req, res) => {
     res.setHeader("Content-Type", req.url === "/fixture.js" ? "text/javascript" : "text/html; charset=utf-8");
-    res.end(req.url === "/fixture.js" ? js : '<!doctype html><html lang="fr"><meta charset="utf-8"><div id="counts">{"sends":0,"saves":0}</div><div id="root"></div><script src="/fixture.js"></script></html>');
+    res.end(req.url === "/fixture.js" ? js : '<!doctype html><html lang="fr"><meta charset="utf-8"><div id="counts">{"sends":0,"saves":0}</div><div id="saved-count"></div><div id="root"></div><script src="/fixture.js"></script></html>');
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   let browser;
@@ -56,6 +62,15 @@ test("éditeur réel : génération sans envoi, annulation, édition, confirmati
       await page.evaluate(label => [...document.querySelectorAll("button")].find(b => b.textContent === label).click(), text);
     };
     const counts = async () => JSON.parse(await page.$eval("#counts", el => el.textContent));
+    await click("Configurer la prospection"); await page.waitForSelector('input[type="number"]');
+    await page.$eval('input[type="number"]', input => { input.focus(); input.select(); });
+    await page.keyboard.press("Backspace"); await click("Enregistrer les paramètres");
+    await page.waitForFunction(() => document.getElementById('saved-count').textContent === 'null');
+    await click("Préparer l’email de test"); await click("Envoyer le test à mon adresse");
+    await page.waitForSelector('[role="alertdialog"]');
+    assert.match(await page.$eval('[role="alertdialog"]', el => el.textContent), /admin@proxiplay.fr/);
+    await click("Annuler"); await click("Envoyer le test à mon adresse"); await click("Confirmer");
+    await page.waitForFunction(() => document.body.textContent.includes("Email de test accepté par SMTP"));
     await click("Générer la proposition"); await page.waitForSelector('input[type="email"]');
     assert.equal((await counts()).sends, 0);
     await click("Envoyer"); await page.waitForSelector('[role="alertdialog"]');

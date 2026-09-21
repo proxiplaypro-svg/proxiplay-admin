@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { prospectRequest } from "@/lib/prospection/client";
 import { RESULT_STATES, resultState, importableIndices, googleRatingLabel, type IgnoredPlace, normalize, SECTORS, STATUSES, type Prospect, type ProspectFields as Fields, type SearchResult, type SearchInput } from "@/lib/prospection/model";
 import { ProspectFields } from "@/components/admin/prospection/ProspectFields";
+import { ProspectionSettings } from "@/components/admin/prospection/ProspectionSettings";
 import { emailRequest, type EnrichmentBatch } from "@/lib/prospection/emailClient";
 import s from "./prospection.module.css";
 
@@ -59,6 +60,7 @@ export default function ProspectionPage() {
     await prospectRequest("POST", { action: "reactivate", placeId }); await refreshResults(); setNotice("Établissement réactivé.");
   }
   return <div className={s.module}>
+    <ProspectionSettings />
     <header className={s.toolbar}><div><h1>Prospection</h1><p className={s.muted}>Qualifier les entreprises et organiser le suivi commercial. Aucun envoi automatique.</p></div><div className={s.actions}><button onClick={() => setTab("ignored")}>Ignorés ({ignored.length})</button><button onClick={() => setTab("search")}>Rechercher des entreprises</button><button className={s.primary} onClick={() => setTab("add")}>+ Ajouter un prospect</button></div></header>
     {error && <p role="alert" className={s.error}>{error}</p>}{notice && <p role="status" className={s.notice}>{notice}</p>}
     {loading ? <p role="status">Chargement des prospects…</p> : <div className={s.cards}>{Object.entries(STATUSES).map(([key, label]) => <button key={key} onClick={() => { setFilters({ ...filters, status: key }); setTab("list"); }}><span>{label}</span><strong>{prospects.filter(p => p.status === key).length}</strong></button>)}</div>}
