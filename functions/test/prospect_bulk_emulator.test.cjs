@@ -39,7 +39,7 @@ test("server maximum 50, exclusions, one and individual generation", async () =>
   const ids = Array.from({ length: 50 }, (_, i) => `p${i}`); await Promise.all(ids.map(id => seed(id)));
   const large = (await prepare(ids, "fifty")).batch; assert.equal(large.items.length, 50);
   assert.equal(new Set(large.items.map(i => i.draftId)).size, 50);
-  for (const i of large.items) { assert.ok(i.body.includes(`à ${i.name},`)); assert.equal(i.to, `${i.id}@boutique.fr`); }
+  for (const i of large.items) { assert.ok(i.body.includes(`présenter ${i.name} aux utilisateurs locaux`)); assert.equal(i.to, `${i.id}@boutique.fr`); }
   assert.equal(sent.length, 0);
 });
 test("confirmation, complete success, individual logs/status, batch id and double clicks", async () => {
@@ -113,4 +113,28 @@ test("global gate shared across batches and repeated preparation does not regene
   assert.equal(sent.length, 1);
   await release(); await step(); await call("batch_step", { batchId: "second" });
   assert.equal(sent.length, 2);
+});
+
+test("same generator for individual and bulk; regeneration alone replaces edited drafts with current settings and activity", async () => {
+  await seed("one", { name: "Institut Océane", category: "Institut de beauté" });
+  await seed("two", { name: "Restaurant Dupont", category: "Restaurant" });
+  await seed("three", { name: "Artisan Test", category: "Établissement", subcategory: "plombier" });
+  const individual = (await call("generate", { id: "one" })).proposal;
+  assert.equal(individual.subject, "Et si 350 utilisateurs découvraient Institut Océane chaque jour ?");
+  assert.ok(individual.body.includes("une prestation ou un bon cadeau"));
+  const edited = (await call("save", { id: "one", draftId: individual.id, revision: individual.revision, to: individual.to, subject: "Objet retouché", body: "Message manuel conservé" })).proposal;
+  const settings = await call("settings_get");
+  await call("settings_save", { settings: { ...settings.settings, phone: "01 23 45 67 89", connections_per_day: 712 }, revision: settings.revision });
+  const batch = (await prepare(["one", "two", "three"])).batch;
+  assert.equal(batch.items[0].body, edited.body); assert.equal(batch.items[0].subject, edited.subject);
+  assert.equal(batch.items[1].subject, "Et si 712 utilisateurs découvraient Restaurant Dupont chaque jour ?");
+  assert.ok(batch.items[1].body.includes("un repas ou un bon cadeau")); assert.ok(!batch.items[1].body.includes("Institut Océane"));
+  assert.ok(batch.items[2].body.includes("un lot que vous choisissez")); assert.ok(!batch.items[2].body.includes("Restaurant Dupont"));
+  await assert.rejects(call("generate", { id: "one" }), { code: "failed-precondition" });
+  assert.equal((await db.doc("prospects/one").get()).data().proposal.body, edited.body);
+  await db.doc("prospects/one").update({ category: "Salon de coiffure" });
+  const regenerated = (await call("generate", { id: "one", replace: true })).proposal;
+  assert.notEqual(regenerated.id, edited.id); assert.ok(regenerated.subject.includes("712"));
+  assert.ok(regenerated.body.includes("une coupe")); assert.ok(regenerated.body.includes("01 23 45 67 89"));
+  assert.equal(sent.length, 0);
 });

@@ -99,7 +99,7 @@ test("proposition factuelle et fallback sans invention", async () => {
   const generic = await factualProposalGenerator.generate({});
   assert.ok(!generic.body.includes("undefined")); assert.ok(generic.body.includes("350 connexions"));
   const personal = await factualProposalGenerator.generate({ name: "Boutique", city: "Dunkerque", notes: "Inventer un dirigeant" });
-  assert.ok(personal.body.includes("Boutique, à Dunkerque")); assert.ok(!personal.body.includes("dirigeant"));
+  assert.ok(personal.body.includes("présenter Boutique aux utilisateurs locaux")); assert.ok(!personal.body.includes("dirigeant"));
 });
 test("adaptateur réutilise From/Reply-To OVH et refuse les faux succès", async () => {
   let sent;

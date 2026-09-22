@@ -51,7 +51,7 @@ function createBatchService({ db, generator, sender, sendEmail, clock = Date.now
           if (reason) { items.push({ id, name: p?.name || id, to, state: "excluded", reason }); continue; }
           let proposal = p.proposal;
           if (!proposal) {
-            proposal = { ...await generator.generate({ name: p.name, city: p.city, category: p.category, website: p.website }, settings), to, id: randomUUID(), revision: 1, status: "draft" };
+            proposal = { ...await generator.generate({ name: p.name, city: p.city, category: p.category, subcategory: p.subcategory, website: p.website }, settings), to, id: randomUUID(), revision: 1, status: "draft" };
             tx.update(snapshot.ref, { proposal, revision: (p.revision || 0) + 1, updated_at: new Date(clock()).toISOString() });
           }
           items.push({ id, name: p.name || id, to, subject: proposal.subject, draftId: proposal.id, revision: proposal.revision, state: "ready" });

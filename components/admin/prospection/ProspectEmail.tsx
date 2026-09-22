@@ -46,9 +46,9 @@ export function ProspectEmail({ prospect, logs, reload, disabled }: { prospect: 
     <h2 id="proposition" ref={proposalHeading} tabIndex={-1} className={s.proposalHeading}>Proposition commerciale</h2>
     <p className={s.muted}>Brouillon factuel sans IA externe, utilisant les paramètres commerciaux enregistrés. Vérifiez le contenu avant envoi.</p>
     <button disabled={blocked || Boolean(prospect.email_sending_id)} onClick={() => {
-      if (proposal && !window.confirm(proposal.status === "draft" ? "Remplacer le brouillon et ses modifications ?" : "Créer une nouvelle proposition pour un nouvel envoi volontaire ? Vérifiez d’abord le journal et votre boîte d’envoi.")) return;
+      if (proposal && !window.confirm(proposal.status === "draft" ? "Régénérer remplacera le message actuellement enregistré. Les modifications du message seront perdues. Continuer ?" : "Créer une nouvelle proposition pour un nouvel envoi volontaire ? Vérifiez d’abord le journal et votre boîte d’envoi.")) return;
       void run(async () => { await action("generate", { replace: Boolean(proposal) }); });
-    }}>{proposal ? "Régénérer" : "Générer la proposition"}</button>
+    }}>{proposal ? "Régénérer la proposition" : "Générer la proposition"}</button>
     {proposal && <form className={s.module} onSubmit={e => { e.preventDefault(); void run(async () => { setConfirmation(await save()); }); }}>
       <p role="status">{proposal.status === "sent" ? "Email envoyé" : proposal.status === "sending" ? "Envoi en cours ou résultat à vérifier. Aucun renvoi automatique." : proposal.status === "failed" ? "Envoi échoué ou résultat incertain. Vérifiez avant de régénérer." : "Brouillon — aucun envoi effectué"}</p>
       {Boolean(prospect.emails?.length) && editable && <label>Choisir un email public<select disabled={blocked || Boolean(confirmation)} value={prospect.emails?.some(item => item.email === proposal.to) ? proposal.to : ""} onChange={e => { if (e.target.value) setProposal({ ...proposal, to: e.target.value }); }}><option value="">Adresse saisie ci-dessous</option>{prospect.emails?.map(item => <option key={item.email} value={item.email}>{item.email}</option>)}</select></label>}

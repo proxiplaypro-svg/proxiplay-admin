@@ -73,6 +73,18 @@ test("éditeur réel : génération sans envoi, annulation, édition, confirmati
     await page.waitForFunction(() => document.body.textContent.includes("Email de test accepté par SMTP"));
     await click("Générer la proposition"); await page.waitForSelector('input[type="email"]');
     assert.equal((await counts()).sends, 0);
+    await page.$eval('textarea', input => { input.focus(); input.select(); });
+    await page.keyboard.type("Mon message manuel");
+    await click("Enregistrer le brouillon");
+    let regenerationDialog = "";
+    page.once("dialog", dialog => { regenerationDialog = dialog.message(); void dialog.dismiss(); });
+    await click("Régénérer la proposition");
+    assert.match(regenerationDialog, /Régénérer remplacera le message actuellement enregistré/);
+    assert.equal(await page.$eval('textarea', input => input.value), "Mon message manuel");
+    page.once("dialog", dialog => dialog.accept());
+    await click("Régénérer la proposition");
+    await page.waitForFunction(() => document.querySelector('textarea').value !== "Mon message manuel");
+    assert.equal((await counts()).sends, 0);
     await click("Envoyer"); await page.waitForSelector('[role="alertdialog"]');
     assert.equal((await counts()).sends, 0);
     assert.match(await page.$eval('[role="alertdialog"]', el => el.textContent), /contact@boutique.fr/);
@@ -85,7 +97,7 @@ test("éditeur réel : génération sans envoi, annulation, édition, confirmati
     await page.waitForFunction(() => document.body.textContent.includes("Email envoyé"));
     assert.equal((await counts()).sends, 1);
     assert.equal(await page.evaluate(() => [...document.querySelectorAll("button")].find(b => b.textContent === "Envoyer").disabled), true);
-    page.on("dialog", dialog => dialog.accept()); await click("Régénérer");
+    page.on("dialog", dialog => dialog.accept()); await click("Régénérer la proposition");
     await page.waitForFunction(() => document.body.textContent.includes("Brouillon — aucun envoi effectué"));
     await page.click('input[type="checkbox"]');
     await page.waitForFunction(() => [...document.querySelectorAll("button")].find(b => b.textContent === "Envoyer").disabled);

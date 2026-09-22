@@ -2,7 +2,7 @@ const { randomUUID, createHash } = require("node:crypto");
 const { HttpsError } = require("firebase-functions/v2/https");
 const { crawlWebsite, validEmail } = require("./prospect_crawler");
 
-const { DEFAULT_SETTINGS, parseSettings } = require("./prospect_settings");
+const { parseSettings } = require("./prospect_settings");
 
 const fail = (code, message) => { throw new HttpsError(code, message); };
 const clean = (value, max) => typeof value === "string" && value.trim().length <= max ? value.trim() : "";
@@ -12,19 +12,7 @@ function validateMessage(input) {
   if (!validEmail(to) || !subject || /[\r\n]/.test(subject) || !body) fail("invalid-argument", "Destinataire, objet et message valides requis.");
   return { to, subject, body };
 }
-// ProposalGenerator boundary: replace only with a provider accepting these factual inputs.
-const factualProposalGenerator = {
-  async generate({ name, city }, settings = DEFAULT_SETTINGS) {
-    settings = parseSettings(settings);
-    const traffic = settings.connections_per_day === null ? "" : `Nous sommes actuellement autour de ${settings.connections_per_day} connexions par jour sur l’application.\n\n`;
-    const company = clean(name, 500).replace(/[\r\n]/g, " "); const location = clean(city, 500).replace(/[\r\n]/g, " ");
-    const personal = company && location ? `Je vous contacte pour présenter ce concept à ${company}, à ${location}.\n\n` : "";
-    return {
-      subject: `Découvrir Proxiplay${company ? ` — ${company}` : ""}`.slice(0, 200),
-      body: `Bonjour,\n\nJe me permets de vous contacter pour vous présenter Proxiplay, une application locale qui permet aux entreprises du Dunkerquois de se faire connaître de manière ludique auprès d’une communauté locale.\n\n${personal}Le principe est simple : votre entreprise propose un jeu et un lot, et les utilisateurs découvrent votre activité en venant tenter leur chance.\n\n${traffic}Vous pouvez découvrir Proxiplay ici :\n${settings.download_url}\n\nSi le concept peut vous intéresser, je peux vous l’expliquer rapidement.\n\n${settings.sender_name}\n${settings.signature}\n${settings.phone ? `${settings.phone}\n` : ""}${settings.website_url}`,
-    };
-  },
-};
+const { factualProposalGenerator } = require("./prospect_proposal");
 
 // EmailSender adapter reuses the existing OVH transport, secrets and From configuration.
 function createOvhEmailSender(getMailerTransport) {
@@ -189,7 +177,7 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
       } else if (input.action === "generate") {
         if (data.proposal && input.replace !== true) fail("failed-precondition", "Confirmez le remplacement du brouillon.");
         const settings = parseSettings((await tx.get(db.doc("prospection_internal/commercial_settings"))).data()?.values || {});
-        const proposal = { ...await generator.generate({ name: data.name, city: data.city, category: data.category, website: data.website }, settings),
+        const proposal = { ...await generator.generate({ name: data.name, city: data.city, category: data.category, subcategory: data.subcategory, website: data.website }, settings),
           to: data.contact_email || data.email || data.emails?.find((item) => item.is_primary)?.email || "", id: randomUUID(), revision: 1, status: "draft" };
         update(tx, ref, data, { proposal }); return { proposal };
       } else if (input.action === "save") {
