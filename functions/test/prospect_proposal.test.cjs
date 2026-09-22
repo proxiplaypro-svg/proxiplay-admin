@@ -70,3 +70,14 @@ test("long and multiline names keep valid subject and no undefined fallback", as
   assert.equal(p.subject.length, 200); assert.ok(!/[\r\n]/.test(p.subject)); assert.ok(p.subject.endsWith("chaque jour ?"));
   assert.ok(!(await factualProposalGenerator.generate({})).body.includes("undefined"));
 });
+
+for (const category of ["Bijouterie", "Opticien", "Librairie", "Épicerie", "Caviste", "Papeterie", "Chocolaterie", "Pâtisserie", "Boulangerie", "Animalerie", "Mercerie", "Magasin de sport", "sporting_goods_store", "Bakery"]) test(`precise retail activity: ${category}`, async () => {
+  const p = await factualProposalGenerator.generate({ name: "Boutique Test", category, subcategory: "sport" });
+  assert.equal(activityRule({ category }).sector, "retail");
+  assert.ok(p.body.includes("un produit ou un bon cadeau"));
+  assert.ok(!p.body.includes("une séance"));
+});
+
+test("fitness and climbing activities retain session suggestions", () => {
+  for (const category of ["Salle d'escalade", "fitness_center", "sports_club"]) assert.equal(activityRule({ category }).sector, "sport");
+});
