@@ -103,7 +103,7 @@ test("Google metrics validate absence, zero and invalid values without inventing
   const detail = await new GooglePlacesProvider("secret", async () => Response.json({ id: "x", displayName: { text: "No rating" } })).getDetails("x");
   assert.equal(detail.google_rating, null); assert.equal(detail.google_user_rating_count, null);
   assert.equal(enrichMissing({ phone: "manual", google_rating: 3 }, parseFields({ name: "G", phone: "google", google_rating: 4.6 })).google_rating, 3);
-  assert.ok(!SEARCH_FIELDS.includes("reviews")); assert.ok(!DETAIL_FIELDS.includes("reviews")); assert.ok(!SEARCH_FIELDS.includes("primaryTypeDisplayName"));
+  assert.ok(!SEARCH_FIELDS.includes("reviews")); assert.ok(!DETAIL_FIELDS.includes("reviews")); assert.ok(SEARCH_FIELDS.includes("primaryTypeDisplayName"));
 });
 test("deterministic states and select all exclude client, prospect and ignored", () => {
   const data = parseFields({ name: "Same", google_place_id: "same" });

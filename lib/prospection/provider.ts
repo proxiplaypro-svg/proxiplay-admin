@@ -1,10 +1,12 @@
-import { parseSearch, parseFields, ProspectError, type ProspectFields, type SearchInput } from "./model";
+import { identityKeys, parseSearch, parseFields, ProspectError, type ProspectFields, type SearchInput } from "./model";
+import { businessCallBudget, isArtisanSearch, queriesForSector } from "./searchConfig";
 
-export interface ProspectProvider { search(input: SearchInput, accept?: (candidate: ProspectFields) => boolean): Promise<ProspectFields[]>; getDetails(id: string): Promise<ProspectFields> }
+export type SearchMetrics = { queriesAttempted: number; googleCalls: number; rawResults: number; uniqueBusinesses: number; excludedKnown: number; outOfRadius: number; duplicates: number; returned: number; callBudget: number; budgetReached: boolean };
+export interface ProspectProvider { search(input: SearchInput, accept?: (candidate: ProspectFields) => boolean, report?: (metrics: SearchMetrics) => void): Promise<ProspectFields[]>; getDetails(id: string): Promise<ProspectFields> }
 type Place = { rating?: number; userRatingCount?: number; id?: string; displayName?: { text?: string }; formattedAddress?: string; location?: { latitude: number; longitude: number }; addressComponents?: { longText: string; types: string[] }[]; nationalPhoneNumber?: string; websiteUri?: string; googleMapsUri?: string; primaryTypeDisplayName?: { text?: string } };
 export const DETAIL_FIELDS = "id,displayName,formattedAddress,location,addressComponents,nationalPhoneNumber,websiteUri,googleMapsUri,primaryTypeDisplayName,rating,userRatingCount";
-export const SEARCH_FIELDS = DETAIL_FIELDS.split(",").filter(field => field !== "primaryTypeDisplayName").map(field => "places." + field).join(",") + ",nextPageToken";
-export function searchCallBudget(limit: number) { return limit === 20 ? 1 : 4; }
+export const SEARCH_FIELDS = DETAIL_FIELDS.split(",").map(field => "places." + field).join(",") + ",nextPageToken";
+export function searchCallBudget(limit: number, categories: string[] = []) { return businessCallBudget(limit, categories); }
 export function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
   const radians = (n: number) => n * Math.PI / 180;
   const h = Math.sin(radians(b.latitude - a.latitude) / 2) ** 2 + Math.cos(radians(a.latitude)) * Math.cos(radians(b.latitude)) * Math.sin(radians(b.longitude - a.longitude) / 2) ** 2;
@@ -23,40 +25,61 @@ export class GooglePlacesProvider implements ProspectProvider {
   private convert(place: Place, category?: string): ProspectFields {
     if (!place.id || !place.displayName?.text) throw new ProspectError("Résultat Google Places incomplet.", 502);
     const component = (type: string) => place.addressComponents?.find(value => value.types.includes(type))?.longText || "";
-    return parseFields({ google_rating: place.rating, google_user_rating_count: place.userRatingCount, name: place.displayName.text, address: place.formattedAddress, city: component("locality") || component("postal_town"), postal_code: component("postal_code"), category: category || place.primaryTypeDisplayName?.text, phone: place.nationalPhoneNumber, website: place.websiteUri, google_place_id: place.id, google_maps_url: place.googleMapsUri, source: "google_places", source_url: place.googleMapsUri, fetched_at: new Date().toISOString(), latitude: place.location?.latitude, longitude: place.location?.longitude });
+    return parseFields({ google_rating: place.rating, google_user_rating_count: place.userRatingCount, name: place.displayName.text, address: place.formattedAddress, city: component("locality") || component("postal_town"), postal_code: component("postal_code"), category: place.primaryTypeDisplayName?.text || category, subcategory: category, phone: place.nationalPhoneNumber, website: place.websiteUri, google_place_id: place.id, google_maps_url: place.googleMapsUri, source: "google_places", source_url: place.googleMapsUri, fetched_at: new Date().toISOString(), latitude: place.location?.latitude, longitude: place.location?.longitude });
   }
-  async search(rawInput: SearchInput, accept: (candidate: ProspectFields) => boolean = () => true) {
+  async search(rawInput: SearchInput, accept: (candidate: ProspectFields) => boolean = () => true, report?: (metrics: SearchMetrics) => void) {
     const input = parseSearch(rawInput);
-    const location = await this.request("places:searchText", "places.location", { textQuery: input.location, pageSize: 1, languageCode: "fr" });
-    const center = location.places?.[0]?.location;
-    if (!center || !Number.isFinite(center.latitude) || !Number.isFinite(center.longitude)) throw new ProspectError("Localisation introuvable.");
-    const results = new Map<string, ProspectFields>();
-    const budget = searchCallBudget(input.limit);
-    let calls = 0;
+    const artisan = isArtisanSearch(input.categories);
+    const budget = searchCallBudget(input.limit, input.categories);
+    const metrics: SearchMetrics = { queriesAttempted: 0, googleCalls: 0, rawResults: 0, uniqueBusinesses: 0, excludedKnown: 0, outOfRadius: 0, duplicates: 0, returned: 0, callBudget: budget + 1, budgetReached: false };
+    const results: ProspectFields[] = [];
     const seen = new Set<string>();
-    // Only native pagination: processed establishments do not fill the batch.
-    for (const category of input.categories) {
-      const body = { textQuery: category, pageSize: 20, languageCode: "fr", locationBias: { circle: { center, radius: input.radius * 1000 } } };
-      let pageToken: string | undefined;
-      const tokens = new Set<string>();
-      for (let page = 0; page < 3; page++) {
-        if (calls >= budget || results.size >= input.limit) return [...results.values()];
-        calls++;
-        const response = await this.request("places:searchText", SEARCH_FIELDS, { ...body, ...(pageToken ? { pageToken } : {}) });
+    // Interleave sectors and their trades before consuming any pagination.
+    const groups = input.categories.map(queriesForSector);
+    const queries = [...new Set(Array.from({ length: Math.max(...groups.map(g => g.length)) }, (_, i) => groups.flatMap(g => g[i] ? [g[i]] : [])).flat())];
+    const queue = queries.map(query => ({ query, token: undefined as string | undefined, tokens: new Set<string>(), pages: 0 }));
+    let calls = 0;
+    try {
+      metrics.googleCalls++;
+      const location = await this.request("places:searchText", "places.location", { textQuery: input.location, pageSize: 1, languageCode: "fr" });
+      const center = location.places?.[0]?.location;
+      if (!center || !Number.isFinite(center.latitude) || !Number.isFinite(center.longitude)) throw new ProspectError("Localisation introuvable.");
+      while (queue.length && calls < budget && results.length < input.limit) {
+        const task = queue.shift()!;
+        if (!task.pages) metrics.queriesAttempted++;
+        calls++; metrics.googleCalls++; task.pages++;
+        const body = { textQuery: task.query, pageSize: artisan ? (input.limit === 20 ? 5 : 10) : 20, languageCode: "fr", locationBias: { circle: { center, radius: input.radius * 1000 } }, ...(task.token ? { pageToken: task.token } : {}) };
+        const response = await this.request("places:searchText", SEARCH_FIELDS, body);
+        metrics.rawResults += response.places?.length || 0;
         for (const place of (response.places || []) as Place[]) {
-          if (!place.id || !place.displayName?.text || !place.location || distanceKm(center, place.location) > input.radius || seen.has(place.id)) continue;
-          if (!Number.isFinite(place.location.latitude) || !Number.isFinite(place.location.longitude)) continue;
-          seen.add(place.id);
-          const candidate = this.convert(place, category);
-          if (accept(candidate)) results.set(place.id, candidate);
-          if (results.size >= input.limit) return [...results.values()];
+          if (!place.id || !place.displayName?.text || !place.location || !Number.isFinite(place.location.latitude) || !Number.isFinite(place.location.longitude)) continue;
+          if (distanceKm(center, place.location) > input.radius) { metrics.outOfRadius++; continue; }
+          const candidate = this.convert(place, task.query);
+          const keys = identityKeys(candidate).filter(k => !k.startsWith("email:")).sort((a, b) => {
+            const rank = (k: string) => ["place", "phone", "domain", "address"].indexOf(k.split(":")[0]);
+            return rank(a) - rank(b);
+          });
+          const duplicate = keys.some(key => seen.has(key));
+          keys.forEach(key => seen.add(key)); // Remember aliases even on a repeated result.
+          if (duplicate) { metrics.duplicates++; continue; }
+          metrics.uniqueBusinesses++;
+          if (accept(candidate)) results.push(candidate); else metrics.excludedKnown++;
+          if (results.length >= input.limit) break;
         }
         const next = response.nextPageToken;
-        if (typeof next !== "string" || !next || tokens.has(next)) break;
-        tokens.add(next); pageToken = next;
+        if (typeof next === "string" && next && !task.tokens.has(next) && task.pages < 3) {
+          task.tokens.add(next); task.token = next;
+          // Preserve native pagination for established single-sector searches.
+          if (artisan) queue.push(task); else queue.unshift(task);
+        }
       }
+      metrics.returned = results.length;
+      metrics.budgetReached = calls >= budget && results.length < input.limit && queue.length > 0;
+      return results;
+    } finally {
+      report?.(metrics);
+      console.info("[PROSPECTION_SEARCH]", metrics); // Counts only: no key, contact data or raw Google payload.
     }
-    return [...results.values()];
   }
   async getDetails(id: string) {
     if (!/^[\w-]{1,300}$/.test(id)) throw new ProspectError("Identifiant de lieu invalide.");

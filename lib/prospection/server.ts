@@ -3,7 +3,7 @@ import { getAdminDb } from "../firebase/admin-app";
 import { duplicateOf, normalize, parseFields, ProspectError, record, text, type IgnoredPlace, type Duplicate, type Prospect, type ProspectFields, type SearchInput } from "./model";
 import { factualDraftProvider, qualifyProspect } from "./qualification";
 
-import type { ProspectProvider } from "./provider";
+import type { ProspectProvider, SearchMetrics } from "./provider";
 
 type Entry = { id: string; kind: Duplicate["kind"]; data: Record<string, unknown> };
 export class ProspectService {
@@ -65,17 +65,21 @@ export class ProspectService {
     // Persistent state, reloaded for every action, never a browser exclusion list.
     const entries = await this.entries();
     const excluded = new Set<string>();
+    let searchMetrics: SearchMetrics | undefined;
+    const excludedByKind = { client: 0, prospect: 0, ignored: 0 };
     const candidates = await provider.search(input, candidate => {
-      if (onlyNew && duplicateOf(candidate, entries)) { excluded.add(candidate.google_place_id); return false; }
+      const duplicate = onlyNew ? duplicateOf(candidate, entries) : null;
+      if (duplicate) { excluded.add(candidate.google_place_id); excludedByKind[duplicate.kind]++; return false; }
       return true;
-    });
+    }, metrics => { searchMetrics = metrics; });
     // Recheck after Google calls: another admin may have processed a result meanwhile.
     const annotated = await this.annotate(candidates);
     const results = annotated.filter(candidate => {
-      if (onlyNew && candidate.duplicate) { excluded.add(candidate.google_place_id); return false; }
+      if (onlyNew && candidate.duplicate) { if (!excluded.has(candidate.google_place_id)) excludedByKind[candidate.duplicate.kind]++; excluded.add(candidate.google_place_id); return false; }
       return true;
     });
-    return { results, excludedCount: excluded.size };
+    console.info("[PROSPECTION_DISCOVERY]", { ...searchMetrics, returned: results.length, excludedKnown: excluded.size, excludedByKind, onlyNew });
+    return { results, excludedCount: excluded.size, searchMetrics };
   }
   async annotate(candidates: ProspectFields[]) {
     const entries = await this.entries();

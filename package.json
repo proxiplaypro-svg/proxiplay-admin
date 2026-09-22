@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:prospection": "tsx --test prospection.test.ts",
+    "test:prospection": "tsx --test prospection.test.ts prospection-artisans.test.ts",
     "test:prospection-email": "node --test functions/test/prospect_email.test.cjs",
     "test:prospection-email-ui": "node --test prospection-email-ui.test.mjs",
     "test:prospection-bulk-ui": "node --test prospection-bulk-ui.test.mjs",

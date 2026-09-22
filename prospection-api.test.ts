@@ -211,3 +211,29 @@ test("import batch is capped at 50 and accepts exactly 50 unique prospects", asy
   const imported = await (await request("POST", { action: "import", selection: selection.slice(0, 50) })).json();
   assert.equal(imported.created.length, 50);
 });
+
+test("artisans: new 50 excludes clients, prospects and ignored then imports precise trades", async () => {
+  const savedFetch = globalThis.fetch; const savedKey = process.env.GOOGLE_PLACES_API_KEY;
+  process.env.GOOGLE_PLACES_API_KEY = "mock-key";
+  const trades = (await import("./lib/prospection/searchConfig")).ARTISAN_QUERIES;
+  for (const [index, collection] of ["enseignes", "prospects", "prospection_internal/discovery/ignored"].entries()) await db.doc(`${collection}/known${index}`).set({ name: `Known ${index}`, google_place_id: `trade${index}-0` });
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    if (!String(url).startsWith("https://places.googleapis.com/")) return savedFetch(url, options);
+    calls++; const body = JSON.parse(String(options?.body));
+    if (body.pageSize === 1) return Response.json({ places: [{ location: { latitude: 51, longitude: 2 } }] });
+    const trade = trades.indexOf(body.textQuery);
+    assert.ok(trade >= 0);
+    return Response.json({ places: Array.from({ length: body.pageSize }, (_, i) => ({ id: `trade${trade}-${i}`, displayName: { text: `Artisan ${trade}-${i}` }, location: { latitude: 51, longitude: 2 }, primaryTypeDisplayName: { text: "Activité précise" } })), nextPageToken: "more" });
+  };
+  try {
+    const search = { action: "search", location: "Dunkerque", radius: 15, limit: 50, categories: ["artisans B2C"], onlyNew: true };
+    const response = await request("POST", search); assert.equal(response.status, 200);
+    const data = await response.json(); assert.equal(data.results.length, 50); assert.equal(data.excludedCount, 3); assert.ok(calls <= 9);
+    assert.ok(data.results.every((r: { duplicate: unknown; category: string; subcategory: string }) => !r.duplicate && r.category === "Activité précise" && r.subcategory));
+    const imported = await (await request("POST", { action: "import", selection: data.results })).json(); assert.equal(imported.created.length, 50);
+    const saved = (await db.doc(`prospects/${imported.created[0]}`).get()).data(); assert.equal(saved?.subcategory, "plombier");
+    calls = 0; const next = await (await request("POST", search)).json(); assert.equal(next.results.length, 27); assert.equal(calls, 9); assert.equal(next.excludedCount, 53);
+    assert.ok(next.results.every((r: { google_place_id: string }) => !data.results.some((p: { google_place_id: string }) => p.google_place_id === r.google_place_id)));
+  } finally { globalThis.fetch = savedFetch; if (savedKey === undefined) delete process.env.GOOGLE_PLACES_API_KEY; else process.env.GOOGLE_PLACES_API_KEY = savedKey; }
+});

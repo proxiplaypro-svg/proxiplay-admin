@@ -24,6 +24,7 @@ export default function ProspectionPage() {
   const [search, setSearch] = useState<SearchInput>({ location: "Dunkerque", radius: 15, categories: ["restaurants"], limit: 50 });
   const [lastSearch, setLastSearch] = useState<SearchInput | null>(null);
   const [excludedCount, setExcludedCount] = useState(0);
+  const [searchMetrics, setSearchMetrics] = useState<{ googleCalls: number; callBudget: number; budgetReached: boolean } | null>(null);
   const [onlyNewBatch, setOnlyNewBatch] = useState(false);
   const [available, setAvailable] = useState(false); const [searched, setSearched] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]); const [selection, setSelection] = useState<Set<number>>(new Set());
@@ -59,7 +60,8 @@ export default function ProspectionPage() {
     await reload();
   }
   async function discover(input: SearchInput, onlyNew = false) {
-    const data = await prospectRequest<{ results: SearchResult[]; excludedCount: number }>("POST", { action: "search", ...input, onlyNew });
+    const data = await prospectRequest<{ results: SearchResult[]; excludedCount: number; searchMetrics?: { googleCalls: number; callBudget: number; budgetReached: boolean } }>("POST", { action: "search", ...input, onlyNew });
+    setSearchMetrics(data.searchMetrics || null);
     setResults(data.results); setSelection(new Set()); setResultFilter(""); setExcludedCount(data.excludedCount);
     setLastSearch(input); setOnlyNewBatch(onlyNew); setSearched(true);
     await reload();
@@ -87,7 +89,7 @@ export default function ProspectionPage() {
         <fieldset><legend>Secteurs</legend><div className={s.actions}>{SECTORS.map(category => <label key={category} className={s.check}><input type="checkbox" checked={search.categories.includes(category)} onChange={event => setSearch({ ...search, categories: event.target.checked ? [...search.categories, category] : search.categories.filter(value => value !== category) })} />{category}</label>)}</div></fieldset>
         <div><button disabled={busy || !available || !search.categories.length} className={s.primary}>Rechercher</button></div>
       </form>
-      {searched && <>{lastSearch && <div className={s.actions}><button disabled={busy || !available} onClick={() => void run(() => discover({ ...lastSearch, limit: 50 }, true))}>Trouver 50 nouvelles entreprises</button><span className={s.muted}>{lastSearch.location} · {lastSearch.radius} km · {lastSearch.categories.join(", ")}</span></div>}{onlyNewBatch && !results.length && <p>Aucune nouvelle entreprise trouvée dans les limites de cette recherche. Essayez un autre secteur ou adaptez la zone.</p>}<p className={s.muted}>{selectable.length} nouvelles entreprises trouvées · Source : Google Maps.{!onlyNewBatch && results.length > selectable.length && ` ${results.length - selectable.length} établissements déjà traités dans ce lot.`}{excludedCount > 0 && ` ${excludedCount} établissements déjà connus ont été écartés.`}</p><div className={s.actions}><button disabled={busy || !selectable.length} onClick={() => setSelection(new Set(selectable))}>Tout sélectionner</button><button disabled={busy || !selected.length} onClick={() => setSelection(new Set())}>Désélectionner</button><button className={s.primary} disabled={busy || !selected.length} onClick={() => void run(async () => {
+      {searched && <>{searchMetrics?.budgetReached && <p role="status">Budget de recherche atteint : {searchMetrics.googleCalls} appels sur {searchMetrics.callBudget}. Le nombre affiché correspond aux entreprises trouvées dans ce budget.</p>}{lastSearch && <div className={s.actions}><button disabled={busy || !available} onClick={() => void run(() => discover({ ...lastSearch, limit: 50 }, true))}>Trouver 50 nouvelles entreprises</button><span className={s.muted}>{lastSearch.location} · {lastSearch.radius} km · {lastSearch.categories.join(", ")}</span></div>}{onlyNewBatch && !results.length && <p>Aucune nouvelle entreprise trouvée dans les limites de cette recherche. Essayez un autre secteur ou adaptez la zone.</p>}<p className={s.muted}>{selectable.length} nouvelles entreprises trouvées · Source : Google Maps.{!onlyNewBatch && results.length > selectable.length && ` ${results.length - selectable.length} établissements déjà traités dans ce lot.`}{excludedCount > 0 && ` ${excludedCount} établissements déjà connus ont été écartés.`}</p><div className={s.actions}><button disabled={busy || !selectable.length} onClick={() => setSelection(new Set(selectable))}>Tout sélectionner</button><button disabled={busy || !selected.length} onClick={() => setSelection(new Set())}>Désélectionner</button><button className={s.primary} disabled={busy || !selected.length} onClick={() => void run(async () => {
         const imported = await prospectRequest<{ created: string[]; skipped: { name: string }[] }>("POST", { action: "import", selection: selected.map(index => results[index]) });
         setSelection(new Set()); await refreshResults(); setNotice(`${imported.created.length} prospect(s) ajouté(s). ${imported.skipped.length} doublon(s) bloqué(s)${imported.skipped.length ? ` : ${imported.skipped.map(item => item.name).join(", ")}` : "."}`);
       })}>Ajouter la sélection ({selected.length})</button></div>
