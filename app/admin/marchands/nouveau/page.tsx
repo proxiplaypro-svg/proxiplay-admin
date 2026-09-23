@@ -26,7 +26,7 @@ export default function NewMerchantPage() {
     if (busy || createdId) return;
     setBusy(true); setError(""); setCanAssociate(false);
     try {
-      const result = await merchantRequest("POST", { ...commerce, ...account, category: commerce.category.split(",").map(v => v.trim()).filter(Boolean), mode, active, managed_by_admin: managedByAdmin });
+      const result = await merchantRequest("POST", { ...commerce, ...account, mode, active, managed_by_admin: managedByAdmin });
       setCreatedId(result.merchantId);
       let receipt = mode === "shop" ? "Fiche commerce créée sans compte." : "Commerce et compte associés. Aucune validation supplémentaire n’est nécessaire.";
       if (sendEmail && result.email) {

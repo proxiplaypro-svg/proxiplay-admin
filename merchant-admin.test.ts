@@ -37,6 +37,31 @@ test.before(async () => {
 });
 test.after(async () => { await db.terminate(); });
 
+test("categories endpoint reads Firestore labels, is admin-only and makes no writes", async () => {
+  const { GET: categories } = await import("./app/api/admin/marchands/categories/route");
+  assert.equal((await categories(request("GET", undefined, undefined, null))).status, 401);
+  assert.equal((await categories(request("GET", undefined, undefined, userToken))).status, 403);
+  await db.doc("enseignes/category-source").set({ category: ["Loisirs, sport & culture", "Beauté & bien-être"], status: "inactive" });
+  const before = await db.collection("enseignes").get();
+  const response = await categories(request("GET"));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Cache-Control"), "no-store");
+  const result = await response.json();
+  assert.ok(result.categories.some((item: { value: string; label: string }) => item.value === "Loisirs, sport & culture" && item.label === item.value));
+  assert.equal((await db.collection("enseignes").get()).size, before.size);
+  assert.deepEqual((await db.doc("enseignes/category-source").get()).data(), { category: ["Loisirs, sport & culture", "Beauté & bien-être"], status: "inactive" });
+});
+
+test("creation and editing preserve multiple exact category labels and old values", async () => {
+  const category = ["Maison, jardin & bricolage", "Ancienne catégorie"];
+  const { merchantId } = await create({ mode: "shop", category });
+  assert.deepEqual((await db.doc(`enseignes/${merchantId}`).get()).get("category"), category);
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { phone: "0328000000" } }, merchantId))).status, 200);
+  assert.deepEqual((await db.doc(`enseignes/${merchantId}`).get()).get("category"), category);
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { category: [category[0]] } }, merchantId))).status, 200);
+  assert.deepEqual((await db.doc(`enseignes/${merchantId}`).get()).get("category"), [category[0]]);
+});
+
 test("A : création active, profil commerçant, références cohérentes, aucun secret retourné", async () => {
   const result = await create();
   const shop = (await db.doc(`enseignes/${result.merchantId}`).get()).data()!;

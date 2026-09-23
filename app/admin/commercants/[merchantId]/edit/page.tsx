@@ -7,6 +7,7 @@ import { auth } from "@/lib/firebase/auth";
 import { merchantRequest } from "@/lib/admin/merchantClient";
 import { uploadMerchantPhoto } from "@/lib/firebase/merchantsQueries";
 import CommerceFields, { emptyCommerce, type CommerceForm } from "@/components/admin/commercants/CommerceFields";
+import { selectedCategoryValues } from "@/lib/admin/merchantCategories";
 import MerchantAccount from "@/components/admin/commercants/MerchantAccount";
 import AdminManagedOption from "@/components/admin/commercants/AdminManagedOption";
 
@@ -33,8 +34,8 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
       const data = snapshot.data();
       setManagedByAdmin(data.managed_by_admin === true);
       const next = { ...emptyCommerce };
-      for (const key of Object.keys(next) as (keyof CommerceForm)[]) next[key] = typeof data[key] === "string" ? data[key] : "";
-      next.category = Array.isArray(data.category) ? data.category.join(", ") : "";
+      for (const key of Object.keys(next) as (keyof CommerceForm)[]) if (key !== "category") next[key] = typeof data[key] === "string" ? data[key] : "";
+      next.category = selectedCategoryValues(data.category);
       next.phone ||= data.phone_number ?? "";
       next.site_web_url ||= data.website ?? "";
       next.imageUrl ||= data.logo ?? "";
@@ -57,7 +58,6 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
       const fields: Record<string, unknown> = {};
       const values = { ...commerce, ...crm, managed_by_admin: managedByAdmin };
       for (const key of dirty) fields[key] = values[key as keyof typeof values];
-      if (dirty.has("category")) fields.category = commerce.category.split(",").map(v => v.trim()).filter(Boolean);
       if (dirty.has("last_contact_at") && crm.last_contact_at) fields.last_contact_at = new Date(crm.last_contact_at).toISOString();
       if (photo) {
         const url = await uploadMerchantPhoto(merchantId, photo);

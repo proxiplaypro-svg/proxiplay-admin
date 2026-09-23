@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import MerchantCategorySelect from "./MerchantCategorySelect";
 import type { MerchantPilotageItem } from "@/types/dashboard";
 
 type MerchantEditModalProps = {
@@ -34,7 +35,7 @@ type FormState = {
   address: string;
   areaCode: string;
   city: string;
-  category: string;
+  category: string[];
   facebookLink: string;
   instagramLink: string;
   twitterLink: string;
@@ -53,7 +54,7 @@ function buildInitialForm(merchant: MerchantPilotageItem | null): FormState {
     address: merchant?.address ?? "",
     areaCode: merchant?.areaCode ?? "",
     city: merchant?.city ?? "",
-    category: merchant?.category?.join(", ") ?? "",
+    category: merchant?.category ?? [],
     facebookLink: merchant?.facebookLink ?? "",
     instagramLink: merchant?.instagramLink ?? "",
     twitterLink: merchant?.twitterLink ?? "",
@@ -128,7 +129,7 @@ export function MerchantEditModal({
         address: form.address.trim(),
         areaCode: form.areaCode.trim(),
         city: form.city.trim(),
-        category: form.category.split(",").map((category) => category.trim()).filter(Boolean),
+        category: form.category,
         facebookLink: form.facebookLink.trim(),
         instagramLink: form.instagramLink.trim(),
         twitterLink: form.twitterLink.trim(),
@@ -204,8 +205,7 @@ export function MerchantEditModal({
                     <input className={inputClassName} value={form.city} onChange={(event) => setForm((current) => ({ ...current, city: event.target.value }))} />
                   </div>
                   <div className="grid gap-2">
-                    <label className="text-[0.9rem] font-medium text-[var(--muted)]">Categorie</label>
-                    <input className={inputClassName} placeholder="ex: Alimentation, Restauration" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} />
+                    <MerchantCategorySelect value={form.category} disabled={saving || localSaving} onChange={category => setForm(current => ({ ...current, category }))} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
