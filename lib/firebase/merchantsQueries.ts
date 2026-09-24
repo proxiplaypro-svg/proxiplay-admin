@@ -132,7 +132,7 @@ export type UpdateMerchantProfileInput = {
   instagramLink: string;
   twitterLink: string;
   siteWebUrl: string;
-  imageUrl: string;
+  imageUrl?: string;
   imageFile?: File | null;
   commercialStatus: "" | "actif" | "a_relancer" | "inactif";
 };
@@ -844,7 +844,7 @@ export async function updateMerchantProfile(input: UpdateMerchantProfileInput) {
 
   const merchantRef = doc(db, input.merchantCollectionName, input.merchantId);
   const trimmedPhone = input.phone.trim();
-  let finalImageUrl = input.imageUrl.trim() || null;
+  let finalImageUrl = input.imageUrl?.trim() || null;
 
   if (input.imageFile) {
     finalImageUrl = await uploadMerchantPhoto(input.merchantId, input.imageFile);
@@ -864,7 +864,7 @@ export async function updateMerchantProfile(input: UpdateMerchantProfileInput) {
     instagram_link: input.instagramLink.trim() || deleteField(),
     twitter_link: input.twitterLink.trim() || deleteField(),
     site_web_url: input.siteWebUrl.trim() || deleteField(),
-    imageUrl: finalImageUrl || deleteField(),
+    ...(input.imageUrl !== undefined || input.imageFile ? { imageUrl: finalImageUrl || deleteField() } : {}),
     commercial_status: input.commercialStatus || deleteField(),
   });
 

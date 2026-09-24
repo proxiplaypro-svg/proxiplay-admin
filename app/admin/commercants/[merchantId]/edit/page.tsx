@@ -5,7 +5,8 @@ import { doc, getDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/client-app";
 import { auth } from "@/lib/firebase/auth";
 import { merchantRequest } from "@/lib/admin/merchantClient";
-import { uploadMerchantPhoto } from "@/lib/firebase/merchantsQueries";
+import MerchantPhotos from "@/components/admin/commercants/MerchantPhotos";
+import { useMerchantPhotos } from "@/components/admin/commercants/useMerchantPhotos";
 import CommerceFields, { emptyCommerce, type CommerceForm } from "@/components/admin/commercants/CommerceFields";
 import { selectedCategoryValues } from "@/lib/admin/merchantCategories";
 import MerchantAccount from "@/components/admin/commercants/MerchantAccount";
@@ -18,7 +19,7 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
   const [managedByAdmin, setManagedByAdmin] = useState(false);
   const [crm, setCrm] = useState(emptyCrm);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
-  const [photo, setPhoto] = useState<File | null>(null);
+  const photos = useMerchantPhotos(merchantId);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -52,20 +53,16 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
   }, [merchantId]);
   function changed(key: string) { setDirty(current => new Set(current).add(key)); }
   async function save(e: React.FormEvent) {
-    e.preventDefault(); if (busy) return;
+    e.preventDefault(); if (busy || photos.busy) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const fields: Record<string, unknown> = {};
       const values = { ...commerce, ...crm, managed_by_admin: managedByAdmin };
       for (const key of dirty) fields[key] = values[key as keyof typeof values];
       if (dirty.has("last_contact_at") && crm.last_contact_at) fields.last_contact_at = new Date(crm.last_contact_at).toISOString();
-      if (photo) {
-        const url = await uploadMerchantPhoto(merchantId, photo);
-        fields.imageUrl = url;
-        setCommerce(current => ({ ...current, imageUrl: url }));
-        changed("imageUrl"); setPhoto(null);
-      }
-      await merchantRequest("PATCH", { action: "profile", fields }, merchantId);
+      if (dirty.size) await merchantRequest("PATCH", { action: "profile", fields }, merchantId);
+      setDirty(new Set());
+      await photos.save(merchantId);
       setDirty(new Set()); setMessage("Fiche commerce enregistrée.");
     } catch (e) { setError(e instanceof Error ? e.message : "L’enregistrement a échoué."); }
     finally { setBusy(false); }
@@ -76,12 +73,11 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
     {error && <div className="panel-wide dashboard-banner error" role="alert">{error}</div>}
     {loaded && <>
       <form className="panel panel-wide merchant-form-card game-edit-form" onSubmit={save}>
-        <fieldset disabled={busy} className="merchant-fieldset game-edit-form">
+        <fieldset disabled={busy || photos.busy} className="merchant-fieldset game-edit-form">
           <AdminManagedOption checked={managedByAdmin} onChange={value => { setManagedByAdmin(value); changed("managed_by_admin"); }} />
           <div className="panel-heading"><h2>Commerce</h2></div>
           <CommerceFields value={commerce} onChange={(key, value) => { setCommerce(current => ({ ...current, [key]: value })); changed(key); }} />
-          <label className="game-edit-field"><span className="search-label">Importer une photo (JPEG, PNG ou WebP, 5 Mo maximum)</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => { const file = e.target.files?.[0] ?? null; if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)) { setError("Choisissez une image JPEG, PNG ou WebP de 5 Mo maximum."); e.target.value = ""; setPhoto(null); return; } setPhoto(file); setError(""); }} /></label>
-          {(commerce.imageUrl || photo) && <div><p>{photo ? `Photo sélectionnée : ${photo.name}` : "Une photo est associée au commerce."}</p><button className="secondary-button" type="button" onClick={() => { setPhoto(null); setCommerce(current => ({ ...current, imageUrl: "" })); changed("imageUrl"); }}>Retirer la photo</button></div>}
+          <MerchantPhotos state={photos} />
           <div className="panel-heading"><h2>Suivi commercial</h2><p>Le statut commercial sert au suivi de la relation. L’accès du compte se gère séparément ci-dessous.</p></div>
           <div className="game-edit-grid">
             {([ ["contact_name", "Contact principal", "text"], ["last_contact_at", "Dernier contact", "datetime-local"], ["last_contact_channel", "Dernier canal utilisé", "text"] ] as const).map(([key, label, type]) => <label className="game-edit-field" key={key}><span className="search-label">{label}</span><input className="search-input" type={type} value={crm[key]} onChange={e => { setCrm(current => ({ ...current, [key]: e.target.value })); changed(key); }} /></label>)}
@@ -89,7 +85,7 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
             <label className="game-edit-field"><span className="search-label">Note admin</span><textarea className="search-input" rows={4} maxLength={5000} value={crm.admin_note} onChange={e => { setCrm(current => ({ ...current, admin_note: e.target.value })); changed("admin_note"); }} /></label>
           </div>
           {message && <div className="dashboard-banner success" role="status">{message}</div>}
-          <div className="dashboard-actions"><button type="submit" className="primary-button" disabled={!dirty.size && !photo}>{busy ? "Enregistrement…" : "Enregistrer le commerce"}</button><Link className="secondary-button inline-secondary-button" href={`/admin/commercants/${merchantId}`}>Annuler</Link></div>
+          <div className="dashboard-actions"><button type="submit" className="primary-button" disabled={!dirty.size && !photos.dirty}>{busy ? "Enregistrement…" : "Enregistrer le commerce"}</button><Link className="secondary-button inline-secondary-button" href={`/admin/commercants/${merchantId}`}>Annuler</Link></div>
         </fieldset>
       </form>
       <MerchantAccount merchantId={merchantId} />

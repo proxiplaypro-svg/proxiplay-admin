@@ -16,6 +16,8 @@
     "test:prospection-email-api": "firebase emulators:exec --project demo-prospection --only firestore,auth \"node --test functions/test/prospect_email_emulator.test.cjs\"",
     "test:prospection-api": "firebase emulators:exec --project demo-prospection --only firestore,auth \"tsx --test prospection-api.test.ts\"",
     "test:admin-merchants": "firebase emulators:exec --project demo-admin-merchants --only firestore,auth \"tsx --test merchant-admin.test.ts\"",
+    "test:merchant-media": "tsx --test merchant-media.test.ts && node --test merchant-media-ui.test.mjs",
+    "test:merchant-media-api": "firebase emulators:exec --project demo-admin-merchants --only firestore,auth \"tsx --test --test-concurrency=1 merchant-admin.test.ts merchant-photos-api.test.ts\"",
     "test:merchant-emails": "node --test functions/test/managed_merchant_email.test.cjs",
     "test:admin-api": "firebase emulators:exec --only firestore,auth \"tsx --test referral-games-api.test.ts\"",
     "test:admin-qr": "firebase emulators:exec --project demo-admin-qr --only firestore,auth \"tsx --test secure-game-qr.test.ts\""
@@ -29,7 +31,8 @@
     "puppeteer-core": "^24.43.1",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

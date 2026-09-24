@@ -85,5 +85,12 @@ export class GooglePlacesProvider implements ProspectProvider {
     if (!/^[\w-]{1,300}$/.test(id)) throw new ProspectError("Identifiant de lieu invalide.");
     return this.convert(await this.request(`places/${encodeURIComponent(id)}`, DETAIL_FIELDS));
   }
+  async findBusiness(name: string, location: string) {
+    if (!name.trim() || !location.trim() || name.length > 200 || location.length > 300) throw new ProspectError("Renseignez le nom et une ville ou adresse.");
+    const response = await this.request("places:searchText", SEARCH_FIELDS.replace(",nextPageToken", ""), {
+      textQuery: `${name.trim()} ${location.trim()}`, languageCode: "fr", pageSize: 5,
+    });
+    return ((response.places || []) as Place[]).filter(place => place.id && place.displayName?.text).slice(0, 5).map(place => this.convert(place));
+  }
 }
 export function getProspectProvider(): ProspectProvider { return new GooglePlacesProvider(process.env.GOOGLE_PLACES_API_KEY || ""); }

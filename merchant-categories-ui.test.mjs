@@ -16,6 +16,8 @@ test("real selector: loading, retry, labels, multiple selection, removal, legacy
   const executablePath = process.env.CHROME_PATH || ["C:/Program Files/Google/Chrome/Application/chrome.exe", "/usr/bin/chromium"].find(existsSync);
   assert.ok(executablePath);
   const output = await build({ stdin: { contents: fixture, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, jsx: "automatic", plugins: [{ name: "isolated-categories", setup(builder) {
+    builder.onResolve({ filter: /merchantMediaClient$/ }, () => ({ path: "media", namespace: "media-fixture" }));
+    builder.onLoad({ filter: /.*/, namespace: "media-fixture" }, () => ({ contents: "export const merchantMediaRequest=async()=>({results:[]})" }));
     builder.onResolve({ filter: /merchantCategoriesClient$/ }, () => ({ path: "client", namespace: "fixture" }));
     builder.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({ contents: "export const fetchMerchantCategories=()=>window.loadCategories()" }));
   } }] });

@@ -271,8 +271,6 @@ export default function AdminCommercantsPage() {
     instagramLink: string;
     twitterLink: string;
     siteWebUrl: string;
-    imageFile: File | null;
-    imageUrl: string;
     email: string;
     phone: string;
     commercialStatus: "" | "actif" | "a_relancer" | "inactif";
@@ -285,7 +283,7 @@ export default function AdminCommercantsPage() {
     setEditFeedback(null);
 
     try {
-      const result = await updateMerchantProfile({
+      await updateMerchantProfile({
         merchantId: selectedMerchant.id,
         merchantCollectionName: selectedMerchant.merchantCollectionName,
         name: payload.name,
@@ -300,8 +298,6 @@ export default function AdminCommercantsPage() {
         instagramLink: payload.instagramLink,
         twitterLink: payload.twitterLink,
         siteWebUrl: payload.siteWebUrl,
-        imageUrl: payload.imageUrl,
-        imageFile: payload.imageFile,
         commercialStatus: payload.commercialStatus,
       });
 
@@ -323,7 +319,6 @@ export default function AdminCommercantsPage() {
                 twitterLink: payload.twitterLink.trim(),
                 siteWebUrl: payload.siteWebUrl.trim(),
                 commercialStatus: payload.commercialStatus,
-                imageUrl: result.imageUrl ?? "",
                 ownerRef: merchant.ownerRef,
               }
             : merchant,

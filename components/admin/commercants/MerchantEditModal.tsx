@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import MerchantCategorySelect from "./MerchantCategorySelect";
 import type { MerchantPilotageItem } from "@/types/dashboard";
 
@@ -21,8 +22,6 @@ type MerchantEditModalProps = {
     instagramLink: string;
     twitterLink: string;
     siteWebUrl: string;
-    imageFile: File | null;
-    imageUrl: string;
     email: string;
     phone: string;
     commercialStatus: "" | "actif" | "a_relancer" | "inactif";
@@ -40,8 +39,6 @@ type FormState = {
   instagramLink: string;
   twitterLink: string;
   siteWebUrl: string;
-  imageFile: File | null;
-  imageUrl: string;
   email: string;
   phone: string;
   commercialStatus: "" | "actif" | "a_relancer" | "inactif";
@@ -59,8 +56,6 @@ function buildInitialForm(merchant: MerchantPilotageItem | null): FormState {
     instagramLink: merchant?.instagramLink ?? "",
     twitterLink: merchant?.twitterLink ?? "",
     siteWebUrl: merchant?.siteWebUrl ?? "",
-    imageFile: null,
-    imageUrl: merchant?.imageUrl ?? "",
     email: merchant?.email ?? "",
     phone: merchant?.phone ?? "",
     commercialStatus: merchant?.commercialStatus ?? "",
@@ -134,8 +129,6 @@ export function MerchantEditModal({
         instagramLink: form.instagramLink.trim(),
         twitterLink: form.twitterLink.trim(),
         siteWebUrl: normalizeSiteUrl(form.siteWebUrl),
-        imageFile: form.imageFile,
-        imageUrl: form.imageUrl,
         email: form.email.trim(),
         phone: form.phone.trim(),
         commercialStatus: form.commercialStatus,
@@ -228,37 +221,7 @@ export function MerchantEditModal({
                     <input className={inputClassName} placeholder="url ou handle" value={form.twitterLink} onChange={(event) => setForm((current) => ({ ...current, twitterLink: event.target.value }))} />
                   </div>
                 </div>
-                <div className="grid gap-2">
-                  <label className="text-[0.9rem] font-medium text-[var(--muted)]">Photo de la boutique</label>
-                  {form.imageUrl || form.imageFile ? (
-                    <div className="flex items-center gap-3 rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={form.imageFile ? URL.createObjectURL(form.imageFile) : form.imageUrl} alt="Photo boutique" className="h-12 w-12 rounded-[8px] object-cover" />
-                      <span className="flex-1 text-[0.9rem] text-[var(--muted)]">{form.imageFile ? form.imageFile.name : "Image actuelle"}</span>
-                      <button type="button" className="text-[0.85rem] text-[#A32D2D]" onClick={() => setForm((current) => ({ ...current, imageFile: null, imageUrl: "" }))}>Supprimer</button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <label className="flex cursor-pointer items-center gap-3 rounded-[14px] border border-dashed border-[rgba(159,177,199,0.2)] bg-[rgba(255,255,255,0.02)] px-4 py-4 transition hover:border-[rgba(99,153,34,0.32)]">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-[8px] bg-[rgba(99,153,34,0.1)] text-[18px]">📷</div>
-                        <div>
-                          <p className="text-[0.9rem] font-medium text-[var(--foreground)]">Choisir une photo</p>
-                          <p className="text-[0.8rem] text-[var(--muted)] opacity-60">JPG, PNG ou WEBP · max 2 Mo</p>
-                        </div>
-                        <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => {
-                          const file = event.target.files?.[0] ?? null;
-                          if (!file) return;
-                          if (file.size > 2 * 1024 * 1024) {
-                            setValidationError("Image trop lourde : 2 Mo maximum.");
-                            return;
-                          }
-                          setValidationError(null);
-                          setForm((current) => ({ ...current, imageFile: file }));
-                        }} />
-                      </label>
-                    </div>
-                  )}
-                </div>
+                <div className="grid gap-2"><p>La recherche Google et la galerie de photos se gèrent depuis la fiche complète.</p><Link href={`/admin/commercants/${merchant.id}/edit`} className="secondary-button">Gérer Google et les photos</Link><small>Enregistrez vos changements ici avant d’ouvrir la fiche complète.</small></div>
               </div>
             </section>
 
