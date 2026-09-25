@@ -559,10 +559,6 @@ function buildGamePatch(
   });
   if (prizeValidationError) throw new Error(prizeValidationError);
 
-  if (hasMainPrize && mainPrizeValue === null) {
-    throw new Error("La valeur du lot principal doit etre un nombre valide.");
-  }
-
   return {
     title: input.title.trim(),
     name: input.title.trim(),
@@ -588,12 +584,20 @@ function buildGamePatch(
     imageUrl,
     photo: imageUrl,
     hasMainPrize,
-    main_prize_title: hasMainPrize ? input.mainPrizeTitle.trim() : "",
-    main_prize_description: hasMainPrize ? input.mainPrizeDescription.trim() : "",
+    ...(hasMainPrize
+      ? {
+          main_prize_title: input.mainPrizeTitle.trim(),
+          main_prize_description: input.mainPrizeDescription.trim(),
+          main_prize_image: input.mainPrizeImage?.trim() || "",
+        }
+      : {
+          main_prize_title: deleteField(),
+          main_prize_description: deleteField(),
+          main_prize_image: deleteField(),
+        }),
     ...(hasMainPrize
       ? { prize_value: mainPrizeValue }
       : { prize_value: deleteField() }),
-    main_prize_image: hasMainPrize ? input.mainPrizeImage?.trim() || "" : "",
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,

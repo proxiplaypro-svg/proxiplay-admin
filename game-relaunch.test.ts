@@ -78,6 +78,13 @@ test("without secondary prizes, no generator call is made", async () => {
   assert.equal(f.draft.public, true);
 });
 
+test("ten instant prizes prepare ten occurrences before publication", async () => {
+  const f = fixture([10]);
+  await f.run();
+  assert.equal(f.slots.size, 10);
+  assert.deepEqual(f.events, ["save-draft", "generate", "verify", "publish"]);
+});
+
 test("retry after a lost server response reuses the draft and the two existing occurrences", async () => {
   const f = fixture(); f.fail();
   await assert.rejects(f.run());
