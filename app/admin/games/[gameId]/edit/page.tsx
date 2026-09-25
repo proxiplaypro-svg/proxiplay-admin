@@ -43,6 +43,7 @@ type GameFormState = {
   endDate: string;
   status: "actif" | "termine" | "brouillon";
   mainPrizeValue: string;
+  hasMainPrize: boolean;
   scratchImage: string;
 };
 
@@ -100,6 +101,10 @@ function buildInitialForm(game: FirestoreGameEditDocument): GameFormState {
       typeof game.prize_value === "number" && Number.isFinite(game.prize_value)
         ? String(game.prize_value)
         : "",
+    hasMainPrize:
+      typeof game.hasMainPrize === "boolean"
+        ? game.hasMainPrize
+        : typeof game.prize_value === "number" && Number.isFinite(game.prize_value),
     scratchImage: game.photo?.trim() ?? "",
   };
 }
@@ -406,16 +411,14 @@ export default function EditGamePage({ params }: GameEditPageProps) {
     try {
       const gameRef = doc(db, "games", game.id);
       const prizeValue = form.mainPrizeValue.trim() ? Number(form.mainPrizeValue) : null;
-      const hasMainPrize = prizeValue !== null && Number.isFinite(prizeValue) && prizeValue > 0;
-
       await updateDoc(gameRef, {
         name: form.name.trim(),
         description: form.description.trim(),
         start_date: form.startDate ? Timestamp.fromDate(new Date(form.startDate)) : deleteField(),
         end_date: form.endDate ? Timestamp.fromDate(new Date(form.endDate)) : deleteField(),
         visible_public: form.status !== "brouillon",
-        prize_value: hasMainPrize ? prizeValue : deleteField(),
-        hasMainPrize,
+        prize_value: form.hasMainPrize && prizeValue !== null ? prizeValue : deleteField(),
+        hasMainPrize: form.hasMainPrize,
         photo: form.scratchImage.trim(),
       });
 
@@ -541,6 +544,15 @@ export default function EditGamePage({ params }: GameEditPageProps) {
           </div>
 
           <div className="game-edit-grid">
+            <label className="game-edit-field game-edit-field-wide">
+              <span className="search-label">Lot principal / tirage final</span>
+              <input
+                type="checkbox"
+                checked={form.hasMainPrize}
+                onChange={(event) => setForm((current) => (current ? { ...current, hasMainPrize: event.target.checked, mainPrizeValue: event.target.checked ? current.mainPrizeValue : "" } : current))}
+                disabled={isSubmitting}
+              />
+            </label>
             <label className="game-edit-field">
               <span className="search-label">Lot principal</span>
               <input
@@ -550,7 +562,7 @@ export default function EditGamePage({ params }: GameEditPageProps) {
                 step="1"
                 value={form.mainPrizeValue}
                 onChange={(event) => handleChange("mainPrizeValue", event.target.value)}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !form.hasMainPrize}
               />
             </label>
 

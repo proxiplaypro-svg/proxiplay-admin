@@ -14,6 +14,7 @@ import type {
   GameSecondaryPrize,
   GameStatus,
 } from "@/types/dashboard";
+import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
 
 type SavePayload = {
   title: string;
@@ -534,6 +535,16 @@ export function GameEditModal({
         setValidationError("Chaque lot secondaire doit avoir une quantite valide.");
         return;
       }
+    }
+
+    const prizeValidationError = validateGamePrizes({
+      hasMainPrize: mainPrizeForm.hasMainPrize,
+      mainPrizeDescription: mainPrizeForm.title || mainPrizeForm.description,
+      secondaryPrizes,
+    });
+    if (prizeValidationError) {
+      setValidationError(prizeValidationError);
+      return;
     }
 
     if (isAnimationGame) {

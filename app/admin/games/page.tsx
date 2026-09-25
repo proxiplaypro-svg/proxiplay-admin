@@ -27,11 +27,11 @@ import {
 import { GameEditModal } from "@/components/admin/jeux/GameEditModal";
 import { duplicateGame } from "@/lib/firebase/adminActions";
 import { db } from "@/lib/firebase/client-app";
-import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
 import {
   ensureGamesAuthenticated,
   getGamesQueryErrorMessage,
   updateGame,
+  relaunchGame,
   updateGameStatus,
 } from "@/lib/firebase/gamesQueries";
 import type {
@@ -422,7 +422,10 @@ function mapGameDocument(
           ),
     collectionName,
     imageMissing: !imageUrl,
-    hasMainPrize: game.hasMainPrize === true,
+    hasMainPrize:
+      typeof game.hasMainPrize === "boolean"
+        ? game.hasMainPrize
+        : mainPrizeValue !== null,
     mainPrizeTitle: readText(game.main_prize_title),
     mainPrizeDescription: readText(game.main_prize_description),
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
@@ -757,51 +760,16 @@ function AdminGamesPageInner() {
     setModalFeedback(null);
     setModalFeedbackTone(null);
 
-    // Une relance (admin "Dupliquer"/"Relancer le jeu") ne doit jamais
-    // publier un jeu dont les lots secondaires configures n'ont pas de
-    // calendrier d'instants garanti : elle reste en brouillon (non visible
-    // des joueurs) tant que generateInstantWinnersForGame n'a pas reussi.
-    const isRelaunch = modalMode === "duplicate";
-    const draftStatus: Game["status"] = "brouillon";
-
     try {
-      const result = await updateGame({
+      const effectiveStatus = modalMode === "duplicate" ? "actif" : payload.status;
+      const result = await (modalMode === "duplicate" ? relaunchGame : updateGame)({
         gameId: selectedGame.id,
         collectionName: selectedGame.collectionName,
         merchantCollectionName,
         ...payload,
-        status: isRelaunch ? draftStatus : payload.status,
+        status: effectiveStatus,
         restrictedToAdults: payload.restrictedToAdults,
       });
-
-      let effectiveStatus: Game["status"] = isRelaunch ? draftStatus : payload.status;
-
-      if (isRelaunch) {
-        const expectedInstantCount = payload.secondaryPrizes.reduce(
-          (total, prize) => total + Math.max(0, Number.parseInt(prize.count, 10) || 0),
-          0,
-        );
-
-        if (expectedInstantCount > 0) {
-          try {
-            await generateInstantWinnersForGame(selectedGame.id);
-          } catch (instantError) {
-            console.error(instantError);
-            setModalFeedback(
-              "Impossible de préparer les gains instantanés. Le jeu reste en brouillon, non publié. Réessayez.",
-            );
-            setModalFeedbackTone("error");
-            return;
-          }
-        }
-
-        await updateGameStatus({
-          gameId: selectedGame.id,
-          collectionName: selectedGame.collectionName,
-          status: "actif",
-        });
-        effectiveStatus = "actif";
-      }
 
       const updatedGame: Game = {
         ...selectedGame,

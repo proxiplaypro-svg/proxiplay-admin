@@ -26,7 +26,10 @@ import type {
   GameStatus,
 } from "@/types/dashboard";
 import { auth } from "./auth";
-import { db, storage } from "./client-app";
+import { db, storage, firebaseApp } from "./client-app";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { prepareGameRelaunch, type InstantCalendarResult } from "./gameRelaunchWorkflow";
+import { validateGamePrizes } from "./gamePrizeValidation";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -428,8 +431,9 @@ function mapGameDocument(
   const endTimestamp = readTimestamp(game.end_date, game.endDate);
   const imageUrl = readNullableText(game.imageUrl, game.photo, game.coverUrl);
   const status = deriveStatus(game);
-  const hasMainPrize = readBoolean(game.hasMainPrize, false);
   const mainPrizeValue = readOptionalNumber(game.prize_value);
+  const hasMainPrize =
+    typeof game.hasMainPrize === "boolean" ? game.hasMainPrize : mainPrizeValue !== null;
   const secondaryPrizes = Array.isArray(game.secondary_prizes)
     ? game.secondary_prizes.map((prize, index) => mapSecondaryPrize(prize ?? {}, index))
     : [];
@@ -547,6 +551,13 @@ function buildGamePatch(
       image: prize.image?.trim() || "",
     }))
     .filter((prize) => prize.name || prize.description || prize.count > 0 || prize.image);
+
+  const prizeValidationError = validateGamePrizes({
+    hasMainPrize,
+    mainPrizeDescription: input.mainPrizeTitle || input.mainPrizeDescription,
+    secondaryPrizes: input.secondaryPrizes,
+  });
+  if (prizeValidationError) throw new Error(prizeValidationError);
 
   if (hasMainPrize && mainPrizeValue === null) {
     throw new Error("La valeur du lot principal doit etre un nombre valide.");
@@ -772,6 +783,7 @@ export type CreateGameInput = {
   merchantName: string;
   title: string;
   description: string;
+  hasMainPrize: boolean;
   startDate: string;
   endDate: string;
   prizeValue: string;
@@ -820,6 +832,13 @@ export async function createGame(
     throw new Error("La valeur du lot doit être un nombre positif.");
   }
 
+  const prizeValidationError = validateGamePrizes({
+    hasMainPrize: input.hasMainPrize,
+    mainPrizeDescription: input.description,
+    secondaryPrizes: input.secondaryPrizes,
+  });
+  if (prizeValidationError) throw new Error(prizeValidationError);
+
   const merchantRef = getMerchantReference(input.merchantCollectionName, input.merchantId);
   const gameRef = doc(collection(db, input.collectionName));
   const now = new Date();
@@ -867,11 +886,15 @@ export async function createGame(
     photo: imageUrl ?? "",
     sessionCount: 0,
     partiesCount: 0,
-    hasMainPrize: prizeValue !== null,
-    main_prize_title: description,
-    main_prize_description: description,
-    ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
-    main_prize_image: "",
+    hasMainPrize: input.hasMainPrize,
+    ...(input.hasMainPrize
+      ? {
+          main_prize_title: description,
+          main_prize_description: description,
+          ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
+          main_prize_image: "",
+        }
+      : {}),
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
@@ -905,10 +928,10 @@ export async function createGame(
       sessionCount: 0,
       collectionName: input.collectionName,
       imageMissing: !imageUrl,
-      hasMainPrize: prizeValue !== null,
-      mainPrizeTitle: description,
-      mainPrizeDescription: description,
-      mainPrizeValue: prizeValue === null ? "" : String(prizeValue),
+      hasMainPrize: input.hasMainPrize,
+      mainPrizeTitle: input.hasMainPrize ? description : "",
+      mainPrizeDescription: input.hasMainPrize ? description : "",
+      mainPrizeValue: input.hasMainPrize && prizeValue !== null ? String(prizeValue) : "",
       mainPrizeImage: null,
       secondaryPrizes: secondaryPrizes.map((prize, index) => ({
         id: `secondary-${index}`,
@@ -1046,4 +1069,41 @@ export function getGamesQueryErrorMessage(error: unknown) {
   }
 
   return "Une erreur inattendue a bloque l operation.";
+}
+
+/** Only used for the newly duplicated draft, never for editing an existing game. */
+export async function relaunchGame(input: UpdateGameInput) {
+  if (input.collectionName !== "games") {
+    throw new Error("La relance doit utiliser la collection games.");
+  }
+  const generate = httpsCallable<{ gameId: string }, InstantCalendarResult>(
+    getFunctions(firebaseApp, "us-central1"),
+    "generateInstantWinnersForGame",
+  );
+  return prepareGameRelaunch({
+    gameId: input.gameId,
+    counts: input.secondaryPrizes.map((prize) => prize.count),
+    saveDraft: () => updateGame({ ...input, status: "brouillon" }),
+    generate: async () => (await generate({ gameId: input.gameId })).data,
+    verifyCalendar: async () => {
+      // A retry can follow edited dates; the canonical generator preserves old
+      // occurrences. Refuse publication if any is outside the final window.
+      const start = new Date(input.startDate ?? "").getTime();
+      const end = new Date(input.endDate ?? "").getTime();
+      const slots = await getDocs(collection(db, "games", input.gameId, "instant_winners"));
+      const expected = input.secondaryPrizes.reduce((sum, prize) => sum + Number(prize.count), 0);
+      if ((expected > 0 && (!Number.isFinite(start) || !Number.isFinite(end))) || slots.size !== expected ||
+          slots.docs.some((slot) => {
+            const data = slot.data();
+            const date = data.date instanceof Timestamp ? data.date.toMillis() : NaN;
+            return !Number.isFinite(date) || date < start || date > end ||
+              data.hasWinner !== false || !!data.player_id;
+          })) {
+        throw new Error("Calendrier incompatible avec la configuration finale.");
+      }
+    },
+    publish: () => updateGameStatus({
+      gameId: input.gameId, collectionName: input.collectionName, status: "actif",
+    }),
+  });
 }

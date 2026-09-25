@@ -12,6 +12,7 @@ import {
 } from "@/lib/firebase/gamesQueries";
 import { db } from "@/lib/firebase/client-app";
 import type { GameMerchantOption } from "@/types/dashboard";
+import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -28,6 +29,7 @@ type FormState = {
   title: string;
   description: string;
   prizeValue: string;
+  hasMainPrize: boolean;
   startDate: string;
   endDate: string;
   restrictedToAdults: boolean;
@@ -40,6 +42,7 @@ const emptyForm: FormState = {
   title: "",
   description: "",
   prizeValue: "",
+  hasMainPrize: true,
   startDate: "",
   endDate: "",
   restrictedToAdults: false,
@@ -163,6 +166,13 @@ export default function NewGameForm({
         }
       }
 
+      const prizeValidationError = validateGamePrizes({
+        hasMainPrize: form.hasMainPrize,
+        mainPrizeDescription: form.description,
+        secondaryPrizes,
+      });
+      if (prizeValidationError) throw new Error(prizeValidationError);
+
       if (form.prizeUsageDeadlineEnabled) {
         if (!form.prizeUsageDeadline) {
           throw new Error("Choisis la date limite d'utilisation du lot.");
@@ -182,6 +192,7 @@ export default function NewGameForm({
         merchantName: merchant.name,
         title: form.title,
         description: form.description,
+        hasMainPrize: form.hasMainPrize,
         startDate: form.startDate,
         endDate: form.endDate,
         prizeValue: form.prizeValue,
@@ -304,14 +315,24 @@ export default function NewGameForm({
               ) : null}
             </div>
 
-            <label className="flex flex-col gap-1.5 sm:col-span-2">
-              <span className="text-[12px] font-medium text-[#666]">Lot à gagner</span>
-              <textarea className="resize-y rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} rows={3} placeholder="Un café offert, une réduction de 10%..." />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[12px] font-medium text-[#666]">Valeur du lot (€, facultatif)</span>
-              <input className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" type="number" min="0" step="0.01" inputMode="decimal" value={form.prizeValue} onChange={(event) => setForm((prev) => ({ ...prev, prizeValue: event.target.value }))} placeholder="5" />
-            </label>
+            <div className="sm:col-span-2 rounded-[10px] border border-[#E8E8E4] bg-[#FAFAF8] p-4">
+              <label className="flex items-center gap-2 text-[13px] font-medium text-[#1A1A1A]">
+                <input type="checkbox" checked={form.hasMainPrize} onChange={(event) => setForm((prev) => ({ ...prev, hasMainPrize: event.target.checked, description: event.target.checked ? prev.description : "", prizeValue: event.target.checked ? prev.prizeValue : "" }))} className="h-4 w-4 rounded border-[#D7D7D2]" />
+                Lot principal / tirage final
+              </label>
+              {form.hasMainPrize ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5 sm:col-span-2">
+                    <span className="text-[12px] font-medium text-[#666]">Lot à gagner</span>
+                    <textarea className="resize-y rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} rows={3} placeholder="Un café offert, une réduction de 10%..." required />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[12px] font-medium text-[#666]">Valeur du lot (€, facultatif)</span>
+                    <input className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" type="number" min="0" step="0.01" inputMode="decimal" value={form.prizeValue} onChange={(event) => setForm((prev) => ({ ...prev, prizeValue: event.target.value }))} placeholder="5" />
+                  </label>
+                </div>
+              ) : null}
+            </div>
             <label className="flex flex-col gap-1.5">
               <span className="mt-6 flex items-center gap-2 text-[13px] font-medium text-[#666]"><input type="checkbox" checked={form.restrictedToAdults} onChange={(event) => setForm((prev) => ({ ...prev, restrictedToAdults: event.target.checked }))} className="h-4 w-4 rounded border-[#E0E0DA]" />Interdit aux mineurs</span>
             </label>
