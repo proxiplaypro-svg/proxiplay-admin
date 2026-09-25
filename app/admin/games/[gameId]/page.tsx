@@ -18,6 +18,7 @@ import { openGameFacebookPostWindow, openGamePosterPrintWindow } from "@/lib/adm
 import { GameQrSection } from "@/components/admin/jeux/GameQrSection";
 import { db } from "@/lib/firebase/client-app";
 import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
+import { resolveHasMainPrize } from "@/lib/firebase/gamePrizeValidation";
 
 type GameDetailsPageProps = {
   params: Promise<{ gameId: string }>;
@@ -207,7 +208,7 @@ function buildDetails(
     conversionRate: participationsCount > 0 ? (winnersCount / participationsCount) * 100 : null,
     description: game.description?.trim() || "",
     imageUrl,
-    hasMainPrize: game.hasMainPrize === true,
+    hasMainPrize: resolveHasMainPrize(game.hasMainPrize, game.prize_value),
     mainPrizeValue: typeof game.prize_value === "number" ? game.prize_value : null,
     mainPrizeTitle: game.main_prize_title?.trim() || "",
     mainPrizeDescription: game.main_prize_description?.trim() || "",

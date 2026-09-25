@@ -28,6 +28,7 @@ import { GameEditModal } from "@/components/admin/jeux/GameEditModal";
 import { duplicateGame } from "@/lib/firebase/adminActions";
 import { db } from "@/lib/firebase/client-app";
 import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
+import { resolveHasMainPrize } from "@/lib/firebase/gamePrizeValidation";
 import {
   ensureGamesAuthenticated,
   getGamesQueryErrorMessage,
@@ -422,7 +423,7 @@ function mapGameDocument(
           ),
     collectionName,
     imageMissing: !imageUrl,
-    hasMainPrize: game.hasMainPrize === true,
+    hasMainPrize: resolveHasMainPrize(game.hasMainPrize, mainPrizeValue),
     mainPrizeTitle: readText(game.main_prize_title),
     mainPrizeDescription: readText(game.main_prize_description),
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
@@ -784,7 +785,20 @@ function AdminGamesPageInner() {
 
         if (expectedInstantCount > 0) {
           try {
-            await generateInstantWinnersForGame(selectedGame.id);
+            const calendar = await generateInstantWinnersForGame(selectedGame.id);
+            const existingCount = calendar.existingCount ?? 0;
+            const createdCount = calendar.createdCount ?? 0;
+            if (
+              calendar.ok !== true ||
+              calendar.desiredCount !== expectedInstantCount ||
+              !Number.isSafeInteger(existingCount) ||
+              !Number.isSafeInteger(createdCount) ||
+              existingCount < 0 ||
+              createdCount < 0 ||
+              existingCount + createdCount !== expectedInstantCount
+            ) {
+              throw new Error("Le calendrier des gains instantanes est incoherent.");
+            }
           } catch (instantError) {
             console.error(instantError);
             setModalFeedback(

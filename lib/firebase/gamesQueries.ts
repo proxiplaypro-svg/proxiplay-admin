@@ -27,6 +27,7 @@ import type {
 } from "@/types/dashboard";
 import { auth } from "./auth";
 import { db, storage } from "./client-app";
+import { resolveHasMainPrize, validateGamePrizes } from "./gamePrizeValidation";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -428,8 +429,8 @@ function mapGameDocument(
   const endTimestamp = readTimestamp(game.end_date, game.endDate);
   const imageUrl = readNullableText(game.imageUrl, game.photo, game.coverUrl);
   const status = deriveStatus(game);
-  const hasMainPrize = readBoolean(game.hasMainPrize, false);
   const mainPrizeValue = readOptionalNumber(game.prize_value);
+  const hasMainPrize = resolveHasMainPrize(game.hasMainPrize, mainPrizeValue);
   const secondaryPrizes = Array.isArray(game.secondary_prizes)
     ? game.secondary_prizes.map((prize, index) => mapSecondaryPrize(prize ?? {}, index))
     : [];
@@ -548,9 +549,12 @@ function buildGamePatch(
     }))
     .filter((prize) => prize.name || prize.description || prize.count > 0 || prize.image);
 
-  if (hasMainPrize && mainPrizeValue === null) {
-    throw new Error("La valeur du lot principal doit etre un nombre valide.");
-  }
+  const prizeValidationError = validateGamePrizes({
+    hasMainPrize,
+    mainPrizeDescription: input.mainPrizeTitle || input.mainPrizeDescription,
+    secondaryPrizes: input.secondaryPrizes,
+  });
+  if (prizeValidationError) throw new Error(prizeValidationError);
 
   return {
     title: input.title.trim(),
@@ -577,12 +581,20 @@ function buildGamePatch(
     imageUrl,
     photo: imageUrl,
     hasMainPrize,
-    main_prize_title: hasMainPrize ? input.mainPrizeTitle.trim() : "",
-    main_prize_description: hasMainPrize ? input.mainPrizeDescription.trim() : "",
+    ...(hasMainPrize
+      ? {
+          main_prize_title: input.mainPrizeTitle.trim(),
+          main_prize_description: input.mainPrizeDescription.trim(),
+          main_prize_image: input.mainPrizeImage?.trim() || "",
+        }
+      : {
+          main_prize_title: deleteField(),
+          main_prize_description: deleteField(),
+          main_prize_image: deleteField(),
+        }),
     ...(hasMainPrize
       ? { prize_value: mainPrizeValue }
       : { prize_value: deleteField() }),
-    main_prize_image: hasMainPrize ? input.mainPrizeImage?.trim() || "" : "",
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
@@ -772,6 +784,7 @@ export type CreateGameInput = {
   merchantName: string;
   title: string;
   description: string;
+  hasMainPrize: boolean;
   startDate: string;
   endDate: string;
   prizeValue: string;
@@ -820,6 +833,13 @@ export async function createGame(
     throw new Error("La valeur du lot doit être un nombre positif.");
   }
 
+  const prizeValidationError = validateGamePrizes({
+    hasMainPrize: input.hasMainPrize,
+    mainPrizeDescription: input.description,
+    secondaryPrizes: input.secondaryPrizes,
+  });
+  if (prizeValidationError) throw new Error(prizeValidationError);
+
   const merchantRef = getMerchantReference(input.merchantCollectionName, input.merchantId);
   const gameRef = doc(collection(db, input.collectionName));
   const now = new Date();
@@ -867,11 +887,15 @@ export async function createGame(
     photo: imageUrl ?? "",
     sessionCount: 0,
     partiesCount: 0,
-    hasMainPrize: prizeValue !== null,
-    main_prize_title: description,
-    main_prize_description: description,
-    ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
-    main_prize_image: "",
+    hasMainPrize: input.hasMainPrize,
+    ...(input.hasMainPrize
+      ? {
+          main_prize_title: description,
+          main_prize_description: description,
+          ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
+          main_prize_image: "",
+        }
+      : {}),
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
@@ -905,10 +929,10 @@ export async function createGame(
       sessionCount: 0,
       collectionName: input.collectionName,
       imageMissing: !imageUrl,
-      hasMainPrize: prizeValue !== null,
-      mainPrizeTitle: description,
-      mainPrizeDescription: description,
-      mainPrizeValue: prizeValue === null ? "" : String(prizeValue),
+      hasMainPrize: input.hasMainPrize,
+      mainPrizeTitle: input.hasMainPrize ? description : "",
+      mainPrizeDescription: input.hasMainPrize ? description : "",
+      mainPrizeValue: input.hasMainPrize && prizeValue !== null ? String(prizeValue) : "",
       mainPrizeImage: null,
       secondaryPrizes: secondaryPrizes.map((prize, index) => ({
         id: `secondary-${index}`,
@@ -982,10 +1006,14 @@ export async function duplicateGameDocument(
     sessionCount: 0,
     partiesCount: 0,
     hasMainPrize: original.hasMainPrize,
-    main_prize_title: original.mainPrizeTitle,
-    main_prize_description: original.mainPrizeDescription,
+    ...(original.hasMainPrize
+      ? {
+          main_prize_title: original.mainPrizeTitle,
+          main_prize_description: original.mainPrizeDescription,
+          main_prize_image: original.mainPrizeImage ?? "",
+        }
+      : {}),
     ...(original.hasMainPrize ? { prize_value: duplicatedPrizeValue } : {}),
-    main_prize_image: original.mainPrizeImage ?? "",
     secondary_prizes: original.secondaryPrizes.map((prize) => ({
       name: prize.name,
       presentation: prize.description,

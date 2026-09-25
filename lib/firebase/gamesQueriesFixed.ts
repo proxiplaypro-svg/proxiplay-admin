@@ -24,6 +24,7 @@ import {
   type DuplicateGameResult,
   type UpdateGameInput,
 } from "./gamesQueries";
+import { resolveHasMainPrize, validateGamePrizes } from "./gamePrizeValidation";
 
 export * from "./gamesQueries";
 
@@ -161,9 +162,12 @@ export async function updateGame(input: UpdateGameInput) {
     ? normalizePrizeValue(input.mainPrizeValue)
     : null;
 
-  if (input.hasMainPrize && mainPrizeValue === null) {
-    throw new Error("La valeur du lot principal doit etre un nombre valide.");
-  }
+  const prizeValidationError = validateGamePrizes({
+    hasMainPrize: input.hasMainPrize,
+    mainPrizeDescription: input.mainPrizeTitle || input.mainPrizeDescription,
+    secondaryPrizes: input.secondaryPrizes,
+  });
+  if (prizeValidationError) throw new Error(prizeValidationError);
 
   const patch = {
     title: input.title.trim(),
@@ -188,12 +192,20 @@ export async function updateGame(input: UpdateGameInput) {
     imageUrl: finalImageUrl,
     photo: finalImageUrl,
     hasMainPrize: input.hasMainPrize,
-    main_prize_title: input.hasMainPrize ? input.mainPrizeTitle.trim() : "",
-    main_prize_description: input.hasMainPrize ? input.mainPrizeDescription.trim() : "",
+    ...(input.hasMainPrize
+      ? {
+          main_prize_title: input.mainPrizeTitle.trim(),
+          main_prize_description: input.mainPrizeDescription.trim(),
+          main_prize_image: finalMainPrizeImage?.trim() || "",
+        }
+      : {
+          main_prize_title: deleteField(),
+          main_prize_description: deleteField(),
+          main_prize_image: deleteField(),
+        }),
     ...(input.hasMainPrize
       ? { prize_value: mainPrizeValue }
       : { prize_value: deleteField() }),
-    main_prize_image: input.hasMainPrize ? finalMainPrizeImage?.trim() || "" : "",
     secondary_prizes: mapSecondaryPrizesForWrite(finalSecondaryPrizes),
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
@@ -230,6 +242,13 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
   if (input.prizeValue.trim() && prizeValue === null) {
     throw new Error("La valeur du lot doit être un nombre positif.");
   }
+
+  const prizeValidationError = validateGamePrizes({
+    hasMainPrize: input.hasMainPrize,
+    mainPrizeDescription: input.description,
+    secondaryPrizes: input.secondaryPrizes,
+  });
+  if (prizeValidationError) throw new Error(prizeValidationError);
 
   const merchantRef = doc(db, input.merchantCollectionName, input.merchantId);
   const ownerRef = await resolveMerchantOwnerReference(
@@ -279,11 +298,15 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
     photo: imageUrl ?? "",
     sessionCount: 0,
     partiesCount: 0,
-    hasMainPrize: prizeValue !== null,
-    main_prize_title: description,
-    main_prize_description: description,
-    ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
-    main_prize_image: "",
+    hasMainPrize: input.hasMainPrize,
+    ...(input.hasMainPrize
+      ? {
+          main_prize_title: description,
+          main_prize_description: description,
+          ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
+          main_prize_image: "",
+        }
+      : {}),
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
@@ -317,10 +340,10 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
       sessionCount: 0,
       collectionName: input.collectionName,
       imageMissing: !imageUrl,
-      hasMainPrize: prizeValue !== null,
-      mainPrizeTitle: description,
-      mainPrizeDescription: description,
-      mainPrizeValue: prizeValue === null ? "" : String(prizeValue),
+      hasMainPrize: input.hasMainPrize,
+      mainPrizeTitle: input.hasMainPrize ? description : "",
+      mainPrizeDescription: input.hasMainPrize ? description : "",
+      mainPrizeValue: input.hasMainPrize && prizeValue !== null ? String(prizeValue) : "",
       mainPrizeImage: null,
       secondaryPrizes: secondaryPrizes.map((prize, index) => ({
         id: `secondary-${index}`,
@@ -388,7 +411,7 @@ export async function duplicateGameDocument(
   const now = Timestamp.now();
   const startDate = timestampFromSource(source, "start_date", "startDate");
   const endDate = timestampFromSource(source, "end_date", "endDate");
-  const hasMainPrize = readBoolean(source.hasMainPrize, false);
+  const hasMainPrize = resolveHasMainPrize(source.hasMainPrize, source.prize_value);
   const secondaryPrizes = Array.isArray(source.secondary_prizes)
     ? source.secondary_prizes.map((prize) => ({ ...(prize ?? {}) }))
     : [];
@@ -420,9 +443,13 @@ export async function duplicateGameDocument(
     imageUrl: readString(source.imageUrl) || readString(source.photo) || readString(source.coverUrl),
     photo: readString(source.photo) || readString(source.imageUrl) || readString(source.coverUrl),
     hasMainPrize,
-    main_prize_title: readString(source.main_prize_title),
-    main_prize_description: readString(source.main_prize_description),
-    main_prize_image: readString(source.main_prize_image),
+    ...(hasMainPrize
+      ? {
+          main_prize_title: readString(source.main_prize_title),
+          main_prize_description: readString(source.main_prize_description),
+          main_prize_image: readString(source.main_prize_image),
+        }
+      : {}),
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: readBoolean(
       source.prohibited_for_minors,
@@ -445,7 +472,7 @@ export async function duplicateGameDocument(
     ...buildStatusPatch("brouillon"),
   };
 
-  if (source.prize_value !== undefined && source.prize_value !== null) {
+  if (hasMainPrize && source.prize_value !== undefined && source.prize_value !== null) {
     payload.prize_value = source.prize_value;
   }
   if (source.prize_usage_deadline instanceof Timestamp) {

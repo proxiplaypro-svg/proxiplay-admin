@@ -7,6 +7,7 @@ import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
 import { openGameFacebookPostWindowWithMerchant, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { db } from "@/lib/firebase/client-app";
 import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
+import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
 import type {
   AnimationOption,
   Game,
@@ -536,6 +537,16 @@ export function GameEditModal({
       }
     }
 
+    const prizeValidationError = validateGamePrizes({
+      hasMainPrize: mainPrizeForm.hasMainPrize,
+      mainPrizeDescription: mainPrizeForm.title || mainPrizeForm.description,
+      secondaryPrizes,
+    });
+    if (prizeValidationError) {
+      setValidationError(prizeValidationError);
+      return;
+    }
+
     if (isAnimationGame) {
       if (!generalForm.imageUrl && !generalForm.imageFile) {
         setValidationError("Une image est obligatoire pour un jeu d'animation.");
@@ -785,15 +796,17 @@ export function GameEditModal({
               <div className="flex flex-col gap-4">
                 <label className="flex items-center gap-3 rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-3">
                   <input type="checkbox" checked={mainPrizeForm.hasMainPrize} onChange={(event) => updateMainPrizeForm("hasMainPrize", event.target.checked)} />
-                  <span className="text-[13px] font-medium text-[#1A1A1A]">Ce jeu comporte un lot principal</span>
+                  <span className="text-[13px] font-medium text-[#1A1A1A]">Lot principal / tirage final</span>
                 </label>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Valeur du lot principal (€)</span>
-                    <input className={inputClassName} type="number" min="0" step="0.01" value={mainPrizeForm.value} onChange={(event) => updateMainPrizeForm("value", event.target.value)} disabled={!mainPrizeForm.hasMainPrize} />
-                  </label>
-                </div>
+                {mainPrizeForm.hasMainPrize ? (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Valeur du lot principal (€)</span>
+                      <input className={inputClassName} type="number" min="0" step="0.01" value={mainPrizeForm.value} onChange={(event) => updateMainPrizeForm("value", event.target.value)} />
+                    </label>
+                  </div>
+                ) : null}
               </div>
             </section>
 

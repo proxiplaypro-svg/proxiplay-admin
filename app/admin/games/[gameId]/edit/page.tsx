@@ -16,6 +16,7 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client-app";
+import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
 
 type GameEditPageProps = {
   params: Promise<{
@@ -34,6 +35,7 @@ type FirestoreGameEditDocument = {
   enseigne_name?: string;
   visible_public?: boolean;
   hasMainPrize?: boolean;
+  secondary_prizes?: Array<{ name?: string; count?: string | number }>;
 };
 
 type GameFormState = {
@@ -43,6 +45,7 @@ type GameFormState = {
   endDate: string;
   status: "actif" | "termine" | "brouillon";
   mainPrizeValue: string;
+  hasMainPrize: boolean;
   scratchImage: string;
 };
 
@@ -51,6 +54,7 @@ type EditGameSnapshot = {
   merchantId: string | null;
   merchantName: string;
   winnersCount: number;
+  secondaryPrizes: Array<{ name: string; count: string | number }>;
   form: GameFormState;
 };
 
@@ -100,6 +104,10 @@ function buildInitialForm(game: FirestoreGameEditDocument): GameFormState {
       typeof game.prize_value === "number" && Number.isFinite(game.prize_value)
         ? String(game.prize_value)
         : "",
+    hasMainPrize:
+      typeof game.hasMainPrize === "boolean"
+        ? game.hasMainPrize
+        : typeof game.prize_value === "number" && Number.isFinite(game.prize_value),
     scratchImage: game.photo?.trim() ?? "",
   };
 }
@@ -219,6 +227,9 @@ export default function EditGamePage({ params }: GameEditPageProps) {
           merchantId: data.enseigne_id?.id ?? null,
           merchantName: data.enseigne_name?.trim() || "Commercant non renseigne",
           winnersCount,
+          secondaryPrizes: Array.isArray(data.secondary_prizes)
+            ? data.secondary_prizes.map((prize) => ({ name: prize.name ?? "", count: prize.count ?? "" }))
+            : [],
           form: nextForm,
         } satisfies EditGameSnapshot;
 
@@ -406,7 +417,21 @@ export default function EditGamePage({ params }: GameEditPageProps) {
     try {
       const gameRef = doc(db, "games", game.id);
       const prizeValue = form.mainPrizeValue.trim() ? Number(form.mainPrizeValue) : null;
-      const hasMainPrize = prizeValue !== null && Number.isFinite(prizeValue) && prizeValue > 0;
+      if (form.hasMainPrize && prizeValue !== null && (!Number.isFinite(prizeValue) || prizeValue < 0)) {
+        setValidationErrors(["La valeur du lot principal doit etre un nombre valide."]);
+        setIsSubmitting(false);
+        return;
+      }
+      const prizeValidationError = validateGamePrizes({
+        hasMainPrize: form.hasMainPrize,
+        mainPrizeDescription: form.description,
+        secondaryPrizes: game.secondaryPrizes,
+      });
+      if (prizeValidationError) {
+        setValidationErrors([prizeValidationError]);
+        setIsSubmitting(false);
+        return;
+      }
 
       await updateDoc(gameRef, {
         name: form.name.trim(),
@@ -414,8 +439,15 @@ export default function EditGamePage({ params }: GameEditPageProps) {
         start_date: form.startDate ? Timestamp.fromDate(new Date(form.startDate)) : deleteField(),
         end_date: form.endDate ? Timestamp.fromDate(new Date(form.endDate)) : deleteField(),
         visible_public: form.status !== "brouillon",
-        prize_value: hasMainPrize ? prizeValue : deleteField(),
-        hasMainPrize,
+        prize_value: form.hasMainPrize && prizeValue !== null ? prizeValue : deleteField(),
+        hasMainPrize: form.hasMainPrize,
+        ...(form.hasMainPrize
+          ? {}
+          : {
+              main_prize_title: deleteField(),
+              main_prize_description: deleteField(),
+              main_prize_image: deleteField(),
+            }),
         photo: form.scratchImage.trim(),
       });
 
@@ -541,8 +573,18 @@ export default function EditGamePage({ params }: GameEditPageProps) {
           </div>
 
           <div className="game-edit-grid">
-            <label className="game-edit-field">
-              <span className="search-label">Lot principal</span>
+            <label className="game-edit-field game-edit-field-wide">
+              <span className="search-label">Lot principal / tirage final</span>
+              <input
+                type="checkbox"
+                checked={form.hasMainPrize}
+                onChange={(event) => setForm((current) => (current ? { ...current, hasMainPrize: event.target.checked, mainPrizeValue: event.target.checked ? current.mainPrizeValue : "" } : current))}
+                disabled={isSubmitting}
+              />
+            </label>
+
+            {form.hasMainPrize ? <label className="game-edit-field">
+              <span className="search-label">Valeur du lot principal</span>
               <input
                 className="search-input"
                 type="number"
@@ -552,7 +594,7 @@ export default function EditGamePage({ params }: GameEditPageProps) {
                 onChange={(event) => handleChange("mainPrizeValue", event.target.value)}
                 disabled={isSubmitting}
               />
-            </label>
+            </label> : null}
 
             <label className="game-edit-field">
               <span className="search-label">Nombre de gagnants</span>
