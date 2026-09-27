@@ -1,4 +1,6 @@
 "use client";
+import {PrizeDeliveryChoice, PartnerDeliveryContact} from "@/components/admin/jeux/PrizeDeliveryChoice";
+import { resolveGameOwner, resolveGameDelivery, resolvePartnerDeliveryEnabled } from "@/lib/firebase/gameOwnership";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FirebaseError } from "firebase/app";
@@ -47,6 +49,9 @@ type CampaignListItem = {
 };
 
 type CampaignGameOption = {
+  fulfillmentType?: "merchant" | "partner" | "platform";
+  partnerDeliveryEnabled?: boolean;
+  partnerDeliveryConfigured: boolean;
   id: string;
   title: string;
   merchantId: string | null;
@@ -68,6 +73,9 @@ type MerchantOption = {
 };
 
 type CampaignMerchantRow = {
+  fulfillmentType?: "merchant" | "partner" | "platform";
+  partnerDeliveryEnabled: boolean;
+  partnerDeliveryConfigured: boolean;
   merchantId: string;
   merchantName: string;
   merchantCity: string;
@@ -124,6 +132,8 @@ type FirestoreCampaignDocument = {
 };
 
 type FirestoreGameDocument = {
+  fulfillment_type?: "merchant" | "partner" | "platform";
+  partner_delivery_enabled?: boolean;
   name?: string;
   title?: string;
   enseigne_name?: string;
@@ -360,6 +370,9 @@ function mapCampaignGame(snapshot: QueryDocumentSnapshot) {
     campaignId: readText(data.animation_id ?? undefined, data.campaign_id ?? undefined) || null,
     secondaryPrize: readText(data.prize_description),
     prizeCount: Math.max(0, readNumber(data.prize_count)),
+    fulfillmentType: data.fulfillment_type,
+    partnerDeliveryEnabled: data.partner_delivery_enabled === true,
+    partnerDeliveryConfigured: data.partner_delivery_enabled !== undefined,
   } satisfies CampaignGameOption;
 }
 
@@ -910,6 +923,9 @@ export default function AdminCampaignsPage() {
         gameEndDate: formatInputDate(game.endDate) || formState.endDate,
         gameImageUrl: game.photo ?? "",
         gameImageFile: null,
+        fulfillmentType: game.fulfillmentType,
+        partnerDeliveryEnabled: game.partnerDeliveryEnabled ?? false,
+        partnerDeliveryConfigured: game.partnerDeliveryConfigured,
       })),
     );
     setMerchantSearch("");
@@ -1227,6 +1243,8 @@ export default function AdminCampaignsPage() {
         gameEndDate: formState.endDate,
         gameImageUrl: "",
         gameImageFile: null,
+        partnerDeliveryEnabled: false,
+        partnerDeliveryConfigured: true,
       },
     ]);
     setMerchantSearch("");
@@ -1234,7 +1252,7 @@ export default function AdminCampaignsPage() {
 
   const updateParticipantMerchant = (
     merchantId: string,
-    field: "secondaryPrize" | "secondaryPrizeDescription" | "prizeCount" | "gameEndDate",
+    field: "secondaryPrize" | "secondaryPrizeDescription" | "prizeCount" | "gameEndDate" | "fulfillmentType",
     value: string,
   ) => {
     setParticipantMerchants((current) =>
@@ -1385,9 +1403,8 @@ export default function AdminCampaignsPage() {
           .filter((game) => game.campaignId === campaignId && game.merchantId)
           .map((game) => [game.merchantId as string, game]),
       );
-      const createdByValue = auth.currentUser
-        ? doc(db, "users", auth.currentUser.uid)
-        : "admin/web";
+      if (!auth.currentUser) throw new Error('Connexion admin requise.');
+      const createdByValue = doc(db, "users", auth.currentUser.uid);
       const gameStatus = buildAnimationGameStatus(formState.status);
       const isPublicGame = formState.status === "active";
 
@@ -1404,6 +1421,9 @@ export default function AdminCampaignsPage() {
             ? doc(db, "games", existingGame.id)
             : doc(collection(db, "games"));
           const merchantRef = doc(db, "enseignes", merchant.merchantId);
+          const ownerRef = await resolveGameOwner('enseignes', merchant.merchantId);
+          const fulfillmentType=merchant.fulfillmentType ? await resolveGameDelivery('enseignes',merchant.merchantId,merchant.fulfillmentType) : undefined;
+          const partnerDeliveryEnabled=fulfillmentType && merchant.partnerDeliveryConfigured ? await resolvePartnerDeliveryEnabled('enseignes',merchant.merchantId,fulfillmentType,merchant.partnerDeliveryEnabled) : undefined;
           const photoUrl = merchant.gameImageFile
             ? await uploadGameImage(merchant.merchantId, merchant.gameImageFile)
             : merchant.gameImageUrl.trim();
@@ -1412,7 +1432,10 @@ export default function AdminCampaignsPage() {
           const gamePayload = {
             title: gameName,
             name: gameName,
-            create_by: merchant.ownerRef ?? createdByValue,
+            ...(!existingGame ? {create_by: createdByValue} : {}),
+            owner_id: ownerRef,
+            ...(fulfillmentType ? {fulfillment_type: fulfillmentType} : {}),
+            ...(merchant.partnerDeliveryConfigured ? {partner_delivery_enabled: partnerDeliveryEnabled === true} : {}),
             description: formState.description.trim(),
             conditions: formState.description.trim(),
             type: "animation",
@@ -1438,7 +1461,7 @@ export default function AdminCampaignsPage() {
             prize_description: merchant.secondaryPrize.trim(),
             prize_presentation: merchant.secondaryPrizeDescription.trim(),
             prize_count: prizeCount,
-            secondary_prizes: secondaryPrizes,
+            secondary_prizes: secondaryPrizes.map(p=>({...p,...(fulfillmentType ? {fulfillment_type:fulfillmentType} : {})})),
             hasMainPrize: false,
             hasWinner: false,
             prohibited_for_minors: false,
@@ -1487,6 +1510,9 @@ export default function AdminCampaignsPage() {
               photo: photoUrl || null,
               secondaryPrize: merchant.secondaryPrize.trim(),
               prizeCount,
+              fulfillmentType: fulfillmentType,
+              partnerDeliveryEnabled: partnerDeliveryEnabled === true,
+              partnerDeliveryConfigured: merchant.partnerDeliveryConfigured,
             } satisfies CampaignGameOption;
           }
 
@@ -1536,6 +1562,9 @@ export default function AdminCampaignsPage() {
             campaignId,
             secondaryPrize: merchant.secondaryPrize.trim(),
             prizeCount,
+            fulfillmentType: fulfillmentType,
+            partnerDeliveryEnabled: partnerDeliveryEnabled === true,
+            partnerDeliveryConfigured: merchant.partnerDeliveryConfigured,
           } satisfies CampaignGameOption;
         }),
       );
@@ -2061,6 +2090,8 @@ export default function AdminCampaignsPage() {
                         />
                       </label>
 
+                      <PartnerDeliveryContact merchantId={merchant.merchantId} fulfillmentType={merchant.fulfillmentType ?? "merchant"} enabled={merchant.partnerDeliveryEnabled} onEnabledChange={enabled=>setParticipantMerchants(current=>current.map(row=>row.merchantId===merchant.merchantId?{...row,fulfillmentType:row.fulfillmentType ?? "merchant",partnerDeliveryEnabled:enabled,partnerDeliveryConfigured:true}:row))} />
+                      <PrizeDeliveryChoice value={merchant.fulfillmentType ?? "merchant"} onChange={value=>setParticipantMerchants(current=>current.map(row=>row.merchantId===merchant.merchantId?{...row,fulfillmentType:value,partnerDeliveryConfigured:true,partnerDeliveryEnabled:value === "platform" ? false : row.partnerDeliveryEnabled}:row))} />
                       <label className="grid gap-2">
                         <span className="text-[12px] font-medium text-[#666666]">
                           Description du lot (facultatif)

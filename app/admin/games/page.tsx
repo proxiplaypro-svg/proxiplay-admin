@@ -45,6 +45,8 @@ type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
 
 type FirestoreGameDocument = {
+  fulfillment_type?: "merchant" | "partner" | "platform";
+  partner_delivery_enabled?: boolean;
   title?: string;
   name?: string;
   description?: string;
@@ -77,6 +79,7 @@ type FirestoreGameDocument = {
   prize_value?: number | string | null;
   main_prize_image?: string;
   secondary_prizes?: Array<{
+    fulfillment_type?: "merchant" | "partner" | "platform";
     name?: string;
     presentation?: string;
     description?: string;
@@ -170,6 +173,7 @@ function mapSecondaryPrize(
 
   return {
     id: buildSecondaryPrizeId(index),
+    fulfillmentType: prize.fulfillment_type,
     name: readText(prize?.name),
     description: presentation,
     presentation,
@@ -426,6 +430,8 @@ function mapGameDocument(
       typeof game.hasMainPrize === "boolean"
         ? game.hasMainPrize
         : mainPrizeValue !== null,
+    fulfillmentType: game.fulfillment_type,
+    partnerDeliveryEnabled: typeof game.partner_delivery_enabled === "boolean" ? game.partner_delivery_enabled : undefined,
     mainPrizeTitle: readText(game.main_prize_title),
     mainPrizeDescription: readText(game.main_prize_description),
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
@@ -744,6 +750,9 @@ function AdminGamesPageInner() {
     imageUrl: string | null;
     imageFile: File | null;
     hasMainPrize: boolean;
+    fulfillmentType?: "merchant" | "partner" | "platform";
+    partnerDeliveryEnabled?: boolean;
+    partnerDeliveryConfigured?: boolean;
     mainPrizeTitle: string;
     mainPrizeDescription: string;
     mainPrizeValue: string;
@@ -787,6 +796,8 @@ function AdminGamesPageInner() {
         isPrivate: effectiveStatus === "prive",
         imageMissing: !result.imageUrl,
         hasMainPrize: payload.hasMainPrize,
+        fulfillmentType: payload.fulfillmentType,
+        partnerDeliveryEnabled: payload.partnerDeliveryEnabled,
         mainPrizeTitle: payload.mainPrizeTitle,
         mainPrizeDescription: payload.mainPrizeDescription,
         mainPrizeValue: payload.mainPrizeValue,

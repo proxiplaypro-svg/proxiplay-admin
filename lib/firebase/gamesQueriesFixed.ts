@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveGameOwner, resolveGameDelivery, resolvePartnerDeliveryEnabled } from "./gameOwnership";
+
 import {
   collection,
   deleteField,
@@ -92,11 +94,7 @@ async function resolveMerchantOwnerReference(
   merchantCollectionName: MerchantCollectionName,
   merchantId: string | null,
 ) {
-  if (!merchantId) return null;
-  const merchantSnapshot = await getDoc(doc(db, merchantCollectionName, merchantId));
-  return getMerchantOwnerReference(
-    merchantSnapshot.data() as MerchantOwnerDocument | undefined,
-  );
+  return resolveGameOwner(merchantCollectionName, merchantId);
 }
 
 async function uploadPrizeImage(gameId: string, folderName: string, file: File) {
@@ -113,6 +111,7 @@ function mapSecondaryPrizesForWrite(prizes: GameSecondaryPrize[]) {
     .map((prize) => ({
       presentation: prize.description.trim(),
       name: prize.name.trim(),
+      fulfillment_type: prize.fulfillmentType,
       description: prize.description.trim(),
       count: Math.max(0, Math.trunc(readNumber(prize.count, 0))),
       image: prize.image?.trim() || "",
@@ -126,6 +125,10 @@ function mapSecondaryPrizesForWrite(prizes: GameSecondaryPrize[]) {
  */
 export async function updateGame(input: UpdateGameInput) {
   const user = await ensureGamesAuthenticated();
+  if (input.fulfillmentType) {
+    const fulfillmentType = await resolveGameDelivery(input.merchantCollectionName, input.merchantId, input.fulfillmentType);
+    input = {...input, fulfillmentType, partnerDeliveryEnabled: input.partnerDeliveryConfigured ? await resolvePartnerDeliveryEnabled(input.merchantCollectionName, input.merchantId, fulfillmentType, input.partnerDeliveryEnabled) : input.partnerDeliveryEnabled, secondaryPrizes: await Promise.all(input.secondaryPrizes.map(async p=>({...p,fulfillmentType: p.fulfillmentType ? await resolveGameDelivery(input.merchantCollectionName,input.merchantId,p.fulfillmentType) : undefined})))};
+  }
   const ownerRef = await resolveMerchantOwnerReference(
     input.merchantCollectionName,
     input.merchantId,
@@ -172,7 +175,9 @@ export async function updateGame(input: UpdateGameInput) {
   const patch = {
     title: input.title.trim(),
     name: input.title.trim(),
-    create_by: ownerRef ?? doc(db, "users", user.uid),
+    owner_id: ownerRef,
+    ...(input.fulfillmentType ? {fulfillment_type: input.fulfillmentType} : {}),
+    ...(input.partnerDeliveryConfigured ? {partner_delivery_enabled: input.partnerDeliveryEnabled === true} : {}),
     description: input.description.trim(),
     conditions: input.description.trim(),
     merchantId: input.merchantId,
@@ -222,9 +227,11 @@ export async function updateGame(input: UpdateGameInput) {
   };
 }
 
-/** Creates a game for the selected merchant and attributes create_by to its owner account. */
+/** Creates a game for the selected merchant and records the actual creator separately from merchant ownership. */
 export async function createGame(input: CreateGameInput): Promise<CreateGameResult> {
   const user = await ensureGamesAuthenticated();
+  input = {...input, fulfillmentType: await resolveGameDelivery(input.merchantCollectionName, input.merchantId, input.fulfillmentType), secondaryPrizes: await Promise.all(input.secondaryPrizes.map(async p=>({...p,fulfillmentType: await resolveGameDelivery(input.merchantCollectionName,input.merchantId,p.fulfillmentType ?? input.fulfillmentType)})))};
+  input.partnerDeliveryEnabled = await resolvePartnerDeliveryEnabled(input.merchantCollectionName, input.merchantId, input.fulfillmentType!, input.partnerDeliveryEnabled);
 
   if (!input.merchantId) throw new Error("Choisis un commerçant.");
   if (!input.title.trim()) throw new Error("Le titre est obligatoire.");
@@ -267,6 +274,7 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
     .map((prize) => ({
       presentation: prize.description.trim(),
       name: prize.name.trim(),
+      fulfillment_type: prize.fulfillmentType,
       description: prize.description.trim(),
       count: Math.max(0, Math.trunc(readNumber(prize.count, 0))),
       image: "",
@@ -276,7 +284,10 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
   const payload = {
     title: input.title.trim(),
     name: input.title.trim(),
-    create_by: ownerRef ?? doc(db, "users", user.uid),
+    create_by: doc(db, "users", user.uid),
+    owner_id: ownerRef,
+    fulfillment_type: input.fulfillmentType,
+    partner_delivery_enabled: input.partnerDeliveryEnabled,
     description,
     conditions: description,
     merchantId: input.merchantId,
@@ -372,6 +383,7 @@ function mapSecondaryPrizesFromSource(value: unknown): GameSecondaryPrize[] {
     return {
       id: `secondary-prize-${index + 1}`,
       name: readString(prize.name),
+      fulfillmentType: prize.fulfillment_type as GameSecondaryPrize["fulfillmentType"],
       description,
       presentation: description,
       count: String(Math.max(0, Math.trunc(readNumber(prize.count, 0)))),
@@ -422,7 +434,10 @@ export async function duplicateGameDocument(
   const payload: Record<string, unknown> = {
     title: readString(source.title) || readString(source.name),
     name: readString(source.name) || readString(source.title),
-    create_by: ownerRef ?? doc(db, "users", user.uid),
+    create_by: doc(db, "users", user.uid),
+    owner_id: ownerRef,
+    fulfillment_type: await resolveGameDelivery(merchantCollectionName, merchantId, source.fulfillment_type),
+    partner_delivery_enabled: false,
     description: readString(source.description),
     conditions: readString(source.conditions) || readString(source.description),
     merchantId: merchantId || null,

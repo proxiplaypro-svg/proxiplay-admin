@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveGameOwner, resolveGameDelivery, resolvePartnerDeliveryEnabled } from "./gameOwnership";
+
 import { FirebaseError } from "firebase/app";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
@@ -35,6 +37,8 @@ type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
 
 type FirestoreGameDocument = {
+  fulfillment_type?: "merchant" | "partner" | "platform";
+  partner_delivery_enabled?: boolean;
   title?: string;
   name?: string;
   description?: string;
@@ -73,6 +77,7 @@ type FirestoreGameDocument = {
 };
 
 type FirestoreSecondaryPrizeDocument = {
+  fulfillment_type?: "merchant" | "partner" | "platform";
   name?: string;
   presentation?: string;
   description?: string;
@@ -102,6 +107,9 @@ export type UpdateGameStatusInput = {
 };
 
 export type UpdateGameInput = {
+  fulfillmentType?: "merchant" | "partner" | "platform";
+  partnerDeliveryEnabled?: boolean;
+  partnerDeliveryConfigured?: boolean;
   gameId: string;
   collectionName: GameCollectionName;
   merchantCollectionName: MerchantCollectionName;
@@ -257,6 +265,7 @@ function mapSecondaryPrize(
 
   return {
     id: buildSecondaryPrizeId(index),
+    fulfillmentType: prize.fulfillment_type,
     name: readText(prize.name),
     description: presentation,
     presentation,
@@ -461,6 +470,8 @@ function mapGameDocument(
     collectionName,
     imageMissing: !imageUrl,
     hasMainPrize,
+    fulfillmentType: game.fulfillment_type,
+    partnerDeliveryEnabled: typeof game.partner_delivery_enabled === "boolean" ? game.partner_delivery_enabled : undefined,
     mainPrizeTitle: readText(game.main_prize_title),
     mainPrizeDescription: readText(game.main_prize_description),
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
@@ -546,6 +557,7 @@ function buildGamePatch(
     .map((prize) => ({
       presentation: prize.description.trim(),
       name: prize.name.trim(),
+      fulfillment_type: prize.fulfillmentType,
       description: prize.description.trim(),
       count: readNumber(prize.count, 0),
       image: prize.image?.trim() || "",
@@ -562,7 +574,9 @@ function buildGamePatch(
   return {
     title: input.title.trim(),
     name: input.title.trim(),
-    create_by: createByRef ?? doc(db, "users", userId ?? ""),
+    owner_id: createByRef,
+    ...(input.fulfillmentType ? { fulfillment_type: input.fulfillmentType } : {}),
+    ...(input.partnerDeliveryConfigured ? { partner_delivery_enabled: input.partnerDeliveryEnabled === true } : {}),
     description: input.description.trim(),
     conditions: input.description.trim(),
     merchantId: input.merchantId,
@@ -706,15 +720,12 @@ async function uploadPrizeImage(gameId: string, folderName: string, file: File) 
 
 export async function updateGame(input: UpdateGameInput) {
   const user = await ensureGamesAuthenticated();
-  let ownerRef: DocumentReference | null = null;
-
-  if (input.merchantId) {
-    const merchantSnapshot = await getDoc(
-      doc(db, input.merchantCollectionName, input.merchantId),
-    );
-    ownerRef = getMerchantOwnerReference(
-      merchantSnapshot.data() as FirestoreMerchantDocument | undefined,
-    );
+  const ownerRef = await resolveGameOwner(input.merchantCollectionName, input.merchantId);
+  if (input.fulfillmentType) {
+    const fulfillmentType = await resolveGameDelivery(input.merchantCollectionName, input.merchantId, input.fulfillmentType);
+    input = {...input, fulfillmentType,
+      partnerDeliveryEnabled: input.partnerDeliveryConfigured ? await resolvePartnerDeliveryEnabled(input.merchantCollectionName, input.merchantId, fulfillmentType, input.partnerDeliveryEnabled) : input.partnerDeliveryEnabled,
+      secondaryPrizes: await Promise.all(input.secondaryPrizes.map(async p=>({...p, fulfillmentType: p.fulfillmentType ? await resolveGameDelivery(input.merchantCollectionName, input.merchantId, p.fulfillmentType) : undefined})))};
   }
 
   let finalImageUrl = input.imageUrl;
@@ -759,7 +770,7 @@ export async function updateGame(input: UpdateGameInput) {
         secondaryPrizes: finalSecondaryPrizes,
       },
       finalImageUrl,
-      ownerRef ?? doc(db, "users", user.uid),
+      ownerRef,
       user.uid,
     ),
   );
@@ -774,12 +785,15 @@ export async function updateGame(input: UpdateGameInput) {
 export type CreateGameAccessMode = "public" | "qr_only";
 
 export type CreateGameSecondaryPrizeInput = {
+  fulfillmentType?: "merchant" | "partner" | "platform";
   name: string;
   description: string;
   count: string;
 };
 
 export type CreateGameInput = {
+  fulfillmentType?: "merchant" | "partner" | "platform";
+  partnerDeliveryEnabled?: boolean;
   accessMode: CreateGameAccessMode;
   collectionName: GameCollectionName;
   merchantCollectionName: MerchantCollectionName;
@@ -844,6 +858,10 @@ export async function createGame(
   if (prizeValidationError) throw new Error(prizeValidationError);
 
   const merchantRef = getMerchantReference(input.merchantCollectionName, input.merchantId);
+  const ownerRef = await resolveGameOwner(input.merchantCollectionName, input.merchantId);
+  input = {...input, fulfillmentType: await resolveGameDelivery(input.merchantCollectionName, input.merchantId, input.fulfillmentType),
+    secondaryPrizes: await Promise.all(input.secondaryPrizes.map(async p=>({...p, fulfillmentType: await resolveGameDelivery(input.merchantCollectionName, input.merchantId, p.fulfillmentType ?? input.fulfillmentType)})))};
+  input.partnerDeliveryEnabled = await resolvePartnerDeliveryEnabled(input.merchantCollectionName, input.merchantId, input.fulfillmentType!, input.partnerDeliveryEnabled);
   const gameRef = doc(collection(db, input.collectionName));
   const now = new Date();
 
@@ -859,6 +877,7 @@ export async function createGame(
     .map((prize) => ({
       presentation: prize.description.trim(),
       name: prize.name.trim(),
+      fulfillment_type: prize.fulfillmentType,
       description: prize.description.trim(),
       count: readNumber(prize.count, 0),
       image: "",
@@ -869,6 +888,9 @@ export async function createGame(
     title: input.title,
     name: input.title,
     create_by: doc(db, "users", user.uid),
+    owner_id: ownerRef,
+    fulfillment_type: input.fulfillmentType,
+    partner_delivery_enabled: input.partnerDeliveryEnabled,
     description,
     conditions: description,
     merchantId: input.merchantId,
@@ -965,16 +987,7 @@ export async function duplicateGameDocument(
   const now = new Date();
   const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const merchantRef = getMerchantReference(merchantCollectionName, original.merchantId);
-  let ownerRef: DocumentReference | null = null;
-
-  if (original.merchantId) {
-    const merchantSnapshot = await getDoc(
-      doc(db, merchantCollectionName, original.merchantId),
-    );
-    ownerRef = getMerchantOwnerReference(
-      merchantSnapshot.data() as FirestoreMerchantDocument | undefined,
-    );
-  }
+  const ownerRef = await resolveGameOwner(merchantCollectionName, original.merchantId);
 
   const duplicatedPrizeValue = original.hasMainPrize
     ? normalizePrizeValue(original.mainPrizeValue)
@@ -988,7 +1001,10 @@ export async function duplicateGameDocument(
     // Pas de préfixe [Copie] — titre identique à l'original
     title: original.title,
     name: original.title,
-    create_by: ownerRef ?? doc(db, "users", user.uid),
+    create_by: doc(db, "users", user.uid),
+    owner_id: ownerRef,
+    fulfillment_type: await resolveGameDelivery(merchantCollectionName, original.merchantId, original.fulfillmentType),
+    partner_delivery_enabled: false,
     description: original.description,
     conditions: original.description,
     merchantId: original.merchantId,
@@ -1015,6 +1031,7 @@ export async function duplicateGameDocument(
     main_prize_image: original.mainPrizeImage ?? "",
     secondary_prizes: original.secondaryPrizes.map((prize) => ({
       name: prize.name,
+      fulfillment_type: prize.fulfillmentType ?? original.fulfillmentType ?? "merchant",
       presentation: prize.description,
       description: prize.description,
       count: readNumber(prize.count, 0),

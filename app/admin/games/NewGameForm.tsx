@@ -1,4 +1,5 @@
 "use client";
+import {PrizeDeliveryChoice, PartnerDeliveryContact} from "@/components/admin/jeux/PrizeDeliveryChoice";
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -25,6 +26,8 @@ type NewGameFormProps = {
 };
 
 type FormState = {
+  fulfillmentType: "merchant" | "partner" | "platform";
+  partnerDeliveryEnabled: boolean;
   merchantId: string;
   title: string;
   description: string;
@@ -38,6 +41,8 @@ type FormState = {
 };
 
 const emptyForm: FormState = {
+  fulfillmentType: "merchant",
+  partnerDeliveryEnabled: false,
   merchantId: "",
   title: "",
   description: "",
@@ -51,6 +56,7 @@ const emptyForm: FormState = {
 };
 
 type SecondaryPrizeFormItem = {
+  fulfillmentType?: "merchant" | "partner" | "platform";
   id: string;
   name: string;
   description: string;
@@ -185,6 +191,8 @@ export default function NewGameForm({
       }
 
       const result = await createGame({
+        fulfillmentType: form.fulfillmentType,
+        partnerDeliveryEnabled: form.partnerDeliveryEnabled,
         accessMode,
         collectionName: gameCollection,
         merchantCollectionName: merchantCollection,
@@ -202,6 +210,7 @@ export default function NewGameForm({
           .filter((prize) => !isSecondaryPrizeEmpty(prize))
           .map((prize) => ({
             name: prize.name.trim(),
+            fulfillmentType: prize.fulfillmentType ?? "merchant",
             description: prize.description.trim(),
             count: prize.count.trim(),
           })),
@@ -320,6 +329,8 @@ export default function NewGameForm({
                 <input type="checkbox" checked={form.hasMainPrize} onChange={(event) => setForm((prev) => ({ ...prev, hasMainPrize: event.target.checked, description: event.target.checked ? prev.description : "", prizeValue: event.target.checked ? prev.prizeValue : "" }))} className="h-4 w-4 rounded border-[#D7D7D2]" />
                 Lot principal / tirage final
               </label>
+              <PartnerDeliveryContact merchantId={form.merchantId} collectionName={merchantCollection} fulfillmentType={form.fulfillmentType} enabled={form.partnerDeliveryEnabled} onEnabledChange={enabled=>setForm(prev=>({...prev,partnerDeliveryEnabled:enabled}))} />
+              <PrizeDeliveryChoice value={form.fulfillmentType} onChange={value=>setForm(prev=>({...prev,fulfillmentType:value}))} />
               {form.hasMainPrize ? (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label className="flex flex-col gap-1.5 sm:col-span-2">
@@ -355,6 +366,7 @@ export default function NewGameForm({
               <div className="mt-3 flex flex-col gap-3">
                 {secondaryPrizes.map((prize, index) => (
                   <div key={prize.id} className="rounded-[8px] border border-[#E8E8E4] bg-white p-3">
+                    <PrizeDeliveryChoice value={prize.fulfillmentType} onChange={value=>updateSecondaryPrize(prize.id,p=>({...p,fulfillmentType:value}))} />
                     <div className="flex items-center justify-between"><span className="text-[11px] font-medium text-[#999]">Lot {index + 1}</span><button type="button" onClick={() => setSecondaryPrizes((current) => current.filter((item) => item.id !== prize.id))} className="text-[11px] font-medium text-[#E24B4A] hover:underline">Retirer</button></div>
                     <div className="mt-2 grid gap-2 sm:grid-cols-[2fr_1fr]">
                       <input className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" type="text" placeholder="Nom du lot" value={prize.name} onChange={(event) => updateSecondaryPrize(prize.id, (current) => ({ ...current, name: event.target.value }))} />

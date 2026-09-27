@@ -107,6 +107,7 @@ export interface DashboardData {
 export type GameStatus = "actif" | "expire" | "brouillon" | "prive";
 
 export interface GameSecondaryPrize {
+  fulfillmentType?: "merchant" | "partner" | "platform";
   id: string;
   name: string;
   description: string;
@@ -116,6 +117,8 @@ export interface GameSecondaryPrize {
 }
 
 export interface Game {
+  fulfillmentType?: "merchant" | "partner" | "platform";
+  partnerDeliveryEnabled?: boolean;
   id: string;
   title: string;
   description: string;

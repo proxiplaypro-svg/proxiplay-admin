@@ -1,4 +1,5 @@
 "use client";
+import {PrizeDeliveryChoice, PartnerDeliveryContact} from "@/components/admin/jeux/PrizeDeliveryChoice";
 
 import { FirebaseError } from "firebase/app";
 import { deleteField, doc, getDoc, Timestamp, updateDoc } from "firebase/firestore";
@@ -17,6 +18,9 @@ import type {
 import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
 
 type SavePayload = {
+  fulfillmentType?: "merchant" | "partner" | "platform";
+  partnerDeliveryEnabled?: boolean;
+  partnerDeliveryConfigured?: boolean;
   title: string;
   description: string;
   merchantId: string | null;
@@ -65,6 +69,9 @@ type GeneralFormState = {
 };
 
 type MainPrizeFormState = {
+  fulfillmentType?: "merchant" | "partner" | "platform";
+  partnerDeliveryEnabled: boolean;
+  partnerDeliveryConfigured: boolean;
   hasMainPrize: boolean;
   title: string;
   description: string;
@@ -140,6 +147,9 @@ function buildInitialGeneralForm(game: Game | null): GeneralFormState {
 
 function buildInitialMainPrizeForm(game: Game | null): MainPrizeFormState {
   return {
+    fulfillmentType: game?.fulfillmentType,
+    partnerDeliveryEnabled: game?.partnerDeliveryEnabled === true,
+    partnerDeliveryConfigured: game?.partnerDeliveryEnabled !== undefined,
     hasMainPrize: game?.hasMainPrize ?? false,
     title: game?.mainPrizeTitle ?? "",
     description: game?.mainPrizeDescription ?? "",
@@ -582,6 +592,9 @@ export function GameEditModal({
     const filteredSecondaryPrizes = secondaryPrizes.filter((prize) => !isSecondaryPrizeEmpty(prize));
 
     await onSave({
+      fulfillmentType: mainPrizeForm.fulfillmentType,
+      partnerDeliveryEnabled: mainPrizeForm.partnerDeliveryEnabled,
+      partnerDeliveryConfigured: mainPrizeForm.partnerDeliveryConfigured,
       title: generalForm.title.trim(),
       description: generalForm.description.trim(),
       merchantId: generalForm.merchantId || null,
@@ -600,6 +613,7 @@ export function GameEditModal({
       mainPrizeImageFile: mainPrizeForm.imageFile,
       secondaryPrizes: filteredSecondaryPrizes.map((prize) => ({
         id: prize.id,
+        fulfillmentType: prize.fulfillmentType,
         name: prize.name.trim(),
         description: prize.description.trim(),
         count: prize.count.trim(),
@@ -824,6 +838,8 @@ export function GameEditModal({
                 </button>
               </div>
 
+              <PartnerDeliveryContact merchantId={generalForm.merchantId} fulfillmentType={mainPrizeForm.fulfillmentType ?? "merchant"} enabled={mainPrizeForm.partnerDeliveryEnabled} onEnabledChange={enabled=>setMainPrizeForm(current=>({...current,fulfillmentType:current.fulfillmentType ?? "merchant",partnerDeliveryEnabled:enabled,partnerDeliveryConfigured:true}))} />
+              <PrizeDeliveryChoice value={mainPrizeForm.fulfillmentType ?? "merchant"} onChange={value=>setMainPrizeForm(current=>({...current,fulfillmentType:value,partnerDeliveryConfigured:true,partnerDeliveryEnabled:value === "platform" ? false : current.partnerDeliveryEnabled}))} />
               <div className="flex flex-col gap-3">
                 {secondaryPrizes.length === 0 ? (
                   <div
@@ -841,6 +857,7 @@ export function GameEditModal({
 
                 {secondaryPrizes.map((prize, index) => (
                   <article key={prize.id} className="rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] p-4">
+                    <PrizeDeliveryChoice value={prize.fulfillmentType ?? mainPrizeForm.fulfillmentType ?? "merchant"} onChange={value=>updateSecondaryPrize(prize.id,p=>({...p,fulfillmentType:value}))} />
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
                         <h4 className="text-[13px] font-medium text-[#1A1A1A]">Lot secondaire {index + 1}</h4>

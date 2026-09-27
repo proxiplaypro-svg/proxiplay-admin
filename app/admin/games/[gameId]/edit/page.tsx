@@ -1,4 +1,6 @@
 "use client";
+import {PrizeDeliveryChoice, PartnerDeliveryContact} from "@/components/admin/jeux/PrizeDeliveryChoice";
+import {resolveGameDelivery, resolveGameOwner, resolvePartnerDeliveryEnabled} from "@/lib/firebase/gameOwnership";
 
 import { FirebaseError } from "firebase/app";
 import Link from "next/link";
@@ -24,6 +26,8 @@ type GameEditPageProps = {
 };
 
 type FirestoreGameEditDocument = {
+  fulfillment_type?: "merchant" | "partner" | "platform";
+  partner_delivery_enabled?: boolean;
   name?: string;
   description?: string;
   prize_value?: number;
@@ -37,6 +41,9 @@ type FirestoreGameEditDocument = {
 };
 
 type GameFormState = {
+  fulfillmentType?: "merchant" | "partner" | "platform";
+  partnerDeliveryEnabled: boolean;
+  partnerDeliveryConfigured: boolean;
   name: string;
   description: string;
   startDate: string;
@@ -92,6 +99,9 @@ function deriveStatus(game: FirestoreGameEditDocument, now = new Date()) {
 
 function buildInitialForm(game: FirestoreGameEditDocument): GameFormState {
   return {
+    fulfillmentType: game.fulfillment_type,
+    partnerDeliveryEnabled: game.partner_delivery_enabled === true,
+    partnerDeliveryConfigured: game.partner_delivery_enabled !== undefined,
     name: game.name?.trim() ?? "",
     description: game.description?.trim() ?? "",
     startDate: game.start_date ? formatDateTimeInput(game.start_date.toDate()) : "",
@@ -283,6 +293,7 @@ export default function EditGamePage({ params }: GameEditPageProps) {
     return (
       <section className="content-grid">
         <div className="panel panel-wide">
+        {form && <><PartnerDeliveryContact merchantId={game?.merchantId ?? null} fulfillmentType={form.fulfillmentType ?? "merchant"} enabled={form.partnerDeliveryEnabled} onEnabledChange={enabled=>setForm(f=>f?{...f,fulfillmentType:f.fulfillmentType ?? "merchant",partnerDeliveryEnabled:enabled,partnerDeliveryConfigured:true}:f)} /><PrizeDeliveryChoice value={form.fulfillmentType ?? "merchant"} onChange={v=>setForm(f=>f?{...f,fulfillmentType:v,partnerDeliveryConfigured:true,partnerDeliveryEnabled:v === "platform" ? false : f.partnerDeliveryEnabled}:f)} /></>}
           <div className="game-details-skeleton">
             <span className="skeleton-line skeleton-label" />
             <strong className="skeleton-line skeleton-value" />
@@ -411,7 +422,11 @@ export default function EditGamePage({ params }: GameEditPageProps) {
     try {
       const gameRef = doc(db, "games", game.id);
       const prizeValue = form.mainPrizeValue.trim() ? Number(form.mainPrizeValue) : null;
+      const fulfillmentType=form.fulfillmentType ? await resolveGameDelivery("enseignes",game.merchantId,form.fulfillmentType) : undefined;
+      const partnerDeliveryEnabled=fulfillmentType && form.partnerDeliveryConfigured ? await resolvePartnerDeliveryEnabled("enseignes",game.merchantId,fulfillmentType,form.partnerDeliveryEnabled) : undefined;
+      const owner=await resolveGameOwner("enseignes",game.merchantId);
       await updateDoc(gameRef, {
+        owner_id: owner, ...(fulfillmentType ? {fulfillment_type: fulfillmentType} : {}), ...(form.partnerDeliveryConfigured ? {partner_delivery_enabled: partnerDeliveryEnabled === true} : {}),
         name: form.name.trim(),
         description: form.description.trim(),
         start_date: form.startDate ? Timestamp.fromDate(new Date(form.startDate)) : deleteField(),
