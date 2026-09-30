@@ -67,15 +67,22 @@ export class ProspectService {
     const excluded = new Set<string>();
     let searchMetrics: SearchMetrics | undefined;
     const excludedByKind = { client: 0, prospect: 0, ignored: 0 };
+    const knownActivities: Record<string, number> = {};
+    for (const entry of entries) {
+      const activity = entry.data.subcategory || entry.data.category;
+      if (typeof activity === "string" && activity.trim()) {
+        const key = normalize(activity); knownActivities[key] = (knownActivities[key] || 0) + 1;
+      }
+    }
     const candidates = await provider.search(input, candidate => {
-      const duplicate = onlyNew ? duplicateOf(candidate, entries) : null;
+      const duplicate = duplicateOf(candidate, entries);
       if (duplicate) { excluded.add(candidate.google_place_id); excludedByKind[duplicate.kind]++; return false; }
       return true;
-    }, metrics => { searchMetrics = metrics; });
+    }, metrics => { searchMetrics = metrics; }, knownActivities);
     // Recheck after Google calls: another admin may have processed a result meanwhile.
     const annotated = await this.annotate(candidates);
     const results = annotated.filter(candidate => {
-      if (onlyNew && candidate.duplicate) { if (!excluded.has(candidate.google_place_id)) excludedByKind[candidate.duplicate.kind]++; excluded.add(candidate.google_place_id); return false; }
+      if (candidate.duplicate) { if (!excluded.has(candidate.google_place_id)) excludedByKind[candidate.duplicate.kind]++; excluded.add(candidate.google_place_id); return false; }
       return true;
     });
     console.info("[PROSPECTION_DISCOVERY]", { ...searchMetrics, returned: results.length, excludedKnown: excluded.size, excludedByKind, onlyNew });

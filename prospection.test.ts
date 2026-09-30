@@ -83,7 +83,7 @@ for (const limit of [20, 50]) test("hard budget with endless unique tokens: " + 
   let calls = 0;
   const fetcher: typeof fetch = async () => { calls++; return Response.json(calls === 1 ? { places: [{ location: center }] } : { places: [place(0)], nextPageToken: "t" + calls }); };
   const results = await new GooglePlacesProvider("secret", fetcher).search({ location: "Dunkerque", radius: 15, categories: ["restaurants", "bars", "commerces"], limit });
-  assert.equal(calls, 1 + searchCallBudget(limit)); assert.equal(results.length, 1);
+  assert.equal(calls, 1 + searchCallBudget(limit, ["restaurants", "bars", "commerces"])); assert.equal(results.length, 1);
 });
 test("repeated token stops pagination; missing token and empty results terminate", async () => {
   for (const nextPageToken of ["same", undefined]) {
@@ -174,7 +174,7 @@ test("known duplicates across pages do not count twice and all-known discovery i
   let calls = 0, inspected = 0;
   const fetcher: typeof fetch = async () => { calls++; return Response.json(calls === 1 ? { places: [{ location: center }] } : { places: [place(0), place(0)], nextPageToken: "token" + calls }); };
   const results = await new GooglePlacesProvider("secret", fetcher).search({ location: "Dunkerque", radius: 15, categories: ["restaurants", "bars"], limit: 50 }, () => { inspected++; return false; });
-  assert.deepEqual(results, []); assert.equal(calls, 5); assert.equal(inspected, 1);
+  assert.deepEqual(results, []); assert.equal(calls, 9); assert.equal(inspected, 1);
 });
 test("new batch stops as soon as 50 accepted places are found", async () => {
   let calls = 0;

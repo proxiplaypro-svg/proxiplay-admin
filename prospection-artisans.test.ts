@@ -55,5 +55,5 @@ test("combined sectors retain the same global artisan budget", async () => {
   let calls = 0;
   const results = await new GooglePlacesProvider("test-secret", async () => Response.json(++calls === 1 ? { places: [{ location: center }] } : { places: [], nextPageToken: "t" + calls })).search({ ...input(), categories: ["restaurants", "artisans B2C", "services locaux"] });
   assert.equal(calls, 9); assert.deepEqual(results, []);
-  assert.deepEqual(queriesForSector("restaurants"), ["restaurants"]); assert.deepEqual(queriesForSector("habitat"), ["magasin aménagement maison"]);
+  assert.deepEqual(queriesForSector("restaurants"), ["restaurant"]); assert.ok(queriesForSector("habitat").includes("magasin de meubles"));
 });
