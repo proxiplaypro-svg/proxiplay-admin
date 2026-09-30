@@ -623,18 +623,29 @@ function AdminGamesPageInner() {
   }, [merchantFilter]);
 
   const filteredGames = useMemo(() => {
-      const normalizedSearch = search.trim().toLowerCase();
-      const normalizedMerchantSearch = merchantSearch.trim().toLowerCase();
-      const result = games.filter((game) => {
-        const matchesStatus = statusFilter === "tous" || game.status === statusFilter;
-        const matchesMerchant = merchantFilter === "tous" || game.merchantId === merchantFilter;
-        const matchesMerchantSearch =
-          normalizedMerchantSearch.length === 0 ||
-          game.merchantName.toLowerCase().includes(normalizedMerchantSearch);
-        const matchesSearch =
-          normalizedSearch.length === 0 || game.title.toLowerCase().includes(normalizedSearch);
+    const normalizedSearch = search.trim().toLowerCase();
+    const normalizedMerchantSearch = merchantSearch.trim().toLowerCase();
+    const now = Date.now();
+    const result = games.filter((game) => {
+      const matchesStatus = statusFilter === "tous" || game.status === statusFilter;
+      const matchesMerchant = merchantFilter === "tous" || game.merchantId === merchantFilter;
+      const matchesMerchantSearch =
+        normalizedMerchantSearch.length === 0 ||
+        game.merchantName.toLowerCase().includes(normalizedMerchantSearch);
+      const matchesSearch =
+        normalizedSearch.length === 0 || game.title.toLowerCase().includes(normalizedSearch);
+      const isEnded =
+        game.status === "expire" ||
+        (game.endDateValue !== null && game.endDateValue <= now);
+      const matchesExpirationSort = sort !== "end_asc" || !isEnded;
 
-      return matchesStatus && matchesMerchant && matchesMerchantSearch && matchesSearch;
+      return (
+        matchesStatus &&
+        matchesMerchant &&
+        matchesMerchantSearch &&
+        matchesSearch &&
+        matchesExpirationSort
+      );
     });
 
     return result.sort((left, right) => {
