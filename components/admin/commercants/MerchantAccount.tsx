@@ -5,7 +5,7 @@ import { auth } from "@/lib/firebase/auth";
 import { merchantRequest } from "@/lib/admin/merchantClient";
 
 type Account = { uid: string; email: string; first_name: string; last_name: string; account_phone: string; active: boolean; role: string };
-export default function MerchantAccount({ merchantId }: { merchantId: string }) {
+export default function MerchantAccount({ merchantId, managedByAdmin, onOwnerAssociated }: { merchantId: string; managedByAdmin?: boolean; onOwnerAssociated?: () => void }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [owner, setOwner] = useState("");
   const [email, setEmail] = useState("");
@@ -36,13 +36,14 @@ export default function MerchantAccount({ merchantId }: { merchantId: string }) 
         setMessage("Email de définition du mot de passe envoyé.");
       } else {
         setAccount(result.account); setOwner(result.account?.uid ?? result.ownerUid ?? ""); setConfirmed(false); setEmail("");
-        setMessage(action === "associate" ? "Compte associé. Son profil et son statut ont été conservés." : "Compte commerçant enregistré.");
+        if (action === "associate") onOwnerAssociated?.();
+        setMessage(action === "associate" ? `Compte associé. Son profil et son statut ont été conservés.${managedByAdmin === true ? " ProxiPlay conserve la gestion de la page et des jeux." : managedByAdmin === false ? " Le commerçant administre la page et les jeux." : ""}` : "Compte commerçant enregistré.");
       }
     } catch (e) { setError(e instanceof Error ? e.message : "L’opération a échoué."); }
     finally { setBusy(false); }
   }
   return <div className="panel panel-wide merchant-form-card">
-    <div className="panel-heading"><h2>Compte commerçant associé</h2><p>Gérez l’identité, l’accès et le mot de passe du propriétaire.</p></div>
+    <div className="panel-heading"><h2>Compte commerçant propriétaire</h2><p>Ce compte définit la propriété. {managedByAdmin === true ? "ProxiPlay administre actuellement la page et les jeux." : managedByAdmin === false ? "Le commerçant administre actuellement la page et les jeux." : "La gestion de la page et des jeux est définie séparément."}</p></div>
     {loading ? <p>Chargement du compte…</p> : <>
       {account ? <form className="game-edit-form" onSubmit={e => { e.preventDefault(); void run("update"); }}>
         <p><strong>{account.email}</strong> · {account.active ? "Actif" : "Désactivé"}</p>

@@ -4,7 +4,17 @@ Périmètre du commit : dépôt `proxiplay-admin`, branche `main`. Le chantier p
 
 ## Champ et comportement
 
-`enseignes.managed_by_admin: boolean` est explicite. Aucune équivalence n’a été trouvée dans le dépôt admin ni dans `lib/backend/schema/enseignes_record.dart` du dépôt mobile consulté. Seul `managed_by_admin === true` active le mode. Une valeur absente conserve le comportement autonome, sans migration. Aucun lien avec le propriétaire, l’email, le rôle ou le statut.
+`enseignes.managed_by_admin: boolean` indique qui administre la page et les jeux ; `owner` et `owner_id` indiquent le compte commerçant propriétaire. Ces axes sont distincts : un propriétaire peut être présent tout en laissant ProxiPlay administrer le commerce.
+
+Trois états sont valides :
+
+| État | Gestion | Propriétaire |
+| --- | --- | --- |
+| A — fiche ProxiPlay seule | `managed_by_admin: true` | aucun `owner` / `owner_id` |
+| B — ProxiPlay administre, commerçant propriétaire | `managed_by_admin: true` | compte marchand valide |
+| C — commerçant autonome | `managed_by_admin: false` | compte marchand valide |
+
+Une fiche créée sans compte marchand est toujours en état A. L’association ultérieure d’un compte la fait passer en B sans céder automatiquement la gestion. Pour passer de B à C, le compte propriétaire doit exister dans Firebase Auth, être actif et non administrateur, et son document `users/{uid}` doit avoir `user_role: "commercant"`. Les références `owner` et `owner_id` doivent être cohérentes. Une valeur absente du flag reste traitée comme autonome pour les données historiques, mais ne permet pas de créer un nouvel état sans propriétaire.
 
 L’option « Page et jeux gérés par Proxiplay » est disponible à la création et à l’édition, y compris pour une fiche seule. Le serveur valide le booléen et conserve les autres champs lors d’une édition partielle.
 

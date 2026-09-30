@@ -186,19 +186,59 @@ test("G : accusé de transaction perdu après commit, les documents et le compte
   } finally { mock.mock.restore(); }
 });
 
-test("gestion Proxiplay : création explicite dans les trois modes, défaut historique et édition true/false", async () => {
-  const first = await create({ managed_by_admin: true });
-  for (const result of [first, await create({ mode: "shop", managed_by_admin: true }), await create({ mode: "existing", email: first.email, managed_by_admin: true })]) {
-    assert.equal((await db.doc(`enseignes/${result.merchantId}`).get()).data()?.managed_by_admin, true);
+test("gestion Proxiplay : les états A, B et C conservent propriété et administration distinctes", async () => {
+  const alone = await create({ mode: "shop" });
+  const aloneData = (await db.doc(`enseignes/${alone.merchantId}`).get()).data()!;
+  assert.equal(aloneData.managed_by_admin, true); assert.equal(ownerUid(aloneData), "");
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: false } }, alone.merchantId))).status, 409);
+  const forcedFalse = await create({ mode: "shop", managed_by_admin: false });
+  assert.equal((await db.doc(`enseignes/${forcedFalse.merchantId}`).get()).data()?.managed_by_admin, true);
+
+  const merchant = await create();
+  const merchantData = (await db.doc(`enseignes/${merchant.merchantId}`).get()).data()!;
+  assert.equal(merchantData.managed_by_admin, false); assert.ok(ownerUid(merchantData));
+  const managedMerchant = await create({ managed_by_admin: true });
+  assert.equal((await db.doc(`enseignes/${managedMerchant.merchantId}`).get()).data()?.managed_by_admin, true);
+  const existingManaged = await create({ mode: "existing", email: merchant.email, managed_by_admin: true });
+  assert.equal((await db.doc(`enseignes/${existingManaged.merchantId}`).get()).data()?.managed_by_admin, true);
+
+  assert.equal((await PATCH(request("PATCH", { action: "associate", email: merchant.email, expectedOwner: "" }, alone.merchantId))).status, 200);
+  const associated = (await db.doc(`enseignes/${alone.merchantId}`).get()).data()!;
+  assert.equal(associated.managed_by_admin, true); assert.equal(ownerUid(associated), ownerUid(merchantData));
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: false } }, alone.merchantId))).status, 200);
+  assert.equal((await db.doc(`enseignes/${alone.merchantId}`).get()).data()?.managed_by_admin, false);
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: true } }, alone.merchantId))).status, 200);
+  assert.equal(ownerUid((await db.doc(`enseignes/${alone.merchantId}`).get()).data()!), ownerUid(merchantData));
+});
+
+test("sortie de gestion ProxiPlay : compte Auth actif et profil commerçant valides obligatoires", async () => {
+  async function managedShop() {
+    const shop = await create({ managed_by_admin: true });
+    return { shop, ref: db.doc(`enseignes/${shop.merchantId}`), uid: ownerUid((await db.doc(`enseignes/${shop.merchantId}`).get()).data()!) };
   }
-  const normal = await create({ mode: "shop" });
-  assert.equal((await db.doc(`enseignes/${normal.merchantId}`).get()).data()?.managed_by_admin, false);
-  for (const mode of [true, false]) {
-    assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: mode } }, normal.merchantId))).status, 200);
-    assert.equal((await db.doc(`enseignes/${normal.merchantId}`).get()).data()?.managed_by_admin, mode);
-  }
-  for (const invalid of ["true", 1, null]) assert.equal((await POST(request("POST", { ...base, mode: "shop", managed_by_admin: invalid }))).status, 400);
-  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: "false" } }, normal.merchantId))).status, 400);
+  const missingProfile = await managedShop();
+  await db.doc(`users/${missingProfile.uid}`).delete();
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: false } }, missingProfile.shop.merchantId))).status, 409);
+
+  const wrongRole = await managedShop();
+  await db.doc(`users/${wrongRole.uid}`).update({ user_role: "joueur" });
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: false } }, wrongRole.shop.merchantId))).status, 409);
+
+  const missingAuth = await managedShop();
+  await auth.deleteUser(missingAuth.uid);
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: false } }, missingAuth.shop.merchantId))).status, 409);
+
+  const disabled = await managedShop();
+  await auth.updateUser(disabled.uid, { disabled: true });
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: false } }, disabled.shop.merchantId))).status, 409);
+
+  const admin = await managedShop();
+  await auth.setCustomUserClaims(admin.uid, { admin: true });
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: false } }, admin.shop.merchantId))).status, 409);
+
+  const divergent = await managedShop();
+  await divergent.ref.update({ owner: "/users/another-owner" });
+  assert.equal((await PATCH(request("PATCH", { action: "profile", fields: { managed_by_admin: false } }, divergent.shop.merchantId))).status, 409);
 });
 
 test("gestion Proxiplay : statistiques lisibles, fiche/jeux réservés à l’admin, historique autonome inchangé", async () => {

@@ -15,6 +15,7 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
   const { merchantId } = use(params);
   const [commerce, setCommerce] = useState(emptyCommerce);
   const [managedByAdmin, setManagedByAdmin] = useState(false);
+  const [hasOwner, setHasOwner] = useState(false);
   const [crm, setCrm] = useState(emptyCrm);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [photo, setPhoto] = useState<File | null>(null);
@@ -32,6 +33,7 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
       if (cancelled) return;
       const data = snapshot.data();
       setManagedByAdmin(data.managed_by_admin === true);
+      setHasOwner(Boolean(data.owner || data.owner_id));
       const next = { ...emptyCommerce };
       for (const key of Object.keys(next) as (keyof CommerceForm)[]) next[key] = typeof data[key] === "string" ? data[key] : "";
       next.category = Array.isArray(data.category) ? data.category.join(", ") : "";
@@ -77,7 +79,7 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
     {loaded && <>
       <form className="panel panel-wide merchant-form-card game-edit-form" onSubmit={save}>
         <fieldset disabled={busy} className="merchant-fieldset game-edit-form">
-          <AdminManagedOption checked={managedByAdmin} onChange={value => { setManagedByAdmin(value); changed("managed_by_admin"); }} />
+          <AdminManagedOption checked={managedByAdmin} disabled={managedByAdmin && !hasOwner} onChange={value => { setManagedByAdmin(value); changed("managed_by_admin"); }} helpText={managedByAdmin && !hasOwner ? "Associez d’abord un compte commerçant valide : sans propriétaire, ProxiPlay doit administrer cette page et ses jeux." : undefined} />
           <div className="panel-heading"><h2>Commerce</h2></div>
           <CommerceFields value={commerce} onChange={(key, value) => { setCommerce(current => ({ ...current, [key]: value })); changed(key); }} />
           <label className="game-edit-field"><span className="search-label">Importer une photo (JPEG, PNG ou WebP, 5 Mo maximum)</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => { const file = e.target.files?.[0] ?? null; if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)) { setError("Choisissez une image JPEG, PNG ou WebP de 5 Mo maximum."); e.target.value = ""; setPhoto(null); return; } setPhoto(file); setError(""); }} /></label>
@@ -92,7 +94,7 @@ export default function MerchantEditPage({ params }: { params: Promise<{ merchan
           <div className="dashboard-actions"><button type="submit" className="primary-button" disabled={!dirty.size && !photo}>{busy ? "Enregistrement…" : "Enregistrer le commerce"}</button><Link className="secondary-button inline-secondary-button" href={`/admin/commercants/${merchantId}`}>Annuler</Link></div>
         </fieldset>
       </form>
-      <MerchantAccount merchantId={merchantId} />
+      <MerchantAccount merchantId={merchantId} managedByAdmin={managedByAdmin} onOwnerAssociated={() => setHasOwner(true)} />
     </>}
   </section>;
 }

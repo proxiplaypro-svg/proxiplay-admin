@@ -4,6 +4,17 @@ import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin-app";
 import { isAllowedAdminEmail } from "@/lib/firebase/adminAccess";
 import { commerceFields, merchantEmail, MerchantError, ownerUid, textField } from "./merchantSchema";
 
+function isEligibleMerchantAccount(
+  account: { email?: string; customClaims?: Record<string, unknown> },
+  user: { data: () => Record<string, unknown> | undefined },
+) {
+  return (
+    user.data()?.user_role === "commercant" &&
+    !isAllowedAdminEmail(account.email) &&
+    !account.customClaims?.admin
+  );
+}
+
 export async function existingMerchantAccount(email: string) {
   let account;
   try { account = await getAdminAuth().getUserByEmail(email); }
@@ -12,8 +23,28 @@ export async function existingMerchantAccount(email: string) {
     throw error;
   }
   const user = await getAdminDb().doc(`users/${account.uid}`).get();
-  const eligible = user.data()?.user_role === "commercant" && !isAllowedAdminEmail(account.email) && !account.customClaims?.admin;
+  const eligible = isEligibleMerchantAccount(account, user);
   return { account, user, eligible };
+}
+
+async function requireActiveMerchantAccount(uid: string) {
+  if (!uid) throw new MerchantError("Associez un compte commerçant valide avant de quitter la gestion ProxiPlay.", 409);
+
+  let account;
+  try {
+    account = await getAdminAuth().getUser(uid);
+  } catch (error) {
+    if ((error as { code?: string }).code === "auth/user-not-found") {
+      throw new MerchantError("Le compte marchand associé n’existe plus. Associez un compte valide avant de quitter la gestion ProxiPlay.", 409);
+    }
+    throw error;
+  }
+
+  if (account.disabled) {
+    throw new MerchantError("Le compte marchand associé est désactivé. Activez-le ou associez un autre compte avant de quitter la gestion ProxiPlay.", 409);
+  }
+
+  return account;
 }
 
 export async function createMerchant(body: Record<string, unknown>) {
@@ -26,7 +57,7 @@ export async function createMerchant(body: Record<string, unknown>) {
   const auth = getAdminAuth();
   if (mode === "shop") {
     const shop = db.collection("enseignes").doc();
-    await shop.create({ ...fields, status: "inactive", commercial_status: "inactif", created_at: FieldValue.serverTimestamp() });
+    await shop.create({ ...fields, managed_by_admin: true, status: "inactive", commercial_status: "inactif", created_at: FieldValue.serverTimestamp() });
     return { merchantId: shop.id, email: null };
   }
   const email = merchantEmail(body.email);
@@ -113,7 +144,30 @@ export async function manageMerchantAccount(merchantId: string, body: Record<str
     if ("commercial_status" in input && !["", "actif", "inactif", "a_relancer"].includes(String(input.commercial_status))) throw new MerchantError("Statut commercial invalide.");
     if ("phone" in input) patch.phone_number = normalized.phone;
     if ("imageUrl" in input && !input.imageUrl) { patch.imageUrl = FieldValue.delete(); patch.logo = FieldValue.delete(); }
-    if (Object.keys(patch).length) await shopRef.update(patch);
+    const transfersManagement = shop.data()?.managed_by_admin === true && patch.managed_by_admin === false;
+    const expectedOwnerUid = transfersManagement ? ownerUid(shop.data()!) : "";
+    const activeOwner = transfersManagement
+      ? await requireActiveMerchantAccount(expectedOwnerUid)
+      : null;
+
+    if (Object.keys(patch).length) await db.runTransaction(async tx => {
+      const current = await tx.get(shopRef);
+      const currentData = current.data();
+      if (!currentData) throw new MerchantError("Commerce introuvable.", 404);
+
+      if (currentData.managed_by_admin === true && patch.managed_by_admin === false) {
+        const uid = ownerUid(currentData);
+        if (!uid || uid !== expectedOwnerUid) {
+          throw new MerchantError("Le propriétaire a changé. Rechargez la fiche avant de quitter la gestion ProxiPlay.", 409);
+        }
+
+        const owner = await tx.get(db.doc(`users/${uid}`));
+        if (!owner.exists || !activeOwner || !isEligibleMerchantAccount(activeOwner, owner)) {
+          throw new MerchantError("Associez un compte commerçant valide avant de quitter la gestion ProxiPlay.", 409);
+        }
+      }
+      tx.update(shopRef, patch);
+    });
     return { saved: true };
   }
   if (body.action === "associate") {

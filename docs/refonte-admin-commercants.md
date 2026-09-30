@@ -22,6 +22,8 @@ Travail local uniquement : aucun déploiement, commit ou push. Les modifications
 
    Après validation serveur : création Auth, transaction atomique `users` + `enseignes`, envoi de l’email si demandé, retour à la fiche. L’échec de l’email conserve le commerce et indique comment renvoyer le message. Le formulaire bloque une nouvelle création après réception du succès.
 
+   Le modèle distingue la propriété et l’administration : `owner` / `owner_id` désignent le compte commerçant propriétaire, tandis que `managed_by_admin` indique si ProxiPlay administre la page et les jeux. Une fiche seule est créée avec `managed_by_admin: true` et sans propriétaire. Après association d’un compte, ProxiPlay conserve la gestion par défaut ; l’administrateur peut ensuite la rendre au commerçant seulement si le compte Auth existe, est actif et non administrateur, et si `users/{uid}.user_role` vaut `commercant`. Une enseigne autonome ne peut donc jamais être sans propriétaire marchand valide.
+
    La fiche et son écran d’édition donnent accès à l’identité du commerce, coordonnées, catégories, description, photo, identifiant Google, suivi commercial, identité du propriétaire, activation et réinitialisation. Les jeux restent visibles dans la fiche. La modification de l’email vérifie l’unicité Auth et synchronise le profil ainsi que les commerces associés, car l’email participe encore aux droits historiques. Le changement de propriétaire utilise une association explicite, sans modifier silencieusement l’identité du compte.
 
 4. **Fichiers modifiés ou ajoutés**
@@ -57,9 +59,9 @@ Travail local uniquement : aucun déploiement, commit ou push. Les modifications
 | --- | --- |
 | Auth | `email`, `displayName`, mot de passe aléatoire non exposé, `disabled = !active` |
 | `users/{uid}` | `email`, `first_name`, `last_name`, `phone_number`, `user_role: "commercant"`, `account_status: "active"` ou `"inactive"`, `created_time` |
-| `enseignes/{id}` | `name`, `category: string[]`, `description`, `address`, `area_code`, `city`, `phone`, `phone_number`, `site_web_url`, `google_place_id`, `imageUrl`, `created_at`, `status`, `commercial_status` ; avec compte : `email`, `owner`, `owner_id` |
+| `enseignes/{id}` | `name`, `category: string[]`, `description`, `address`, `area_code`, `city`, `phone`, `phone_number`, `site_web_url`, `google_place_id`, `imageUrl`, `created_at`, `status`, `commercial_status`, `managed_by_admin` ; avec compte : `email`, `owner`, `owner_id` |
 
-   L’identifiant de la nouvelle enseigne est indépendant du compte : un compte peut être associé à plusieurs commerces. Aucun nouveau pointeur inverse n’est inventé dans `users`. La fiche seule ne crée ni Auth, ni utilisateur, ni propriétaire ; ses statuts sont `inactive` / `inactif`. Pour un compte existant, son profil et son activation sont conservés.
+   L’identifiant de la nouvelle enseigne est indépendant du compte : un compte peut être associé à plusieurs commerces. Aucun nouveau pointeur inverse n’est inventé dans `users`. La fiche seule ne crée ni Auth, ni utilisateur, ni propriétaire ; elle est obligatoirement gérée par ProxiPlay et ses statuts sont `inactive` / `inactif`. Pour un compte existant, son profil et son activation sont conservés.
 
    L’édition utilise des mises à jour partielles. Les données historiques non modifiées (réseaux sociaux, notes, champs inconnus, anciennes représentations) restent intactes. Le statut commercial et les indicateurs d’activité restent distincts du statut de connexion du compte.
 
