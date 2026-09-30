@@ -15,7 +15,7 @@
     "test:prospection-email-list": "tsx --test prospection-email-list.test.ts && node --test prospection-email-list-ui.test.mjs",
     "test:prospection-email-api": "firebase emulators:exec --project demo-prospection --only firestore,auth \"node --test functions/test/prospect_email_emulator.test.cjs\"",
     "test:prospection-api": "firebase emulators:exec --config firebase.test.json --project demo-prospection --only firestore,auth \"tsx --test prospection-api.test.ts\"",
-    "test:admin-merchants": "firebase emulators:exec --project demo-admin-merchants --only firestore,auth \"tsx --test merchant-admin.test.ts\"",
+    "test:admin-merchants": "firebase emulators:exec --config firebase.test.json --project demo-admin-merchants --only firestore,auth \"tsx --test merchant-admin.test.ts\"",
     "test:merchant-emails": "node --test functions/test/managed_merchant_email.test.cjs",
     "test:admin-api": "firebase emulators:exec --only firestore,auth \"tsx --test referral-games-api.test.ts\"",
     "test:admin-qr": "firebase emulators:exec --project demo-admin-qr --only firestore,auth \"tsx --test secure-game-qr.test.ts\""
