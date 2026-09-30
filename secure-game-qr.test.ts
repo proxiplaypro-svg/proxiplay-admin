@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 import { buildSecureGameQrLink, buildSecureGameAppLinks } from "./lib/admin/secureGameQr";
 
 if (![process.env.FIRESTORE_EMULATOR_HOST, process.env.FIREBASE_AUTH_EMULATOR_HOST].every(host => host && /^(127\.0\.0\.1|localhost):\d+$/.test(host))) {
@@ -34,8 +34,17 @@ test.after(async () => {
   await Promise.all([`games/${gameId}`, `game_qr_access/${gameId}`, "enseignes/qr-shop"].map(path => db.doc(path).delete()));
   await db.terminate();
 });
-async function seedProof(extra = {}) {
-  await db.doc(`game_qr_access/${gameId}`).set({ token, game_path: `games/${gameId}`, shop_path: "enseignes/qr-shop", owner_path: "", shop_owner_path: "users/merchant", expires_at: Timestamp.fromMillis(Date.now() + 86400000), ...extra });
+async function seedProof(extra: Record<string, unknown> = {}, legacy = false) {
+  const proof: Record<string, unknown> = { token, game_path: `games/${gameId}`, shop_path: "enseignes/qr-shop", owner_path: "", shop_owner_path: "users/merchant", managed_by_admin: false, expires_at: Timestamp.fromMillis(Date.now() + 86400000), ...extra };
+  if (legacy) delete proof.managed_by_admin;
+  await db.doc(`game_qr_access/${gameId}`).set(proof);
+}
+async function setOwnership({ managedByAdmin, shopOwner, gameOwner = shopOwner }: { managedByAdmin: boolean; shopOwner: string | null; gameOwner?: string | null }) {
+  await db.doc("enseignes/qr-shop").set({
+    managed_by_admin: managedByAdmin,
+    ...(shopOwner ? { owner_id: shopOwner } : {}),
+  });
+  await db.doc(`games/${gameId}`).update({ owner_id: gameOwner ?? FieldValue.delete() });
 }
 test("lien conforme au scanner mobile, jeton conservé et jeu explicitement ciblé", () => {
   const url = new URL(buildSecureGameQrLink(gameId, token));
@@ -60,6 +69,45 @@ test("lecture répétée conserve exactement la preuve et le lien", async () => 
   assert.deepEqual(await read(gameId), expected);
   assert.deepEqual(await read(gameId), expected);
   assert.deepEqual((await db.doc(`game_qr_access/${gameId}`).get()).data(), before);
+});
+test("preuves récentes cohérentes : marchand autonome C, ProxiPlay seul A et ProxiPlay avec propriétaire B", async () => {
+  await setOwnership({ managedByAdmin: false, shopOwner: "merchant" });
+  await seedProof({ owner_path: "users/merchant", shop_owner_path: "users/merchant" });
+  assert.equal((await read(gameId)).state, "ready");
+
+  await setOwnership({ managedByAdmin: true, shopOwner: null });
+  await seedProof({ owner_path: "", shop_owner_path: "", managed_by_admin: true });
+  assert.equal((await read(gameId)).state, "ready");
+
+  await setOwnership({ managedByAdmin: true, shopOwner: "merchant" });
+  await seedProof({ owner_path: "users/merchant", shop_owner_path: "users/merchant", managed_by_admin: true });
+  assert.equal((await read(gameId)).state, "ready");
+});
+test("une mutation de propriété ou de gestion après émission exige une régénération", async () => {
+  await setOwnership({ managedByAdmin: false, shopOwner: "merchant" });
+  await seedProof({ owner_path: "users/merchant", shop_owner_path: "users/merchant" });
+  for (const mutation of [
+    () => setOwnership({ managedByAdmin: false, shopOwner: "other", gameOwner: "other" }),
+    () => setOwnership({ managedByAdmin: false, shopOwner: "merchant", gameOwner: "other" }),
+    () => setOwnership({ managedByAdmin: true, shopOwner: "merchant" }),
+  ]) {
+    await mutation();
+    assert.deepEqual(await read(gameId), { state: "regeneration-required" });
+    await setOwnership({ managedByAdmin: false, shopOwner: "merchant" });
+  }
+
+  await setOwnership({ managedByAdmin: true, shopOwner: "merchant" });
+  await seedProof({ owner_path: "users/merchant", shop_owner_path: "users/merchant", managed_by_admin: true });
+  await setOwnership({ managedByAdmin: false, shopOwner: "merchant" });
+  assert.deepEqual(await read(gameId), { state: "regeneration-required" });
+});
+test("preuve legacy sans snapshot de gestion : compatible seulement pour une enseigne autonome", async () => {
+  await setOwnership({ managedByAdmin: false, shopOwner: "merchant" });
+  await seedProof({ owner_path: "users/merchant", shop_owner_path: "users/merchant" }, true);
+  assert.equal((await read(gameId)).state, "ready");
+
+  await setOwnership({ managedByAdmin: true, shopOwner: "merchant" });
+  assert.deepEqual(await read(gameId), { state: "regeneration-required" });
 });
 test("preuve expirée, mauvais jeu, changement de boutique ou propriétaire : aucune rotation", async () => {
   for (const extra of [{ expires_at: Timestamp.fromMillis(1) }, { game_path: "games/other" }, { shop_path: "enseignes/other" }, { shop_owner_path: "users/other" }, { owner_path: "users/other" }, { token: "invalid" }]) {

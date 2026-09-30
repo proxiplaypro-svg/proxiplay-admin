@@ -1,5 +1,6 @@
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import { buildSecureGameQrLink, shopOwnerPath, userPath } from "./secureGameQr";
+import { gameOwnerPath } from './gameOwnership';
 
 // Read-only: viewing/exporting an existing game must never mint or rotate a token.
 export async function readSecureGameQr(gameId: string) {
@@ -15,7 +16,12 @@ export async function readSecureGameQr(gameId: string) {
     const proof = (await tx.get(db.doc(`game_qr_access/${gameId}`))).data();
     const shop = (game.enseigne_id || game.enseigne_ref)?.path || "";
     const shopData = /^enseignes\/[^/]+$/.test(shop) ? (await tx.get(db.doc(shop))).data() : undefined;
+    try {
+      const owner = gameOwnerPath(shopData);
+      if (game.owner_id != null && userPath(game.owner_id) !== owner) return { state: 'regeneration-required' as const };
+    } catch { return { state: 'regeneration-required' as const }; }
     if (!proof || proof.game_path !== gameRef.path || proof.shop_path !== shop ||
+        (proof.managed_by_admin === true) !== (shopData?.managed_by_admin === true) ||
         proof.owner_path !== userPath(game.owner_id) || proof.shop_owner_path !== shopOwnerPath(shopData ?? {}) ||
         !proof.expires_at?.toMillis || proof.expires_at.toMillis() <= Date.now() ||
         typeof proof.token !== "string" || !/^[a-f0-9]{64}$/.test(proof.token)) {
