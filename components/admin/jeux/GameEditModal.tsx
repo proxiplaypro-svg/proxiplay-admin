@@ -47,6 +47,12 @@ type GameEditModalProps = {
   animations: AnimationOption[];
   open: boolean;
   saving: boolean;
+  /**
+   * A relaunch is published by the guarded save workflow.  Do not let the
+   * manual backfill use the copied draft before its edited dates and prizes
+   * have been persisted.
+   */
+  isRelaunchDraft?: boolean;
   submitLabel?: string;
   feedback: string | null;
   feedbackTone: "success" | "error" | null;
@@ -293,6 +299,7 @@ export function GameEditModal({
   animations,
   open,
   saving,
+  isRelaunchDraft = false,
   submitLabel = "Enregistrer",
   feedback,
   feedbackTone,
@@ -897,11 +904,16 @@ export function GameEditModal({
                       type="button"
                       className="rounded-[8px] border border-[#185FA5] bg-white px-3 py-2 text-[11px] font-medium text-[#185FA5] hover:bg-[#F5FAFE] disabled:cursor-not-allowed disabled:opacity-60"
                       onClick={() => void runGenerateInstantWinners()}
-                      disabled={saving || backfillLoading}
+                      disabled={isRelaunchDraft || saving || backfillLoading}
                     >
                       {backfillLoading ? "Creation..." : "Generer les lots instantanes"}
                     </button>
                   </div>
+                  {isRelaunchDraft ? (
+                    <p className="text-[11px] text-[#666666]">
+                      Enregistrez/relancez d&apos;abord le jeu pour generer les lots instantanes.
+                    </p>
+                  ) : null}
                   {backfillFeedback ? (
                     <div
                       className={`rounded-[8px] border px-3 py-3 text-[12px] ${

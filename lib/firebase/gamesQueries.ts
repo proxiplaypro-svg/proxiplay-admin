@@ -351,12 +351,14 @@ function deriveStatus(game: FirestoreGameDocument, now = Date.now()): GameStatus
     return "prive";
   }
 
-  if (explicitStatus === "actif") {
-    return "actif";
-  }
-
+  // The calendar is authoritative: legacy documents can retain `actif` after
+  // their end date. They must never expose the instant-winner action again.
   if (endValue !== null && endValue < now) {
     return "expire";
+  }
+
+  if (explicitStatus === "actif") {
+    return "actif";
   }
 
   if (

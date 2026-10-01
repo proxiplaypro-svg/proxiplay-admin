@@ -120,8 +120,20 @@ test("removing all lots after a failed attempt cannot publish leftover occurrenc
 
 test("admin duplicate submit uses the guarded service and the canonical region", () => {
   const page = readFileSync("app/admin/games/page.tsx", "utf8");
+  const modal = readFileSync("components/admin/jeux/GameEditModal.tsx", "utf8");
   const service = readFileSync("lib/firebase/gamesQueries.ts", "utf8");
   assert.match(page, /modalMode === "duplicate" \? relaunchGame : updateGame/);
+  assert.match(page, /isRelaunchDraft=\{modalMode === "duplicate"\}/);
+  assert.match(modal, /disabled=\{isRelaunchDraft \|\| saving \|\| backfillLoading\}/);
+  assert.match(modal, /Enregistrez\/relancez d&apos;abord le jeu/);
+  assert.ok(
+    page.indexOf('if (endValue !== null && endValue < now)') < page.indexOf('if (explicitStatus === "actif")'),
+    "a passed end_date must take precedence over a stale actif status",
+  );
+  assert.ok(
+    service.indexOf('if (endValue !== null && endValue < now)') < service.indexOf('if (explicitStatus === "actif")'),
+    "the shared game mapper must also mark stale active games as expired",
+  );
   assert.match(service, /getFunctions\(firebaseApp, "us-central1"\)/);
   assert.match(service, /"generateInstantWinnersForGame"/);
   assert.match(page, /setModalFeedback\(getGamesQueryErrorMessage\(saveError\)\)/);

@@ -259,12 +259,14 @@ function deriveStatus(game: FirestoreGameDocument, now = Date.now()) {
     return "prive" as const;
   }
 
-  if (explicitStatus === "actif") {
-    return "actif" as const;
-  }
-
+  // Some legacy games keep `actif` after their end date. The calendar wins so
+  // the historical game cannot offer instant-winner generation.
   if (endValue !== null && endValue < now) {
     return "expire" as const;
+  }
+
+  if (explicitStatus === "actif") {
+    return "actif" as const;
   }
 
   if (
@@ -1006,6 +1008,7 @@ function AdminGamesPageInner() {
         animations={animations}
         open={selectedGame !== null}
         saving={modalSaving}
+        isRelaunchDraft={modalMode === "duplicate"}
         submitLabel={modalMode === "duplicate" ? "Relancer le jeu" : "Enregistrer"}
         feedback={modalFeedback}
         feedbackTone={modalFeedbackTone}
