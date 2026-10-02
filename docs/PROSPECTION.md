@@ -67,6 +67,10 @@ Comparaison par Place ID, nom normalisé + adresse, téléphone normalisé (dont
 
 Les domaines, téléphones ou adresses partagés peuvent correspondre à plusieurs établissements : la V1 les bloque par prudence et demande une vérification humaine. Elle n’offre pas de bouton de contournement. Une adresse rédigée très différemment peut nécessiter un autre identifiant commun pour être détectée. La création d’une enseigne par un système externe ne partage pas le verrou du module ; le contrôle reflète les données visibles lors de la transaction.
 
+## Campagnes & suivi
+
+La navigation commerciale calcule une catégorie exclusive. Un prospect `contacted` reste dans **Contactés** tant que sept périodes complètes de 24 heures ne se sont pas écoulées après `last_contact_at`; il entre dans **À relancer** à l’instant exact de J+7. Le statut historique `follow_up` apparaît aussi dans **À relancer**. Un `contacted` sans `last_contact_at` reste dans **Contactés** : aucune date n’est inventée. `next_follow_up_at` est conservé comme information manuelle de la fiche mais ne modifie pas la règle automatique J+7.
+
 ## Sécurité et index
 
 `firestore.rules` ajoute un refus de toute lecture/écriture directe sur `prospects/**` et `prospection_internal/**`, y compris pour les clients SDK admin. Seules les routes serveur authentifiées utilisent l’Admin SDK. Les règles existantes des autres collections ne changent pas.
