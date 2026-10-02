@@ -32,22 +32,12 @@ const factualProposalGenerator = {
     settings = parseSettings(settings);
     const company = typeof prospect.name === "string" ? prospect.name.replace(/[\r\n\t]+/g, " ").trim().slice(0, 500) : "";
     const name = company || "votre entreprise";
-    const count = settings.connections_per_day;
-    const subjectPrefix = count === null ? "Faites découvrir " : `Et si ${count} utilisateurs découvraient `;
-    const subjectSuffix = count === null ? " avec Proxiplay" : " chaque jour ?";
-    const subject = `${subjectPrefix}${name.slice(0, 200 - subjectPrefix.length - subjectSuffix.length)}${subjectSuffix}`;
-    const traffic = count === null ? "" : `Proxiplay génère actuellement environ ${count} connexions par jour. L'objectif est simple : profiter de cette audience locale pour faire découvrir votre établissement de manière ludique.`;
     const signature = [settings.sender_name, settings.signature, settings.phone, settings.website_url].filter(Boolean).join("\n");
     const body = [
-      "Bonjour,",
-      "Je me permets de vous contacter car je développe Proxiplay, une application locale qui permet aux entreprises du Dunkerquois de se faire découvrir à travers des jeux et des cadeaux.",
-      personalization(prospect, name),
-      traffic,
-      `Vous pouvez découvrir l'application ici :\n${settings.download_url}`,
-      `Si le principe vous intéresse, je peux vous présenter rapidement le fonctionnement et ce que nous pourrions mettre en place pour ${name}.`,
+      settings.initial_email_body,
       signature,
     ].filter(Boolean).join("\n\n");
-    return { subject, body };
+    return { subject: settings.initial_email_subject, body };
   },
 };
 module.exports = { factualProposalGenerator, activityRule, RULES };
