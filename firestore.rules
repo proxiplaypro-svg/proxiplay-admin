@@ -158,6 +158,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /user_search_index/{userId} {
+      allow read: if isAdmin() || hasAdminClaim();
+      allow write: if false;
+    }
+
     match /users/{userId}/fcm_tokens/{tokenId} {
       allow read: if isAdmin() || isCurrentUser(userId);
       allow write: if isCurrentUser(userId);

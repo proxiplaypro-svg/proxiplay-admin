@@ -9,6 +9,7 @@ import {
   createPushNotification,
   getNotificationsAudienceSnapshot,
   getNotificationsErrorMessage,
+  getNotificationRecipientPushAvailability,
   searchNotificationUsers,
 } from "@/lib/firebase/notificationsQueries";
 
@@ -79,6 +80,10 @@ export default function NewNotificationPage() {
   const [selectedUser, setSelectedUser] = useState<NotificationRecipientUser | null>(null);
   const [userSearch, setUserSearch] = useState("");
   const [searchResults, setSearchResults] = useState<NotificationRecipientUser[]>([]);
+  const [searchingUsers, setSearchingUsers] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchDone, setSearchDone] = useState(false);
+  const [checkingPush, setCheckingPush] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -126,32 +131,45 @@ export default function NewNotificationPage() {
   }, []);
 
   useEffect(() => {
-    if (audienceMode !== "single" || userSearch.trim().length < 2) {
+    if (audienceMode !== "single" || selectedUser || userSearch.trim().length < 2) {
       setSearchResults([]);
+      setSearchError(null);
+      setSearchDone(false);
+      setSearchingUsers(false);
       return;
     }
 
     let cancelled = false;
 
     const run = async () => {
+      setSearchingUsers(true);
+      setSearchError(null);
+      setSearchDone(false);
       try {
         const results = await searchNotificationUsers(userSearch);
         if (!cancelled) {
           setSearchResults(results);
+          setSearchDone(true);
         }
       } catch (searchError) {
         if (!cancelled) {
           console.error(searchError);
+          setSearchResults([]);
+          setSearchError(getNotificationsErrorMessage(searchError));
+          setSearchDone(true);
         }
+      } finally {
+        if (!cancelled) setSearchingUsers(false);
       }
     };
 
-    void run();
+    const timeout = window.setTimeout(() => void run(), 250);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
-  }, [audienceMode, userSearch]);
+  }, [audienceMode, selectedUser, userSearch]);
 
   const scheduledAt = useMemo(() => {
     if (scheduleMode !== "later" || !scheduledDate || !scheduledTime) {
@@ -185,6 +203,11 @@ export default function NewNotificationPage() {
 
     if (audienceMode === "single" && !selectedUser) {
       setFeedback({ tone: "error", text: "Selectionne un joueur avant l envoi cible." });
+      return;
+    }
+
+    if (audienceMode === "single" && selectedUser?.pushAvailable !== true) {
+      setFeedback({ tone: "error", text: "Ce joueur ne peut pas recevoir de notification push : aucun token FCM actif n est disponible." });
       return;
     }
 
@@ -380,6 +403,7 @@ export default function NewNotificationPage() {
                     onChange={(event) => {
                       setUserSearch(event.target.value);
                       setSelectedUser(null);
+                      setCheckingPush(false);
                     }}
                     placeholder="Nom ou email"
                     className="min-h-[44px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1A1A1A] outline-none transition placeholder:text-[#999999] focus:border-[#C0DD97] focus:bg-white"
@@ -393,9 +417,17 @@ export default function NewNotificationPage() {
                         key={user.id}
                         type="button"
                         onClick={() => {
-                          setSelectedUser(user);
+                          setSelectedUser({ ...user, pushAvailable: null });
                           setUserSearch(`${user.displayName} ${user.email}`);
                           setSearchResults([]);
+                          setCheckingPush(true);
+                          void getNotificationRecipientPushAvailability(user.id)
+                            .then((pushAvailable) => setSelectedUser((current) => current?.id === user.id ? { ...current, pushAvailable } : current))
+                            .catch((pushError) => {
+                              console.error(pushError);
+                              setSelectedUser((current) => current?.id === user.id ? { ...current, pushAvailable: false } : current);
+                            })
+                            .finally(() => setCheckingPush(false));
                         }}
                         className="flex w-full items-center gap-3 border-b border-[#F0F0EC] px-4 py-3 text-left last:border-b-0 hover:bg-[#FAFAF8]"
                       >
@@ -411,6 +443,12 @@ export default function NewNotificationPage() {
                   </div>
                 ) : null}
 
+                {searchingUsers ? <p className="text-[12px] text-[#666666]">Recherche...</p> : null}
+                {searchError ? <p className="text-[12px] text-[#A32D2D]">{searchError}</p> : null}
+                {searchDone && !searchingUsers && !searchError && searchResults.length === 0 && !selectedUser ? (
+                  <p className="text-[12px] text-[#666666]">Aucun joueur trouve.</p>
+                ) : null}
+
                 {selectedUser ? (
                   <div className="flex items-center gap-3 rounded-[10px] border border-[#E8E8E4] bg-[#FCFCFB] p-4">
                     <span className={`flex h-10 w-10 items-center justify-center rounded-full text-[12px] font-medium ${initialsColor(selectedUser.platform)}`}>
@@ -419,6 +457,13 @@ export default function NewNotificationPage() {
                     <div className="min-w-0">
                       <p className="truncate text-[12.5px] font-medium text-[#1A1A1A]">{selectedUser.displayName}</p>
                       <p className="truncate text-[11px] text-[#999999]">{selectedUser.email}</p>
+                      <p className={`mt-1 text-[11px] ${selectedUser.pushAvailable === true ? "text-[#3B6D11]" : "text-[#A32D2D]"}`}>
+                        {checkingPush || selectedUser.pushAvailable === null
+                          ? "Verification des notifications..."
+                          : selectedUser.pushAvailable
+                            ? "Notifications disponibles"
+                            : "Notifications indisponibles"}
+                      </p>
                     </div>
                   </div>
                 ) : null}
