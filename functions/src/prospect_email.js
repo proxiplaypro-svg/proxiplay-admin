@@ -1,6 +1,7 @@
 const { randomUUID, createHash } = require("node:crypto");
 const { HttpsError } = require("firebase-functions/v2/https");
 const { crawlWebsite, validEmail } = require("./prospect_crawler");
+const { prospectRecipient } = require("./prospect_recipient");
 
 const { parseSettings } = require("./prospect_settings");
 
@@ -76,7 +77,7 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
         if (logged && !(batch?.retry && logged.status === "failed" && logged.error_code === "SMTP_REJECTED" && logged.batch_id === batch.id)) return { duplicate: true, status: logged.status };
         if (data.email_sending_id) fail("failed-precondition", "Un envoi est déjà en cours ou à vérifier.");
         if (data.proposal?.id !== input.draftId || data.proposal?.revision !== input.revision) fail("failed-precondition", "La proposition a changé. Rechargez-la.");
-        if (batch && (data.emails?.find(e => e.is_primary)?.email?.toLowerCase() !== data.proposal.to.toLowerCase())) fail("failed-precondition", "L’email primaire a changé.");
+        if (batch && prospectRecipient(data) !== data.proposal.to.toLowerCase()) fail("failed-precondition", "L’adresse email retenue a changé.");
         const message = validateMessage(data.proposal);
         tx.set(logRef, { ...(batch ? { batch_id: batch.id } : {}), ...message, status: "sending", created_at: now(), sent_at: null, provider_message_id: null, error_code: null, actor });
         update(tx, ref, data, { email_sending_id: input.draftId, proposal: { ...data.proposal, status: "sending" } });
@@ -179,7 +180,7 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
         if (data.proposal && input.replace !== true) fail("failed-precondition", "Confirmez le remplacement du brouillon.");
         const settings = parseSettings((await tx.get(db.doc("prospection_internal/commercial_settings"))).data()?.values || {});
         const proposal = { ...await generator.generate({ name: data.name, city: data.city, category: data.category, subcategory: data.subcategory, website: data.website }, settings),
-          to: data.contact_email || data.email || data.emails?.find((item) => item.is_primary)?.email || "", id: randomUUID(), revision: 1, status: "draft" };
+          to: prospectRecipient(data), id: randomUUID(), revision: 1, status: "draft" };
         update(tx, ref, data, { proposal }); return { proposal };
       } else if (input.action === "save") {
         if (!data.proposal || data.proposal.status !== "draft" || data.proposal.id !== input.draftId || data.proposal.revision !== input.revision) fail("failed-precondition", "La proposition a changé. Rechargez-la.");

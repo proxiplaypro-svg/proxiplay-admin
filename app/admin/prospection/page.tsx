@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { prospectRequest } from "@/lib/prospection/client";
 import { RESULT_STATES, resultState, importableIndices, googleRatingLabel, type IgnoredPlace, SECTORS, STATUSES, type Prospect, type ProspectFields as Fields, type SearchResult, type SearchInput } from "@/lib/prospection/model";
 import { commercialCategory, EMPTY_FILTERS, matchesProspectFilters, prospectEmailSummary, PROSPECTS_CHANGED } from "@/lib/prospection/list";
+import { isCampaignEmailEligible } from "@/lib/prospection/emailRecipient";
 import { ProspectList } from "@/components/admin/prospection/ProspectList";
 import { ProspectFields } from "@/components/admin/prospection/ProspectFields";
 import { ProspectBulkEmail } from "@/components/admin/prospection/ProspectBulkEmail";
@@ -19,7 +20,7 @@ function ProspectFilters({ filters, update, prospects, showStatus = false, showE
   return <div className={s.filters}>
     <label>Recherche texte<input placeholder="Entreprise, contact, email…" value={filters.query} onChange={e => update({ query: e.target.value })} /></label>
     {showStatus && <label>Statut<select value={filters.status} onChange={e => update({ status: e.target.value })}><option value="">Tous les statuts</option>{Object.entries(STATUSES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>}
-    {showEmail && <label>Email<select value={filters.email} onChange={e => update({ email: e.target.value })}><option value="">Tous</option><option value="found">Avec email</option><option value="missing">Sans email</option></select></label>}
+    {showEmail && <label>Email<select value={filters.email} onChange={e => update({ email: e.target.value })}><option value="">Tous</option><option value="found">Contactables par email</option><option value="missing">Non contactables par email</option></select></label>}
     <label>Secteur<select value={filters.category} onChange={e => update({ category: e.target.value })}><option value="">Tous les secteurs</option>{[...new Set(prospects.map(p => p.category).filter(Boolean))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
     <label>Ville<input value={filters.city} onChange={e => update({ city: e.target.value })} /></label>
     <label>Source<select value={filters.source} onChange={e => update({ source: e.target.value })}><option value="">Toutes les sources</option>{[...new Set(prospects.map(p => p.source))].map(value => <option key={value}>{value}</option>)}</select></label>
@@ -50,7 +51,7 @@ export default function ProspectionPage() {
   const withoutEmailFilter = prospects.filter(p => matchesProspectFilters(p, { ...filters, email: "" })); const filtered = withoutEmailFilter.filter(p => !filters.email || prospectEmailSummary(p).state === filters.email);
   const emailCandidates = prospects.filter(p => matchesProspectFilters(p, { ...emailFilters, email: "" }));
   const emailWork = emailCandidates.filter(p => prospectEmailSummary(p).state === emailFilters.email);
-  const campaignProspects = prospects.filter(p => matchesProspectFilters(p, { ...campaignFilters, status: "", email: "" }) && (!campaignStatus || commercialCategory(p) === campaignStatus) && (!campaignFilters.email || campaignFilters.email === "found" && prospectEmailSummary(p).state === "found" || campaignFilters.email === "missing" && prospectEmailSummary(p).state !== "found"));
+  const campaignProspects = prospects.filter(p => matchesProspectFilters(p, { ...campaignFilters, status: "", email: "" }) && (!campaignStatus || commercialCategory(p) === campaignStatus) && (!campaignFilters.email || campaignFilters.email === "found" && isCampaignEmailEligible(p) || campaignFilters.email === "missing" && !isCampaignEmailEligible(p)));
   const selectable = importableIndices(results); const selected = selectable.filter(index => selection.has(index));
   const emailCounts = {
     found: emailCandidates.filter(p => prospectEmailSummary(p).state === "found").length,

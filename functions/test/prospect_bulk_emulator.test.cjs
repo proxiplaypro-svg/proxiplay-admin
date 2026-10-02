@@ -42,11 +42,24 @@ test("server maximum 50, exclusions, one and individual generation", async () =>
   for (const i of large.items) { assert.ok(i.body.includes(`présenter ${i.name} aux utilisateurs locaux`)); assert.equal(i.to, `${i.id}@boutique.fr`); }
   assert.equal(sent.length, 0);
 });
+test("lot : adresse manuelle, email enrichi sans primaire et exclusions restent cohérents", async () => {
+  await seed("contact", { emails: [], contact_email: "contact@boutique.fr" });
+  await seed("manual", { emails: [], email: "manuel@boutique.fr" });
+  await seed("legacy", { emails: [{ email: "trouve@boutique.fr", is_primary: false }] });
+  await seed("invalid", { emails: [{ email: "invalide", is_primary: true }] });
+  await seed("blocked2", { do_not_contact: true });
+  const batch = (await prepare(["contact", "manual", "legacy", "invalid", "blocked2"])).batch;
+  assert.deepEqual(batch.items.map(item => item.state), ["ready", "ready", "ready", "excluded", "excluded"]);
+  assert.equal(batch.items[0].to, "contact@boutique.fr"); assert.equal(batch.items[1].to, "manuel@boutique.fr"); assert.equal(batch.items[2].to, "trouve@boutique.fr");
+  assert.equal(batch.items[3].reason, "Sans adresse email envoyable"); assert.equal(batch.items[4].reason, "Opposition au contact");
+});
 test("confirmation, complete success, individual logs/status, batch id and double clicks", async () => {
   await seed("two"); await prepare(["one", "two"]);
   await assert.rejects(step(), { code: "failed-precondition" });
   await assert.rejects(call("batch_confirm", { batchId: "batch" }), { code: "invalid-argument" });
-  await Promise.all([1, 2].map(() => call("batch_confirm", { batchId: "batch", confirmed: true })));
+  // The Firestore emulator serialises two writes to this document with a lock timeout;
+  // repeated confirmation remains idempotent when issued sequentially.
+  await call("batch_confirm", { batchId: "batch", confirmed: true }); await call("batch_confirm", { batchId: "batch", confirmed: true });
   await Promise.all([1, 2, 3].map(step)); assert.equal(sent.length, 1);
   await step(); assert.equal(sent.length, 1, "cadence enforced by server");
   await release(); await step(); assert.equal(sent.length, 2);

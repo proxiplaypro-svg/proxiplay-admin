@@ -1,7 +1,7 @@
 const { randomUUID, createHash } = require("node:crypto");
 const { HttpsError } = require("firebase-functions/v2/https");
 const { parseSettings } = require("./prospect_settings");
-const { validEmail } = require("./prospect_crawler");
+const { prospectRecipient } = require("./prospect_recipient");
 const INTERVAL_MS = 30000;
 const LEASE_MS = 150000; // Longer than the callable's 120-second lifetime.
 const fail = (code, message) => { throw new HttpsError(code, message); };
@@ -45,9 +45,9 @@ function createBatchService({ db, generator, sender, sendEmail, clock = Date.now
         const items = [];
         for (let index = 0; index < snapshots.length; index++) {
           const snapshot = snapshots[index]; const p = snapshot.data(); const id = ids[index];
-          const to = p?.emails?.find(e => e.is_primary)?.email?.toLowerCase() || "";
-          let reason = !p || p.deleting ? "Prospect supprimé" : p.do_not_contact ? "Opposition au contact" : !validEmail(to) ? "Sans email primaire" : p.email_sending_id ? "Envoi en cours ou à vérifier" : logs[index]?.exists || (p.proposal && p.proposal.status !== "draft") ? "Proposition déjà envoyée ou déjà tentée" : "";
-          if (!reason && p.proposal && p.proposal.to.toLowerCase() !== to) reason = "Le destinataire du brouillon diffère de l’email primaire";
+          const to = prospectRecipient(p);
+          let reason = !p || p.deleting ? "Prospect supprimé" : p.do_not_contact ? "Opposition au contact" : !to ? "Sans adresse email envoyable" : p.email_sending_id ? "Envoi en cours ou à vérifier" : logs[index]?.exists || (p.proposal && p.proposal.status !== "draft") ? "Proposition déjà envoyée ou déjà tentée" : "";
+          if (!reason && p.proposal && p.proposal.to.toLowerCase() !== to) reason = "Le destinataire du brouillon diffère de l’adresse email retenue";
           if (reason) { items.push({ id, name: p?.name || id, to, state: "excluded", reason }); continue; }
           let proposal = p.proposal;
           if (!proposal) {

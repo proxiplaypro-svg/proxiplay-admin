@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { EMPTY_FILTERS, matchesProspectFilters, prospectEmailSummary } from "./lib/prospection/list";
+import { isCampaignEmailEligible, prospectRecipient } from "./lib/prospection/emailRecipient";
 import { parseFields, type Prospect } from "./lib/prospection/model";
 const prospect = (fields: Partial<Prospect> = {}): Prospect => ({ ...parseFields({ name: "Boutique", city: "Dunkerque" }), id: "p1", revision: 1, normalized_name: "boutique", created_at: "2026-09-21T10:00:00Z", updated_at: "2026-09-21T10:00:00Z", qualification: null, qualification_provider: null, ...fields });
 const emails: Prospect["emails"] = [
@@ -36,4 +37,15 @@ test("après envoi réussi, le statut serveur exclut immédiatement Nouveaux", (
   const p = prospect({ emails }); const filter = { ...EMPTY_FILTERS, status: "new", email: "found" };
   assert.equal(matchesProspectFilters(p, filter), true);
   assert.equal(matchesProspectFilters({ ...p, status: "contacted" }, filter), false);
+});
+test("le destinataire et la sélection de campagne partagent les adresses envoyables", () => {
+  assert.equal(prospectRecipient(prospect({ contact_email: "contact@boutique.fr" })), "contact@boutique.fr");
+  assert.equal(prospectRecipient(prospect({ email: "manuel@boutique.fr" })), "manuel@boutique.fr");
+  assert.equal(prospectRecipient(prospect({ emails: [{ ...emails[0], email: "trouve@boutique.fr", is_primary: false }] })), "trouve@boutique.fr");
+  assert.equal(prospectRecipient(prospect({ email: "invalide" })), "");
+  assert.equal(isCampaignEmailEligible(prospect({ email: "manuel@boutique.fr" })), true);
+  assert.equal(isCampaignEmailEligible(prospect({ email: "manuel@boutique.fr", do_not_contact: true })), false);
+  assert.equal(isCampaignEmailEligible(prospect({ email: "manuel@boutique.fr", email_sending_id: "draft" })), false);
+  assert.equal(isCampaignEmailEligible(prospect({ email: "manuel@boutique.fr", proposal: { id: "x", revision: 1, to: "manuel@boutique.fr", subject: "x", body: "x", status: "sent" } })), false);
+  assert.equal(isCampaignEmailEligible(prospect({ email: "manuel@boutique.fr", proposal: { id: "x", revision: 1, to: "autre@boutique.fr", subject: "x", body: "x", status: "draft" } })), false);
 });

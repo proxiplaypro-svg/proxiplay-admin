@@ -56,7 +56,7 @@ export function ProspectBulkEmail({ ids, emailCount, disabled }: { ids: string[]
       <p role="status">{sent + failures} / {accepted.length} traités — {sent} envoyés · {failures} échecs ou résultats à vérifier</p>
       <p className={s.muted}>Un email à la fois, avec 30 secondes d’attente entre les envois. Gardez cette page ouverte. Après fermeture ou rafraîchissement, reprenez explicitement le lot ; les emails envoyés ne repartiront pas.</p>
       <ul className={s.prospectList}>{batch.items.map(i => <li className={s.bulkItem} key={i.id}>
-        <strong>{i.name}</strong><p className={s.emailAddress}>{i.to || "Sans email primaire"}</p>
+        <strong>{i.name}</strong><p className={s.emailAddress}>{i.to || "Sans adresse email envoyable"}</p>
         {i.subject && <p>Objet : {i.subject}</p>}<p>{labels[i.state] || i.state}{i.reason && ` — ${i.reason}`}</p>
         {i.body && <details><summary>Inspecter le message individuel</summary><pre className={s.bulkBody}>{i.body}</pre></details>}
         <Link className={s.link} href={`/admin/prospection/${encodeURIComponent(i.id)}#proposition`} target="_blank">Voir la fiche</Link>
