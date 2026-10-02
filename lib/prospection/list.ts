@@ -1,4 +1,5 @@
 import { normalize, type Prospect, type ProspectStatus } from "./model";
+import { prospectRecipient } from "./emailRecipient";
 
 export const EMAIL_FILTERS = { found: "Email trouvé", not_found: "Sans email", failed: "Échec", not_started: "Non recherché" } as const;
 export type EmailState = keyof typeof EMAIL_FILTERS | "running";
@@ -31,7 +32,7 @@ export function commercialEmailAction(p: Pick<Prospect, "status" | "last_contact
 export function prospectEmailSummary(p: Prospect) {
   const emails = [...new Map((p.emails || []).filter(item => item.email.trim()).map(item => [item.email.toLowerCase(), item])).values()];
   const primary = emails.find(item => item.is_primary) || emails[0];
-  const email = primary?.email || p.contact_email || p.email || "";
+  const email = prospectRecipient(p);
   const state: EmailState = email ? "found" : p.email_enrichment_status === "failed" ? "failed" : p.email_enrichment_status === "not_found" ? "not_found" : p.email_enrichment_status === "running" ? "running" : "not_started";
   const label = state === "found" ? (primary ? "Email trouvé" : "Email renseigné") : state === "not_found" ? "Aucun email public trouvé" : state === "failed" ? "Recherche email échouée" : state === "running" ? "Recherche email en cours…" : "Email non recherché";
   return { email, state, label, additional: Math.max(0, emails.length - 1) };

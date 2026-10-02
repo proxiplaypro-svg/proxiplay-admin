@@ -20,7 +20,7 @@ test("bulk UI: preparation, inspection, cancellation, explicit confirmation and 
   const server = createServer(async (req, res) => {
     if (req.url === '/mock') {
       let raw = ''; for await (const c of req) raw += c; const input = JSON.parse(raw); requests.push(input);
-      if (input.action === 'batch_prepare') batch = { id: input.batchId, confirmed: false, identity: { from: 'ProxiPlay <no-reply@proxiplay.fr>', replyTo: 'contact@proxiplay.fr' }, items: ['one','two'].map(id => ({id,name:id,to:id+'@example.org',subject:'Objet '+id,body:'Message individuel '+id,state:'ready'})).concat([{id:'none',name:'Sans email',state:'excluded',reason:'Sans email primaire'}]) };
+      if (input.action === 'batch_prepare') batch = { id: input.batchId, confirmed: false, identity: { from: 'ProxiPlay <no-reply@proxiplay.fr>', replyTo: 'contact@proxiplay.fr' }, items: ['one','two'].map(id => ({id,name:id,to:id+'@example.org',subject:'Objet '+id,body:'Message individuel '+id,state:'ready'})).concat([{id:'none',name:'Sans email',state:'excluded',reason:'Sans adresse email envoyable'}]) };
       if (input.action === 'batch_confirm') { assert.equal(input.confirmed,true); batch.confirmed = true; }
       if (input.action === 'batch_step') { assert.ok(batch.confirmed); const item = batch.items.find(i=>i.state==='ready'); if(item) item.state = 'sent'; }
       res.setHeader('Content-Type','application/json');res.end(JSON.stringify({batch,waitMs:1}));return;
@@ -45,7 +45,7 @@ test("bulk UI: preparation, inspection, cancellation, explicit confirmation and 
     await click('Confirmer le lot');await click('Envoyer les 2 emails');
     await page.waitForFunction(()=>document.body.textContent.includes('2 envoyés'));
     assert.equal(requests.filter(r=>r.action==='batch_confirm').length,1);assert.equal(requests.filter(r=>r.action==='batch_step').length,2);
-    await page.reload();await click('Voir le lot d’envoi');
+    await page.reload();await click('Voir le lot d’envoi');await page.waitForSelector('section[aria-label="Envoi groupé"]');
     assert.equal(requests.filter(r=>r.action==='batch_step').length,2);assert.match(await page.$eval('body',el=>el.textContent),/2 envoyés/);
   } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}
 });
