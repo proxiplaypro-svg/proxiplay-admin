@@ -240,7 +240,7 @@ export default function NewNotificationPage() {
         scheduledAt,
       });
 
-      setFeedback({ tone: "success", text: "Notification creee dans ff_push_notifications." });
+      setFeedback({ tone: "success", text: "Notification transmise au moteur d envoi." });
       window.setTimeout(() => {
         router.push("/admin/notifications");
       }, 2000);

@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { FirebaseError } from "firebase/app";
 import {
   buildPushNotificationTarget,
+  buildCreateAdminPushNotificationPayload,
   formatPushNotificationDelivery,
+  getNotificationsErrorMessage,
   getPushNotificationDeliveryCounts,
   isTargetedUserReference,
 } from "./lib/firebase/notificationsQueries";
@@ -45,6 +48,65 @@ test("all and segment notification targets keep their existing schema", () => {
     target_user_group: "inactifs_j30",
     user_refs: "",
   });
+});
+
+test("immediate notification delegates to the callable without a scheduled time", () => {
+  assert.deepEqual(
+    buildCreateAdminPushNotificationPayload({
+      title: " Test ",
+      message: " Corps ",
+      imageUrl: "",
+      initialPageName: "",
+      parameterData: "",
+      audienceMode: "single",
+      segmentId: "All",
+      userUid: "users/abc123",
+      scheduledAt: null,
+    }),
+    {
+      title: "Test",
+      body: "Corps",
+      imageUrl: "",
+      targetDevice: "All",
+      targetUserGroup: "All",
+      userRefs: ["users/abc123"],
+    },
+  );
+});
+
+test("scheduled notification sends the callable timestamp in milliseconds", () => {
+  const scheduledAt = new Date("2026-10-05T09:30:00.000Z");
+  const payload = buildCreateAdminPushNotificationPayload({
+    title: "Programme",
+    message: "Bonjour",
+    imageUrl: "https://example.test/image.png",
+    initialPageName: "home",
+    parameterData: "ignored-by-current-callable",
+    audienceMode: "all",
+    segmentId: "All",
+    userUid: "",
+    scheduledAt,
+  });
+  assert.equal(payload.scheduledTimeMs, scheduledAt.getTime());
+  assert.deepEqual(payload.userRefs, []);
+});
+
+test("admin notification creator delegates to the callable instead of writing the queue", () => {
+  const source = readFileSync("lib/firebase/notificationsQueries.ts", "utf8");
+  assert.match(source, /httpsCallable<CreateAdminPushNotificationPayload, CreateAdminPushNotificationResult>/);
+  assert.match(source, /"createAdminPushNotification"/);
+  assert.doesNotMatch(source, /addDoc\(collection\(db, "ff_push_notifications"\)/);
+});
+
+test("callable errors are presented to the notification interface", () => {
+  assert.match(
+    getNotificationsErrorMessage(new FirebaseError("functions/permission-denied", "permission denied")),
+    /session/i,
+  );
+  assert.match(
+    getNotificationsErrorMessage(new FirebaseError("functions/unavailable", "unavailable")),
+    /temporairement indisponible/i,
+  );
 });
 
 test("admin display recognizes a canonical targeted user reference", () => {

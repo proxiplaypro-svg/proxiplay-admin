@@ -3,20 +3,18 @@
 import { FirebaseError } from "firebase/app";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
-  addDoc,
   collection,
-  doc,
   getDocs,
   limit,
   orderBy,
   query,
-  serverTimestamp,
   Timestamp,
   where,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import type { PushNotification } from "@/types/dashboard";
 import { auth } from "./auth";
-import { db } from "./client-app";
+import { db, firebaseApp } from "./client-app";
 
 type FirestoreUserDocument = {
   email?: string;
@@ -105,6 +103,25 @@ export type CreatePushNotificationInput = {
 };
 
 const NOTIFICATIONS_AUTH_ERROR_MESSAGE = "Connexion requise pour gerer les notifications.";
+
+// The mobile Firebase backend exposes this v1 callable in its default region.
+// It owns the ff_push_notifications queue contract.
+const pushNotificationsFunctions = getFunctions(firebaseApp, "us-central1");
+
+type CreateAdminPushNotificationPayload = {
+  title: string;
+  body: string;
+  imageUrl: string;
+  targetDevice: string;
+  targetUserGroup: string;
+  userRefs: string[];
+  scheduledTimeMs?: number;
+};
+
+type CreateAdminPushNotificationResult = {
+  ok: boolean;
+  id: string;
+};
 
 async function waitForAuthenticatedUser() {
   if (auth.currentUser) {
@@ -332,6 +349,25 @@ export function buildPushNotificationTarget(
   };
 }
 
+export function buildCreateAdminPushNotificationPayload(input: CreatePushNotificationInput): CreateAdminPushNotificationPayload {
+  const target = buildPushNotificationTarget(input.audienceMode, input.segmentId, input.userUid);
+  const scheduledTimeMs = input.scheduledAt?.getTime();
+
+  if (scheduledTimeMs !== undefined && !Number.isFinite(scheduledTimeMs)) {
+    throw new Error("La date de programmation est invalide.");
+  }
+
+  return {
+    title: input.title.trim(),
+    body: input.message.trim(),
+    imageUrl: input.imageUrl.trim(),
+    targetDevice: target.target_audience,
+    targetUserGroup: target.target_user_group,
+    userRefs: target.user_refs ? [target.user_refs] : [],
+    ...(scheduledTimeMs === undefined ? {} : { scheduledTimeMs }),
+  };
+}
+
 export function isTargetedUserReference(userRefs: string) {
   return /^users\/[^/]+$/.test(userRefs.trim());
 }
@@ -465,7 +501,7 @@ export async function getNotificationRecipientPushAvailability(userId: string) {
 }
 
 export async function createPushNotification(input: CreatePushNotificationInput) {
-  const user = await ensureNotificationsAuthenticated();
+  await ensureNotificationsAuthenticated();
   const title = input.title.trim();
   const message = input.message.trim();
   const isMerchantSegment = input.audienceMode === "segment" && input.segmentId === "commercants";
@@ -480,23 +516,18 @@ export async function createPushNotification(input: CreatePushNotificationInput)
     );
   }
 
-  const target = buildPushNotificationTarget(input.audienceMode, input.segmentId, input.userUid);
+  const payload = buildCreateAdminPushNotificationPayload(input);
+  const create = httpsCallable<CreateAdminPushNotificationPayload, CreateAdminPushNotificationResult>(
+    pushNotificationsFunctions,
+    "createAdminPushNotification",
+  );
+  const result = await create(payload);
 
-  const notificationRef = await addDoc(collection(db, "ff_push_notifications"), {
-    created_at: serverTimestamp(),
-    created_by: doc(db, "users", user.uid),
-    notification_title: title,
-    notification_text: message,
-    notification_image_url: input.imageUrl.trim(),
-    notification_sound: "",
-    initial_page_name: input.initialPageName.trim(),
-    parameter_data: input.parameterData.trim(),
-    scheduled_time: input.scheduledAt ? Timestamp.fromDate(input.scheduledAt) : serverTimestamp(),
-    status: input.scheduledAt ? "scheduled" : "pending",
-    ...target,
-  });
+  if (!result.data?.ok || !result.data.id) {
+    throw new Error("Le moteur de notifications n a pas confirme la creation de la notification.");
+  }
 
-  return notificationRef.id;
+  return result.data.id;
 }
 
 export async function getLatestPushNotifications() {
@@ -515,11 +546,16 @@ export function getNotificationsErrorMessage(error: unknown) {
   if (error instanceof FirebaseError) {
     switch (error.code) {
       case "permission-denied":
+      case "functions/permission-denied":
         return "Impossible d acceder aux notifications avec cette session.";
       case "failed-precondition":
-        return "La collection ff_push_notifications n est pas disponible avec cette configuration.";
+      case "functions/failed-precondition":
+        return "Le moteur de notifications a refuse cette demande.";
       case "unavailable":
-        return "Firestore est temporairement indisponible.";
+      case "functions/unavailable":
+        return "Le moteur de notifications est temporairement indisponible.";
+      case "functions/not-found":
+        return "Le moteur de notifications est indisponible. Contacte un administrateur technique.";
       default:
         return error.message || "Une erreur Firebase a bloque l operation notifications.";
     }
