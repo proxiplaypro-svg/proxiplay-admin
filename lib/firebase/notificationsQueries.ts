@@ -12,6 +12,7 @@ import {
   query,
   serverTimestamp,
   Timestamp,
+  where,
 } from "firebase/firestore";
 import type { PushNotification } from "@/types/dashboard";
 import { auth } from "./auth";
@@ -25,6 +26,8 @@ type FirestoreUserDocument = {
   pseudo?: string;
   first_name?: string;
   last_name?: string;
+  phone_number?: string;
+  phone?: string;
   platform?: string;
   device_platform?: string;
   os?: string;
@@ -74,6 +77,8 @@ export type NotificationRecipientUser = {
   createdAtValue: number;
   lastActivityValue: number;
   referralsCount: number;
+  phone: string;
+  pushAvailable: boolean | null;
 };
 
 export type NotificationAudienceSnapshot = {
@@ -133,6 +138,16 @@ function readText(...values: Array<string | null | undefined>) {
   }
 
   return "";
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function readNumber(...values: Array<number | string | null | undefined>) {
@@ -250,6 +265,8 @@ export async function getNotificationsAudienceSnapshot(): Promise<NotificationAu
       initials: buildInitials(displayName, email),
       platform: normalizePlatform(data),
       userRole: readText(data.user_role),
+      phone: readText(data.phone_number, data.phone),
+      pushAvailable: null,
       createdAtValue: data.created_time?.toMillis() ?? data.created_at?.toMillis() ?? 0,
       lastActivityValue: data.last_real_activity_at?.toMillis() ?? 0,
       referralsCount: readNumber(
@@ -280,25 +297,21 @@ export async function getNotificationsAudienceSnapshot(): Promise<NotificationAu
 export async function searchNotificationUsers(search: string) {
   await ensureNotificationsAuthenticated();
 
-  const normalized = search.trim().toLowerCase();
+  const normalized = normalizeSearchText(search);
   if (normalized.length < 2) {
     return [] as NotificationRecipientUser[];
   }
 
-  const snapshot = await getDocs(query(collection(db, "users"), limit(80)));
+  const snapshot = await getDocs(
+    query(collection(db, "user_search_index"), where("search_terms", "array-contains", normalized), limit(10)),
+  );
 
   return snapshot.docs
     .map((docSnapshot) => {
-      const data = docSnapshot.data() as FirestoreUserDocument;
-      const displayName = readText(
-        data.display_name,
-        data.full_name,
-        data.name,
-        data.pseudo,
-        [readText(data.first_name, data.last_name)].filter(Boolean).join(" "),
-        data.email,
-        "Joueur sans nom",
-      );
+      const data = docSnapshot.data() as {
+        display_name?: string; email?: string; phone?: string; platform?: string; user_role?: string;
+      };
+      const displayName = readText(data.display_name, data.email, "Joueur sans nom");
       const email = readText(data.email, "Email non renseigne");
 
       return {
@@ -306,22 +319,22 @@ export async function searchNotificationUsers(search: string) {
         displayName,
         email,
         initials: buildInitials(displayName, email),
-        platform: normalizePlatform(data),
+        platform: readText(data.platform).toLowerCase(),
         userRole: readText(data.user_role),
-        createdAtValue: data.created_time?.toMillis() ?? data.created_at?.toMillis() ?? 0,
-        lastActivityValue: data.last_real_activity_at?.toMillis() ?? 0,
-        referralsCount: readNumber(
-          data.referralCount,
-          data.referrals_count,
-          data.accepted_referrals_count,
-        ),
+        phone: readText(data.phone),
+        pushAvailable: null,
+        createdAtValue: 0,
+        lastActivityValue: 0,
+        referralsCount: 0,
       } satisfies NotificationRecipientUser;
     })
-    .filter((user) => {
-      const haystack = `${user.displayName} ${user.email}`.toLowerCase();
-      return haystack.includes(normalized);
-    })
-    .slice(0, 5);
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, "fr"));
+}
+
+export async function getNotificationRecipientPushAvailability(userId: string) {
+  await ensureNotificationsAuthenticated();
+  const tokens = await getDocs(query(collection(db, "users", userId, "fcm_tokens"), limit(1)));
+  return !tokens.empty;
 }
 
 export async function createPushNotification(input: CreatePushNotificationInput) {

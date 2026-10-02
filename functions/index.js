@@ -1,7 +1,7 @@
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const { logger } = require("firebase-functions");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const {
@@ -17,6 +17,7 @@ const {
 } = require("./src/admin_stats/triggers");
 const { resyncMerchantStats } = require("./src/merchant_stats");
 const { resolveOperationalMerchantEmail } = require("./src/merchant_email_policy");
+const { buildUserSearchIndex } = require("./src/user_search_index");
 
 setGlobalOptions({
   region: "europe-west1",
@@ -29,6 +30,41 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const { FieldValue } = admin.firestore;
+
+async function writeUserSearchIndex(userId, data) {
+  await db.doc(`user_search_index/${userId}`).set({
+    ...buildUserSearchIndex(userId, data),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+}
+
+exports.onUserSearchSourceWritten = onDocumentWritten("users/{userId}", async (event) => {
+  const after = event.data?.after;
+  if (!after?.exists) {
+    await db.doc(`user_search_index/${event.params.userId}`).delete();
+    return;
+  }
+  await writeUserSearchIndex(event.params.userId, after.data());
+});
+
+exports.backfillUserSearchIndex = onCall(async (request) => {
+  if (!request.auth || !ADMIN_EMAILS.includes(String(request.auth.token.email || "").toLowerCase())) {
+    throw new HttpsError("permission-denied", "Admin only");
+  }
+  const cursor = typeof request.data?.cursor === "string" ? request.data.cursor : "";
+  let usersQuery = db.collection("users").orderBy(admin.firestore.FieldPath.documentId()).limit(250);
+  if (cursor) usersQuery = usersQuery.startAfter(cursor);
+  const users = await usersQuery.get();
+  const batch = db.batch();
+  for (const user of users.docs) {
+    batch.set(db.doc(`user_search_index/${user.id}`), {
+      ...buildUserSearchIndex(user.id, user.data()),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+  }
+  await batch.commit();
+  return { processed: users.size, nextCursor: users.size === 250 ? users.docs.at(-1).id : null };
+});
 
 const OVH_SMTP_HOST = defineString("OVH_SMTP_HOST");
 const OVH_SMTP_PORT = defineInt("OVH_SMTP_PORT", { default: 587 });
