@@ -240,4 +240,6 @@ export interface PushNotification {
   targetUserGroup: string;
   userRefs: string;
   deliveryCount: number | null;
+  deliveryFailureCount: number | null;
+  deliveryAttemptCount: number | null;
 }

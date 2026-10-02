@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { PushNotification } from "@/types/dashboard";
 import {
+  formatPushNotificationDelivery,
   getLatestPushNotifications,
   getNotificationsErrorMessage,
 } from "@/lib/firebase/notificationsQueries";
@@ -106,7 +107,11 @@ export default function NotificationsPage() {
                   <div className="text-[12px] text-[#666666]">
                     <p className="font-medium text-[#1A1A1A]">{item.targetAudience || "All"}</p>
                     <p className="mt-1 text-[#999999]">
-                      {item.deliveryCount !== null ? `${item.deliveryCount} livraisons` : "Count indisponible"}
+                      {formatPushNotificationDelivery(
+                        item.deliveryCount,
+                        item.deliveryFailureCount,
+                        item.deliveryAttemptCount,
+                      ) ?? "Count indisponible"}
                     </p>
                   </div>
                   <div className="flex items-center justify-start md:justify-end">

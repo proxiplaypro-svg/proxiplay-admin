@@ -12,6 +12,7 @@ import {
 } from "@/lib/firebase/adminQueries";
 import { auth } from "@/lib/firebase/auth";
 import { db } from "@/lib/firebase/client-app";
+import { createPushNotification } from "@/lib/firebase/notificationsQueries";
 
 type FollowUpFilter = "tous" | "a_faire" | "relance" | "sans_reponse" | "ok";
 type ActivityFilter = "tous" | "actif" | "inactif";
@@ -449,21 +450,37 @@ export default function AdminPlayersPage() {
       setFeedback(null);
 
       try {
-        await addDoc(collection(db, "ff_push_notifications"), {
-          created_at: serverTimestamp(),
-          created_by: `/users/${user.uid}`,
-          notification_title: title,
-          notification_text: message,
-          notification_image_url: "",
-          notification_sound: "",
-          initial_page_name: "",
-          parameter_data: "",
-          scheduled_time: serverTimestamp(),
-          status: "pending",
-          target_audience: "specific",
-          target_user_group: "specific",
-          user_refs: userIds.join(","),
-        });
+        if (userIds.length === 1) {
+          await createPushNotification({
+            title,
+            message,
+            imageUrl: "",
+            initialPageName: "",
+            parameterData: "",
+            audienceMode: "single",
+            segmentId: "All",
+            userUid: userIds[0],
+            scheduledAt: null,
+          });
+        } else {
+          // No successful multi-user FlutterFlow document establishes a canonical
+          // representation for multiple user_refs. Preserve the existing batch schema.
+          await addDoc(collection(db, "ff_push_notifications"), {
+            created_at: serverTimestamp(),
+            created_by: `/users/${user.uid}`,
+            notification_title: title,
+            notification_text: message,
+            notification_image_url: "",
+            notification_sound: "",
+            initial_page_name: "",
+            parameter_data: "",
+            scheduled_time: serverTimestamp(),
+            status: "pending",
+            target_audience: "specific",
+            target_user_group: "specific",
+            user_refs: userIds.join(","),
+          });
+        }
 
         setFeedback({
           tone: "success",

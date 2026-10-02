@@ -54,9 +54,14 @@ type FirestorePushNotificationDocument = {
   target_user_group?: string;
   user_refs?: string;
   notification_delivery_state?: unknown;
+  attempted_tokens?: number | string;
+  num_sent?: number | string;
+  num_failed?: number | string;
   delivered_count?: number | string;
   sent_count?: number | string;
   success_count?: number | string;
+  failed_count?: number | string;
+  failure_count?: number | string;
 };
 
 export type NotificationTabAudience = "all" | "segment" | "single";
@@ -167,6 +172,23 @@ function readNumber(...values: Array<number | string | null | undefined>) {
   return 0;
 }
 
+function readOptionalNumber(...values: Array<number | string | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.trunc(value);
+    }
+
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
 function formatDateTime(value: number) {
   if (value <= 0) {
     return "Non renseigne";
@@ -196,14 +218,18 @@ function normalizePlatform(user: FirestoreUserDocument) {
 }
 
 function extractDeliveryCount(data: FirestorePushNotificationDocument) {
-  const fromTopLevel = readNumber(data.delivered_count, data.sent_count, data.success_count);
-  if (fromTopLevel > 0) {
-    return fromTopLevel;
-  }
+  const fromTopLevel = readOptionalNumber(
+    data.num_sent,
+    data.delivered_count,
+    data.sent_count,
+    data.success_count,
+  );
+  if (fromTopLevel !== null) return fromTopLevel;
 
   if (data.notification_delivery_state && typeof data.notification_delivery_state === "object") {
     const state = data.notification_delivery_state as Record<string, unknown>;
-    return readNumber(
+    return readOptionalNumber(
+      state.num_sent as number | string | undefined,
       state.delivered_count as number | string | undefined,
       state.sent_count as number | string | undefined,
       state.success_count as number | string | undefined,
@@ -214,9 +240,106 @@ function extractDeliveryCount(data: FirestorePushNotificationDocument) {
   return null;
 }
 
+function extractDeliveryFailureCount(data: FirestorePushNotificationDocument) {
+  const fromTopLevel = readOptionalNumber(data.num_failed, data.failed_count, data.failure_count);
+  if (fromTopLevel !== null) return fromTopLevel;
+
+  if (data.notification_delivery_state && typeof data.notification_delivery_state === "object") {
+    const state = data.notification_delivery_state as Record<string, unknown>;
+    return readOptionalNumber(
+      state.num_failed as number | string | undefined,
+      state.failed_count as number | string | undefined,
+      state.failure_count as number | string | undefined,
+    );
+  }
+
+  return null;
+}
+
+function extractDeliveryAttemptCount(data: FirestorePushNotificationDocument) {
+  const fromTopLevel = readOptionalNumber(data.attempted_tokens);
+  if (fromTopLevel !== null) return fromTopLevel;
+
+  if (data.notification_delivery_state && typeof data.notification_delivery_state === "object") {
+    const state = data.notification_delivery_state as Record<string, unknown>;
+    return readOptionalNumber(state.attempted_tokens as number | string | undefined);
+  }
+
+  return null;
+}
+
+export function getPushNotificationDeliveryCounts(data: FirestorePushNotificationDocument) {
+  return {
+    sent: extractDeliveryCount(data),
+    failed: extractDeliveryFailureCount(data),
+    attempted: extractDeliveryAttemptCount(data),
+  };
+}
+
+export function formatPushNotificationDelivery(
+  sentCount: number | null,
+  failedCount: number | null,
+  attemptedCount: number | null,
+) {
+  if (sentCount === null && failedCount === null && attemptedCount === null) return null;
+
+  const parts: string[] = [];
+  if (sentCount !== null) {
+    parts.push(`${sentCount} envoy${sentCount === 1 ? "é" : "és"}`);
+  } else if (attemptedCount !== null) {
+    parts.push(`${attemptedCount} tentative${attemptedCount === 1 ? "" : "s"}`);
+  }
+  if (failedCount !== null && failedCount > 0) {
+    parts.push(`${failedCount} échec${failedCount === 1 ? "" : "s"}`);
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+export function buildPushNotificationTarget(
+  audienceMode: NotificationTabAudience,
+  segmentId: NotificationSegmentId | "All",
+  userUid: string,
+) {
+  if (audienceMode === "single") {
+    const normalizedUid = userUid.trim().replace(/^(?:users\/)+/, "");
+
+    if (!normalizedUid) {
+      throw new Error("Un joueur cible est obligatoire pour une notification individuelle.");
+    }
+
+    // FlutterFlow routes an individual notification from this user document path.
+    // Keep the audience fields aligned with successful existing notifications.
+    return {
+      target_audience: "All",
+      target_user_group: "All",
+      user_refs: `users/${normalizedUid}`,
+    };
+  }
+
+  if (audienceMode === "segment") {
+    return {
+      target_audience: segmentId,
+      target_user_group: segmentId,
+      user_refs: "",
+    };
+  }
+
+  return {
+    target_audience: "All",
+    target_user_group: "All",
+    user_refs: "",
+  };
+}
+
+export function isTargetedUserReference(userRefs: string) {
+  return /^users\/[^/]+$/.test(userRefs.trim());
+}
+
 function mapNotificationDocument(id: string, data: FirestorePushNotificationDocument): PushNotification {
   const createdAtValue = data.created_at?.toMillis() ?? 0;
   const scheduledTimeValue = data.scheduled_time?.toMillis() ?? createdAtValue;
+  const delivery = getPushNotificationDeliveryCounts(data);
 
   return {
     id,
@@ -231,10 +354,14 @@ function mapNotificationDocument(id: string, data: FirestorePushNotificationDocu
     createdAtLabel: formatDateTime(createdAtValue),
     createdAtValue,
     status: readText(data.status, "pending"),
-    targetAudience: readText(data.target_audience, "All"),
+    targetAudience: isTargetedUserReference(readText(data.user_refs))
+      ? "Joueur spécifique"
+      : readText(data.target_audience, "All"),
     targetUserGroup: readText(data.target_user_group, "All"),
     userRefs: readText(data.user_refs),
-    deliveryCount: extractDeliveryCount(data),
+    deliveryCount: delivery.sent,
+    deliveryFailureCount: delivery.failed,
+    deliveryAttemptCount: delivery.attempted,
   };
 }
 
@@ -353,6 +480,8 @@ export async function createPushNotification(input: CreatePushNotificationInput)
     );
   }
 
+  const target = buildPushNotificationTarget(input.audienceMode, input.segmentId, input.userUid);
+
   const notificationRef = await addDoc(collection(db, "ff_push_notifications"), {
     created_at: serverTimestamp(),
     created_by: doc(db, "users", user.uid),
@@ -364,9 +493,7 @@ export async function createPushNotification(input: CreatePushNotificationInput)
     parameter_data: input.parameterData.trim(),
     scheduled_time: input.scheduledAt ? Timestamp.fromDate(input.scheduledAt) : serverTimestamp(),
     status: input.scheduledAt ? "scheduled" : "pending",
-    target_audience: input.audienceMode === "segment" ? input.segmentId : "All",
-    target_user_group: input.audienceMode === "segment" ? input.segmentId : "All",
-    user_refs: input.audienceMode === "single" ? input.userUid.trim() : "",
+    ...target,
   });
 
   return notificationRef.id;
