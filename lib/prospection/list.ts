@@ -1,9 +1,32 @@
-import { normalize, type Prospect } from "./model";
+import { normalize, type Prospect, type ProspectStatus } from "./model";
 
 export const EMAIL_FILTERS = { found: "Email trouvé", not_found: "Sans email", failed: "Échec", not_started: "Non recherché" } as const;
 export type EmailState = keyof typeof EMAIL_FILTERS | "running";
 export type ProspectFilters = { status: string; email: string; category: string; city: string; source: string; date: string; query: string };
 export const EMPTY_FILTERS: ProspectFilters = { status: "", email: "", category: "", city: "", source: "", date: "", query: "" };
+
+export type CommercialCategory = ProspectStatus;
+export const FOLLOW_UP_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** One exclusive pipeline category. Missing/invalid dates remain Contactés. */
+export function commercialCategory(p: Pick<Prospect, "status" | "last_contact_at">, at: Date | number = Date.now()): CommercialCategory {
+  if (p.status !== "contacted") return p.status;
+  const lastContact = p.last_contact_at ? Date.parse(p.last_contact_at) : Number.NaN;
+  const now = at instanceof Date ? at.getTime() : at;
+  return Number.isFinite(lastContact) && now - lastContact >= FOLLOW_UP_DELAY_MS ? "follow_up" : "contacted";
+}
+
+export function daysSinceLastContact(lastContactAt: string | null, at: Date | number = Date.now()) {
+  const lastContact = lastContactAt ? Date.parse(lastContactAt) : Number.NaN;
+  const now = at instanceof Date ? at.getTime() : at;
+  return Number.isFinite(lastContact) ? Math.max(0, Math.floor((now - lastContact) / 86400000)) : null;
+}
+
+export function commercialEmailAction(p: Pick<Prospect, "status" | "last_contact_at">, hasEmail: boolean, at: Date | number = Date.now()) {
+  if (!hasEmail) return null;
+  const category = commercialCategory(p, at);
+  return category === "new" || category === "to_contact" ? "initial" : category === "follow_up" ? "follow_up" : null;
+}
 
 export function prospectEmailSummary(p: Prospect) {
   const emails = [...new Map((p.emails || []).filter(item => item.email.trim()).map(item => [item.email.toLowerCase(), item])).values()];

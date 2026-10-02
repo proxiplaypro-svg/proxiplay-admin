@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { crawlWebsite, safeTarget, publicIPv4, resolvePublic, fetchPage, MAX_BYTES } = require("../src/prospect_crawler");
-const { validateMessage, factualProposalGenerator, createOvhEmailSender } = require("../src/prospect_email");
+const { validateMessage, factualProposalGenerator, createOvhEmailSender, statusAfterSuccessfulEmail } = require("../src/prospect_email");
 const { DEFAULT_SETTINGS, parseSettings } = require("../src/prospect_settings");
 
 test("paramètres commerciaux : défauts, chiffre modifiable, vide sans chiffre et validation", async () => {
@@ -94,6 +94,10 @@ test("destinataire unique requis, pas de CC/BCC ni injection d’entête", () =>
   for (const to of ["", "invalid", "a@b.fr,c@d.fr", "Name <a@b.fr>", "a@b.fr\r\nBcc:c@d.fr"]) assert.throws(() => validateMessage({ to, subject: "Sujet", body: "Bonjour" }));
   assert.throws(() => validateMessage({ to: "contact@boutique.fr", subject: "Sujet\r\nBcc: x@y.fr", body: "Bonjour" }));
   assert.deepEqual(validateMessage({ to: "CONTACT@boutique.fr", subject: "Sujet", body: "Bonjour", bcc: "x@y.fr" }), { to: "contact@boutique.fr", subject: "Sujet", body: "Bonjour" });
+});
+test("transition commerciale après succès SMTP : relance historique seulement", () => {
+  for (const status of ["new", "to_contact", "follow_up"]) assert.equal(statusAfterSuccessfulEmail(status), "contacted");
+  for (const status of ["contacted", "replied", "meeting", "client", "rejected"]) assert.equal(statusAfterSuccessfulEmail(status), status);
 });
 test("proposition factuelle et fallback sans invention", async () => {
   const generic = await factualProposalGenerator.generate({});

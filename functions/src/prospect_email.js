@@ -7,6 +7,7 @@ const { parseSettings } = require("./prospect_settings");
 const fail = (code, message) => { throw new HttpsError(code, message); };
 const clean = (value, max) => typeof value === "string" && value.trim().length <= max ? value.trim() : "";
 const now = () => new Date().toISOString();
+const statusAfterSuccessfulEmail = (status) => ["new", "to_contact", "follow_up"].includes(status) ? "contacted" : status;
 function validateMessage(input) {
   const to = clean(input.to, 254).toLowerCase(); const subject = clean(input.subject, 200); const body = clean(input.body, 10000);
   if (!validEmail(to) || !subject || /[\r\n]/.test(subject) || !body) fail("invalid-argument", "Destinataire, objet et message valides requis.");
@@ -100,7 +101,7 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
         tx.update(logRef, { status: "sent", sent_at: at, provider_message_id: delivered.provider_message_id });
         tx.create(ref.collection("history").doc(input.draftId), { ...(batch ? { batch_id: batch.id } : {}), action: "email_sent", actor, at,
           detail: `Email envoyé à ${reservation.message.to} — ${reservation.message.subject}`, to: reservation.message.to, subject: reservation.message.subject, status: "sent", provider_message_id: delivered.provider_message_id });
-        update(tx, ref, data, { last_contact_at: at, status: ["new", "to_contact"].includes(data.status) ? "contacted" : data.status,
+        update(tx, ref, data, { last_contact_at: at, status: statusAfterSuccessfulEmail(data.status),
           email_sending_id: null, proposal: { ...data.proposal, status: "sent", sent_at: at } });
       });
       return { status: "sent" };
@@ -190,4 +191,4 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
   }
   return { handle };
 }
-module.exports = { createProspectEmailService, createOvhEmailSender, factualProposalGenerator, validateMessage };
+module.exports = { createProspectEmailService, createOvhEmailSender, factualProposalGenerator, statusAfterSuccessfulEmail, validateMessage };

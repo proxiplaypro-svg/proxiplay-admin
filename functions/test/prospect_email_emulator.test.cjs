@@ -137,10 +137,15 @@ test("envoi en cours : ni régénération ni suppression des coordonnées", asyn
   await assert.rejects(call("generate"), { code: "failed-precondition" });
   await assert.rejects(call("erase"), { code: "failed-precondition" });
 });
-test("statut avancé conservé après acceptation SMTP", async () => {
-  await prospectRef().update({ status: "meeting" }); const proposal = await draft();
-  await call("send", { draftId: proposal.id, revision: 1, confirmed: true });
-  assert.equal((await prospectRef().get()).data().status, "meeting");
+test("succès SMTP : transitions commerciales minimales et last_contact_at renouvelé", async () => {
+  for (const status of ["new", "to_contact", "follow_up", "contacted", "replied", "meeting", "client", "rejected"]) {
+    await prospectRef().update({ status, last_contact_at: "2026-09-20T10:00:00.000Z", proposal: null, email_sending_id: null });
+    const proposal = await draft();
+    await call("send", { draftId: proposal.id, revision: proposal.revision, confirmed: true });
+    const data = (await prospectRef().get()).data();
+    assert.equal(data.status, ["new", "to_contact", "follow_up"].includes(status) ? "contacted" : status, status);
+    assert.ok(Date.parse(data.last_contact_at) > Date.parse("2026-09-20T10:00:00.000Z"), `${status}: last_contact_at renouvelé`);
+  }
 });
 test("acceptation SMTP puis panne Firestore : verrou durable, aucun renvoi ni faux historique", async () => {
   let transactions = 0;
