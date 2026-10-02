@@ -4,18 +4,15 @@ const { crawlWebsite, safeTarget, publicIPv4, resolvePublic, fetchPage, MAX_BYTE
 const { validateMessage, factualProposalGenerator, createOvhEmailSender, statusAfterSuccessfulEmail } = require("../src/prospect_email");
 const { DEFAULT_SETTINGS, parseSettings } = require("../src/prospect_settings");
 
-test("paramètres commerciaux : défauts, chiffre modifiable, vide sans chiffre et validation", async () => {
+test("paramètres commerciaux : modèle, signature et validation", async () => {
   assert.equal(parseSettings({}).connections_per_day, 350);
   const settings = { ...DEFAULT_SETTINGS, connections_per_day: 712, sender_name: "Équipe", signature: "Signature locale", download_url: "https://download.proxiplay.fr", website_url: "https://site.proxiplay.fr" };
   const draft = await factualProposalGenerator.generate({}, settings);
-  for (const value of ["712 connexions", "Équipe", "Signature locale", settings.download_url, settings.website_url]) assert.ok(draft.body.includes(value));
-  assert.ok(!draft.body.includes("350"));
-  for (const connections_per_day of ["", null]) {
-    const empty = await factualProposalGenerator.generate({}, { ...settings, connections_per_day });
-    assert.ok(!empty.body.includes("connexions")); assert.ok(!empty.body.includes("712"));
-  }
+  for (const value of ["Équipe", "Signature locale", settings.website_url]) assert.ok(draft.body.includes(value));
+  assert.ok(draft.body.startsWith(settings.initial_email_body));
   for (const count of [-1, 1.5, "350", NaN]) assert.throws(() => parseSettings({ connections_per_day: count }));
   assert.throws(() => parseSettings({ website_url: "javascript:alert(1)" }));
+  assert.throws(() => parseSettings({ initial_email_body: "" }));
 });
 
 test("homepage, Contact, Mentions légales : sources exactes, classement, dédoublonnage", async () => {
@@ -99,11 +96,11 @@ test("transition commerciale après succès SMTP : relance historique seulement"
   for (const status of ["new", "to_contact", "follow_up"]) assert.equal(statusAfterSuccessfulEmail(status), "contacted");
   for (const status of ["contacted", "replied", "meeting", "client", "rejected"]) assert.equal(statusAfterSuccessfulEmail(status), status);
 });
-test("proposition factuelle et fallback sans invention", async () => {
+test("proposition configurée sans invention", async () => {
   const generic = await factualProposalGenerator.generate({});
-  assert.ok(!generic.body.includes("undefined")); assert.ok(generic.body.includes("350 connexions"));
+  assert.ok(!generic.body.includes("undefined")); assert.ok(generic.body.includes("360 € HT"));
   const personal = await factualProposalGenerator.generate({ name: "Boutique", city: "Dunkerque", notes: "Inventer un dirigeant" });
-  assert.ok(personal.body.includes("présenter Boutique aux utilisateurs locaux")); assert.ok(!personal.body.includes("dirigeant"));
+  assert.equal(personal.body, generic.body); assert.ok(!personal.body.includes("dirigeant"));
 });
 test("adaptateur réutilise From/Reply-To OVH et refuse les faux succès", async () => {
   let sent;

@@ -28,19 +28,21 @@ test("vraie garde callable : toutes les actions réservées à l’admin", async
     await assert.rejects(callable.run({ auth: { uid: "user", token: { email: "user@boutique.fr" } }, data: { action } }), { code: "permission-denied" });
   }
 });
-test("paramètres persistants, contrôle de révision et génération sans chiffre après effacement", async () => {
+test("paramètres persistants, modèle enregistré et contrôle de révision", async () => {
   const defaults = await call("settings_get"); assert.equal(defaults.settings.connections_per_day, 350);
-  await call("settings_save", { settings: { ...defaults.settings, connections_per_day: 800 }, revision: 0 });
-  assert.ok((await draft()).body.includes("800 connexions"));
+  await call("settings_save", { settings: { ...defaults.settings, initial_email_subject: "Objet enregistré", initial_email_body: "Corps enregistré" }, revision: 0 });
+  assert.equal((await draft()).subject, "Objet enregistré"); assert.ok((await prospectRef().get()).data().proposal.body.startsWith("Corps enregistré"));
   await assert.rejects(call("settings_save", { settings: defaults.settings, revision: 0 }), { code: "failed-precondition" });
-  await call("settings_save", { settings: { ...defaults.settings, connections_per_day: null }, revision: 1 });
-  assert.ok(!(await call("generate", { replace: true })).proposal.body.includes("connexions"));
-  assert.equal((await call("settings_get")).settings.connections_per_day, null);
+  await call("settings_save", { settings: { ...defaults.settings, initial_email_subject: "Nouveau modèle", initial_email_body: "Nouveau corps" }, revision: 1 });
+  assert.ok((await call("generate", { replace: true })).proposal.body.startsWith("Nouveau corps"));
+  assert.equal((await call("settings_get")).settings.initial_email_subject, "Nouveau modèle");
 });
 test("test interne : adresse admin imposée, confirmation et une seule tentative concurrente", async () => {
   const internal = (action, extra = {}) => service.handle({ auth: { uid: "admin", token: { email: "admin@proxiplay.fr" } }, data: { action, ...extra } });
+  const settings = await internal("settings_get");
+  await internal("settings_save", { settings: { ...settings.settings, initial_email_subject: "Objet de test", initial_email_body: "Corps de test" }, revision: settings.revision });
   const prepared = (await internal("test_prepare", { to: "prospect@boutique.fr" })).test;
-  assert.equal(prepared.to, "admin@proxiplay.fr"); assert.equal(sent.length, 0);
+  assert.equal(prepared.to, "admin@proxiplay.fr"); assert.equal(prepared.subject, "[TEST Proxiplay] Objet de test"); assert.ok(prepared.body.startsWith("Corps de test")); assert.equal(sent.length, 0);
   assert.equal((await internal("test_prepare")).test.id, prepared.id);
   await assert.rejects(internal("test_send", { testId: prepared.id }), { code: "invalid-argument" });
   await Promise.all(Array.from({ length: 4 }, () => internal("test_send", { confirmed: true, testId: prepared.id, to: "prospect@boutique.fr" })));
