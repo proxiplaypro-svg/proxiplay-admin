@@ -51,6 +51,8 @@ test("liste réelle : états, filtres, actions, mobile et retour après envoi si
     const base = `http://127.0.0.1:${server.address().port}`;
     await page.setRequestInterception(true); page.on("request", r => r.url().startsWith(base) ? r.continue() : r.abort());
     await page.setViewport({ width: 1000, height: 1000 }); await page.goto(base);
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent === 'Recherche d’emails'));
+    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent === 'Recherche d’emails').click());
     const row = id => `[data-prospect-id="${id}"]`;
     const click = async label => { await page.waitForFunction(t => [...document.querySelectorAll('button')].some(b => b.textContent === t && !b.disabled), {}, label); await page.evaluate(t => [...document.querySelectorAll('button')].find(b => b.textContent === t).click(), label); };
     const select = async (label, value) => page.evaluate(({ label, value }) => { const el = [...document.querySelectorAll('label')].find(l => l.firstChild.textContent === label).querySelector('select'); el.value = value; el.dispatchEvent(new Event('change', { bubbles: true })); }, { label, value });
@@ -63,7 +65,7 @@ test("liste réelle : états, filtres, actions, mobile et retour après envoi si
     assert.equal(await page.$eval(`${row('primary')} a[href$="#proposition"]`, a => a.getAttribute('href')), '/admin/prospection/primary#proposition');
     for (const [state, id] of [['found','primary'],['not_found','none'],['failed','failed'],['not_started','untouched']]) { await select('Email',state); await count(1); assert.ok(await page.$(row(id))); }
     await select('Statut','contacted'); await count(0); await select('Statut','new'); await count(1);
-    await select('Email',''); await count(4); await click('1 prospects avec email'); await count(1);
+    await select('Email',''); await count(4); await click('1 Avec email'); await count(1);
     await select('Email','failed'); await count(1); await click('Réessayer'); await count(0); assert.deepEqual(requests.filter(r => r.action === 'enrich'), [{action:'enrich',id:'failed'}]);
     await select('Email',''); await count(4);
     await page.setViewport({ width: 390, height: 844 });

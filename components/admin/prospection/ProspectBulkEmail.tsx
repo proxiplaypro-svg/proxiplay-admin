@@ -45,7 +45,7 @@ export function ProspectBulkEmail({ ids, emailCount, disabled }: { ids: string[]
         const r = await emailRequest<Result>({ action: "batch_prepare", batchId: prepareId.current, ids });
         prepareId.current = null; setBatch(r.batch); setOpen(true); setConfirm(false);
       })}>Préparer l’envoi groupé ({emailCount})</button>
-      {batch && <button disabled={busy} onClick={() => void run(load)}>Reprendre / consulter le dernier lot</button>}
+      {batch && <button disabled={busy} onClick={() => void run(load)}>Voir le lot d’envoi</button>}
     </div>
     {error && <p role="alert" className={s.error}>{error}</p>}
     {open && batch && <section className={s.panel} aria-label="Envoi groupé">

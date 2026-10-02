@@ -3,6 +3,13 @@
 .module h2 { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
 .module p { line-height: 1.6; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.pageHeader { display: grid; gap: 4px; }
+.sectionHeading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; margin-top: 4px; }
+.sectionHeading h2 { margin-bottom: 4px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #dfe4d8; padding-bottom: 8px; }
+.tabs button { border: 0; border-radius: 7px; background: transparent; color: #53594f; font-weight: 600; }
+.tabs button:hover { background: #f1f4ec; }
+.tabs .tabActive { background: #507f1b; border-color: #507f1b; color: white; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .module button, .link { border: 1px solid #d4d8cf; border-radius: 7px; padding: 8px 12px; background: white; cursor: pointer; }
 .module button:hover, .link:hover { background: #eaf3de; }
@@ -11,8 +18,10 @@
 .module .danger { color: #a32d2d; }
 .module :focus-visible { outline: 2px solid #639922; outline-offset: 3px; }
 .panel { background: white; border: 1px solid #e8e8e4; border-radius: 12px; padding: 20px; min-width: 0; }
-.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.cards button { text-align: left; padding: 14px; }
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.cards > * { text-align: left; padding: 14px; border: 1px solid #d4d8cf; border-radius: 7px; background: white; }
+.cards button { cursor: pointer; }
+.cards button:hover { background: #eaf3de; }
 .cards strong { display: block; font-size: 26px; color: #507f1b; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
@@ -32,6 +41,7 @@
 .history li { border-left: 2px solid #b1ca94; padding-left: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .prospectList { list-style: none; padding: 0; margin: 16px 0 0; }
 .prospectRow { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 18px 0; border-top: 1px solid #eceee8; }
+.prospectRowStatic { grid-template-columns: minmax(0, 1fr) auto; }
 .rowSelect { margin-top: 5px; }
 .prospectInfo { min-width: 0; overflow-wrap: anywhere; }
 .companyName { font-weight: 650; font-size: 15px; color: #29460d; }
