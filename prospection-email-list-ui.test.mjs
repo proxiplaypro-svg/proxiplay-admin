@@ -68,6 +68,17 @@ test("liste réelle : états, filtres, actions, mobile et retour après envoi si
     await select('Email',''); await count(4); await click('1 Avec email'); await count(1);
     await select('Email','failed'); await count(1); await click('Réessayer'); await count(0); assert.deepEqual(requests.filter(r => r.action === 'enrich'), [{action:'enrich',id:'failed'}]);
     await select('Email',''); await count(4);
+    await click('Campagnes & suivi');
+    await click('Nouveaux');
+    assert.equal(await page.$eval('label select', el => el.value), 'new');
+    assert.equal(await page.$eval('button[aria-pressed="true"]', el => el.textContent), 'Nouveaux0');
+    await click('Contactés');
+    assert.equal(await page.$eval('label select', el => el.value), 'contacted');
+    assert.equal(await page.$eval('button[aria-pressed="true"]', el => el.textContent), 'Contactés0');
+    await select('Statut', 'new');
+    assert.equal(await page.$eval('button[aria-pressed="true"]', el => el.textContent), 'Nouveaux0');
+    await select('Statut', '');
+    assert.equal((await page.$$('button[aria-pressed="true"]')).length, 0);
     await page.setViewport({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'No horizontal scroll on mobile');
     await page.click(`${row('primary')} a[href$="#proposition"]`); await page.waitForSelector('#proposition');
