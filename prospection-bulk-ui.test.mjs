@@ -45,7 +45,7 @@ test("bulk UI: preparation, inspection, cancellation, explicit confirmation and 
     await click('Confirmer le lot');await click('Envoyer les 2 emails');
     await page.waitForFunction(()=>document.body.textContent.includes('2 envoyés'));
     assert.equal(requests.filter(r=>r.action==='batch_confirm').length,1);assert.equal(requests.filter(r=>r.action==='batch_step').length,2);
-    await page.reload();await click('Reprendre / consulter le dernier lot');
+    await page.reload();await click('Voir le lot d’envoi');
     assert.equal(requests.filter(r=>r.action==='batch_step').length,2);assert.match(await page.$eval('body',el=>el.textContent),/2 envoyés/);
   } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}
 });
