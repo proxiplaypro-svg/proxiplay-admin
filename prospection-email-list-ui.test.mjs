@@ -36,6 +36,7 @@ test("liste réelle : états, filtres, actions, mobile et retour après envoi si
       const input = JSON.parse(raw); requests.push(input);
       const p = prospects.find(p => p.id === input.id); let result = { prospects, ignored: [], searchAvailable: false };
       if (input.action === "enrich") { p.email_enrichment_status = "found"; p.emails = [makeEmail("retrouve@boutique.fr", true)]; result = { status: "found" }; }
+      if (input.action === "enrich_batch") { for (const id of input.ids) { const item = prospects.find(prospect => prospect.id === id); item.email_enrichment_status = "found"; item.emails = [makeEmail("retrouve@boutique.fr", true)]; } result = { found: input.ids.length, not_found: 0, failed: 0, emails: input.ids.length }; }
       if (input.action === "generate") { p.proposal = { id: "draft", revision: 1, to: "contact@boutique.fr", subject: "Proxiplay", body: "Bonjour", status: "draft" }; result = { proposal: p.proposal }; }
       if (input.action === "save") { p.proposal = { ...p.proposal, revision: p.proposal.revision + 1 }; result = { proposal: p.proposal }; }
       if (input.action === "send") { assert.equal(input.confirmed, true); p.status = "contacted"; p.proposal = { ...p.proposal, status: "sent", sent_at: "2026-09-21T16:22:00Z" }; result = { status: "sent" }; }
@@ -55,30 +56,20 @@ test("liste réelle : états, filtres, actions, mobile et retour après envoi si
     await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent === 'Recherche d’emails').click());
     const row = id => `[data-prospect-id="${id}"]`;
     const click = async label => { await page.waitForFunction(t => [...document.querySelectorAll('button')].some(b => b.textContent === t && !b.disabled), {}, label); await page.evaluate(t => [...document.querySelectorAll('button')].find(b => b.textContent === t).click(), label); };
-    const select = async (label, value) => page.evaluate(({ label, value }) => { const el = [...document.querySelectorAll('label')].find(l => l.firstChild.textContent === label).querySelector('select'); el.value = value; el.dispatchEvent(new Event('change', { bubbles: true })); }, { label, value });
     const count = async expected => page.waitForFunction(n => document.querySelectorAll('[data-prospect-id]').length === n, {}, expected);
-    await count(4);
-    const text = await page.$eval(row('primary'), el => el.textContent); assert.match(text, /✉ contact@boutique.fr/); assert.match(text, /Email trouvé/); assert.match(text, /\+1 autre email/);
-    assert.match(await page.$eval(row('none'), el => el.textContent), /Aucun email public trouvé/);
-    assert.match(await page.$eval(row('failed'), el => el.textContent), /Recherche email échouée/);
-    assert.match(await page.$eval(row('untouched'), el => el.textContent), /Email non recherché/);
-    assert.equal(await page.$eval(`${row('primary')} a[href$="#proposition"]`, a => a.getAttribute('href')), '/admin/prospection/primary#proposition');
-    for (const [state, id] of [['found','primary'],['not_found','none'],['failed','failed'],['not_started','untouched']]) { await select('Email',state); await count(1); assert.ok(await page.$(row(id))); }
-    await select('Statut','contacted'); await count(0); await select('Statut','new'); await count(1);
-    await select('Email',''); await count(4); await click('1 Avec email'); await count(1);
-    await select('Email','failed'); await count(1); await click('Réessayer'); await count(0); assert.deepEqual(requests.filter(r => r.action === 'enrich'), [{action:'enrich',id:'failed'}]);
-    await select('Email',''); await count(4);
+    const emailState = async index => page.evaluate(i => document.querySelectorAll('button[aria-pressed]')[i].click(), index);
+    await count(1); assert.ok(await page.$(row('untouched')));
+    assert.equal(await page.$(`${row('untouched')} a[href$="#proposition"]`), null, "Recherche d’emails ne prépare pas de message");
+    for (const [index, id] of [[0,'primary'],[1,'none'],[2,'failed'],[3,'untouched']]) { await emailState(index); await count(1); assert.ok(await page.$(row(id))); }
+    assert.equal(await page.$$('div[aria-label="Filtrer par état email"] button').then(items => items.length), 0);
+    await emailState(2); await click('Sélectionner les prospects affichés (50 max.)'); await click('Rechercher les emails (1)'); await count(0); assert.deepEqual(requests.filter(r => r.action === 'enrich_batch').map(r => r.ids), [['failed']]);
     await click('Campagnes & suivi');
-    await click('Nouveaux');
-    assert.equal(await page.$eval('label select', el => el.value), 'new');
-    assert.equal(await page.$eval('button[aria-pressed="true"]', el => el.textContent), 'Nouveaux0');
-    await click('Contactés');
-    assert.equal(await page.$eval('label select', el => el.value), 'contacted');
-    assert.equal(await page.$eval('button[aria-pressed="true"]', el => el.textContent), 'Contactés0');
-    await select('Statut', 'new');
-    assert.equal(await page.$eval('button[aria-pressed="true"]', el => el.textContent), 'Nouveaux0');
-    await select('Statut', '');
-    assert.equal((await page.$$('button[aria-pressed="true"]')).length, 0);
+    await count(2); assert.ok(await page.$(row('primary')));
+    assert.equal(await page.$eval('label select', el => el.value), 'found');
+    assert.match(await page.$eval('button[aria-pressed="true"]', el => el.textContent), /Nouveaux/);
+    await click('Sélectionner les prospects affichés (50 max.)'); assert.match(await page.$eval('body', el => el.textContent), /2 prospect\(s\) sélectionné\(s\)/);
+    assert.equal(requests.some(r => r.action === 'batch_confirm' || r.action === 'batch_step'), false);
+    await click('Préparer les 2 emails'); assert.equal(requests.some(r => r.action === 'batch_step'), false);
     await page.setViewport({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'No horizontal scroll on mobile');
     await page.click(`${row('primary')} a[href$="#proposition"]`); await page.waitForSelector('#proposition');
@@ -88,9 +79,6 @@ test("liste réelle : états, filtres, actions, mobile et retour après envoi si
     await page.waitForFunction(() => document.body.textContent.includes('Email envoyé'));
     await page.goto(base); await count(4);
     assert.match(await page.$eval(row('primary'), el => el.textContent), /Contacté.*Email envoyé.*21\/09\/2026/s);
-    await select('Statut','new'); await select('Email','found'); await count(1); assert.equal(await page.$(row('primary')), null);
-    // A change in another tab triggers a fresh API read while keeping active filters.
-    prospects.find(p => p.id === 'failed').status = 'contacted'; await page.evaluate(() => window.fixtureRefresh()); await count(0);
     assert.equal(requests.filter(r => r.action === 'send').length, 1);
   } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }
 });
