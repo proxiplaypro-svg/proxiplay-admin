@@ -35,7 +35,7 @@ test("bulk UI: preparation, inspection, cancellation, explicit confirmation and 
     await page.setRequestInterception(true);page.on('request',r=>r.url().startsWith(base)?r.continue():r.abort());
     await page.setViewport({width:390,height:844});await page.goto(base);
     const click=async text=>{await page.waitForFunction(t=>[...document.querySelectorAll('button')].some(b=>b.textContent===t&&!b.disabled),{},text);await page.evaluate(t=>[...document.querySelectorAll('button')].find(b=>b.textContent===t).click(),text);};
-    await click('Préparer l’envoi groupé (2)');await page.waitForSelector('section[aria-label="Envoi groupé"]');
+    await click('Préparer les 2 emails');await page.waitForSelector('section[aria-label="Envoi groupé"]');
     assert.deepEqual(requests.find(r=>r.action==='batch_prepare').ids,['one','two','none']);
     assert.equal(requests.some(r=>r.action==='batch_step'),false);
     assert.match(await page.$eval('body',el=>el.textContent),/3 sélectionnés · 2 prêts à envoyer · 1 exclus/);
