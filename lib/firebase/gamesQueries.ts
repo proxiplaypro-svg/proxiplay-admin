@@ -419,7 +419,7 @@ function mapMerchantOption(
   };
 }
 
-function mapGameDocument(
+export function mapGameDocument(
   snapshot: QueryDocumentSnapshot<DocumentData>,
   collectionName: GameCollectionName,
   merchantsById: Map<string, GameMerchantOption>,
@@ -468,8 +468,20 @@ function mapGameDocument(
     collectionName,
     imageMissing: !imageUrl,
     hasMainPrize,
-    mainPrizeTitle: readText(game.main_prize_title),
-    mainPrizeDescription: readText(game.main_prize_description),
+    // Le mobile n'ecrit jamais main_prize_title/main_prize_description
+    // (createGamesRecordData n'a pas ces parametres -- voir
+    // games_record.dart) : pour un jeu commercant avec lot principal, le
+    // nom/la description du JEU lui-meme font deja office de texte du lot.
+    // Sans ce repli, un tel jeu duplique depuis l'Admin echouait a
+    // validateGamePrizes() avec "le lot principal est obligatoire" alors
+    // que prize_value/hasMainPrize etaient corrects (cas reel : "Une
+    // paire de bas" / Fonteyne Lingerie).
+    mainPrizeTitle: readText(game.main_prize_title, game.title, game.name),
+    mainPrizeDescription: readText(
+      game.main_prize_description,
+      game.description,
+      game.conditions,
+    ),
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,

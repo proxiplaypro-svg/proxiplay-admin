@@ -432,8 +432,16 @@ function mapGameDocument(
     collectionName,
     imageMissing: !imageUrl,
     hasMainPrize: resolveHasMainPrize(game.hasMainPrize, mainPrizeValue),
-    mainPrizeTitle: readText(game.main_prize_title),
-    mainPrizeDescription: readText(game.main_prize_description),
+    // Voir la meme note dans lib/firebase/gamesQueries.ts : le mobile
+    // n'ecrit jamais main_prize_title/main_prize_description, donc un jeu
+    // commercant avec lot principal retombe sur le nom/la description du
+    // jeu lui-meme.
+    mainPrizeTitle: readText(game.main_prize_title, game.title, game.name),
+    mainPrizeDescription: readText(
+      game.main_prize_description,
+      game.description,
+      game.conditions,
+    ),
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
