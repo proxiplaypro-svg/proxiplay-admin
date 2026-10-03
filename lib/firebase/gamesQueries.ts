@@ -68,6 +68,15 @@ type FirestoreGameDocument = {
   secondary_prizes?: FirestoreSecondaryPrizeDocument[] | null;
   prohibited_for_minors?: boolean;
   restrictedToAdults?: boolean;
+  // Marqueurs de finalisation : ecrits ensemble, une seule fois, par le
+  // resultat reel d'un tirage (main_prize_draw.js cote app mobile).
+  // Jamais ecrits par l'admin a la creation/duplication (toujours false/
+  // null) -- voir isGameFinalized()/isSafeFinalizedGameUpdate() dans
+  // firestore.rules, qui est le vrai point d'application de la regle.
+  hasWinner?: boolean;
+  main_prize_winner?: DocumentReference | string | null;
+  draw_status?: string | null;
+  drawn_at?: Timestamp | null;
 };
 
 type FirestoreSecondaryPrizeDocument = {
@@ -434,6 +443,7 @@ function mapGameDocument(
   const secondaryPrizes = Array.isArray(game.secondary_prizes)
     ? game.secondary_prizes.map((prize, index) => mapSecondaryPrize(prize ?? {}, index))
     : [];
+  const finalization = deriveGameFinalization(game);
 
   return {
     id: snapshot.id,
@@ -467,7 +477,57 @@ function mapGameDocument(
       game.prohibited_for_minors ?? game.restrictedToAdults,
       false,
     ),
+    ...finalization,
   };
+}
+
+// Mirrors the `draw_status` values main_prize_draw.js ever writes (it
+// never writes any other value). Kept in sync manually with
+// isGameFinalized() in firestore.rules -- there is no shared schema
+// between the two repos to enforce this automatically.
+const kFinalizedDrawStatuses = new Set(["completed", "no_main_prize", "no_eligible_entries"]);
+
+export type FirestoreGameFinalizationFields = {
+  hasWinner?: boolean;
+  main_prize_winner?: DocumentReference | string | null;
+  draw_status?: string | null;
+  drawn_at?: Timestamp | null;
+};
+
+/** Reads the 4 finalization signals main_prize_draw.js writes together as
+ * the real, irreversible result of a main-prize draw, and derives the same
+ * `isFinalized` flag isGameFinalized() computes server-side in
+ * firestore.rules (the actual enforcement point -- this is only for the
+ * admin UI to warn/disable fields consistently with it). */
+export function deriveGameFinalization(game: FirestoreGameFinalizationFields) {
+  const hasWinner = readBoolean(game.hasWinner, false);
+  const mainPrizeWinnerId = readDocRefId(game.main_prize_winner);
+  const drawStatus = typeof game.draw_status === "string" ? game.draw_status : null;
+  const drawnAtTimestamp = game.drawn_at instanceof Timestamp ? game.drawn_at : null;
+  const isFinalized =
+    hasWinner ||
+    mainPrizeWinnerId !== null ||
+    (drawStatus !== null && kFinalizedDrawStatuses.has(drawStatus)) ||
+    drawnAtTimestamp !== null;
+
+  return {
+    isFinalized,
+    hasWinner,
+    mainPrizeWinnerId,
+    drawStatus,
+    drawnAt: toDateString(drawnAtTimestamp),
+  };
+}
+
+function readDocRefId(value: DocumentReference | string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === "string") {
+    const match = value.match(/(?:^|\/)users\/([^/]+)$/);
+    return match?.[1] ?? value;
+  }
+  return value.id ?? null;
 }
 
 function buildStatusPatch(status: GameStatus) {
@@ -942,6 +1002,11 @@ export async function createGame(
         image: null,
       })),
       restrictedToAdults: input.restrictedToAdults,
+      isFinalized: false,
+      hasWinner: false,
+      mainPrizeWinnerId: null,
+      drawStatus: null,
+      drawnAt: null,
     },
   };
 }
@@ -1053,6 +1118,11 @@ export async function duplicateGameDocument(
       mainPrizeImage: original.mainPrizeImage,
       secondaryPrizes: original.secondaryPrizes.map((prize) => ({ ...prize })),
       restrictedToAdults: original.restrictedToAdults,
+      isFinalized: false,
+      hasWinner: false,
+      mainPrizeWinnerId: null,
+      drawStatus: null,
+      drawnAt: null,
     },
   };
 }

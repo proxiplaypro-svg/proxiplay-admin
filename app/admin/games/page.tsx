@@ -30,6 +30,7 @@ import { db } from "@/lib/firebase/client-app";
 import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
 import { resolveHasMainPrize } from "@/lib/firebase/gamePrizeValidation";
 import {
+  deriveGameFinalization,
   ensureGamesAuthenticated,
   getGamesQueryErrorMessage,
   updateGame,
@@ -85,6 +86,13 @@ type FirestoreGameDocument = {
     image?: string;
   }> | null;
   restrictedToAdults?: boolean;
+  // Marqueurs de finalisation : voir isGameFinalized() dans
+  // firestore.rules (le vrai point d'application) et la meme note dans
+  // lib/firebase/gamesQueries.ts.
+  hasWinner?: boolean;
+  main_prize_winner?: DocumentReference | string | null;
+  draw_status?: string | null;
+  drawn_at?: Timestamp | null;
 };
 
 type FirestoreMerchantDocument = {
@@ -430,6 +438,7 @@ function mapGameDocument(
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
     restrictedToAdults: game.restrictedToAdults === true,
+    ...deriveGameFinalization(game),
   };
 }
 

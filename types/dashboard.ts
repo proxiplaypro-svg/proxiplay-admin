@@ -139,6 +139,19 @@ export interface Game {
   mainPrizeImage: string | null;
   secondaryPrizes: GameSecondaryPrize[];
   restrictedToAdults: boolean;
+  /** True once the main-prize draw has produced a real, irreversible
+   * result (see main_prize_draw.js: hasWinner, mainPrizeWinner,
+   * drawStatus, drawnAt are only ever written together, by the draw
+   * itself). A finalized game must never be edited back into an
+   * active/visible state on the same document -- see
+   * isGameFinalized()/isSafeFinalizedGameUpdate() in firestore.rules,
+   * which is the actual enforcement point; this flag only drives the
+   * admin UI's own warning and disabled fields. */
+  isFinalized: boolean;
+  hasWinner: boolean;
+  mainPrizeWinnerId: string | null;
+  drawStatus: string | null;
+  drawnAt: string | null;
 }
 
 export interface GameMerchantOption {

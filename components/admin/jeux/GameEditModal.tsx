@@ -299,6 +299,15 @@ export function GameEditModal({
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [backfillFeedback, setBackfillFeedback] = useState<BackfillFeedback | null>(null);
+  // Un jeu deja finalise (vrai tirage effectue, voir Game.isFinalized) ne
+  // doit plus jamais pouvoir redevenir actif/visible sur ce meme document
+  // -- l'incident production "Memphis" (instant_winners et participants
+  // d'une premiere edition restes en place apres une republication par
+  // simple edition) vient exactement de la. L'application reelle de la
+  // regle est cote serveur (isGameFinalized() dans firestore.rules) ; ce
+  // qui suit n'est que le reflet cote UI pour eviter une erreur Firestore
+  // confuse et guider vers Dupliquer.
+  const isFinalized = game?.isFinalized ?? false;
 
   useEffect(() => {
     if (open) {
@@ -504,6 +513,18 @@ export function GameEditModal({
       return;
     }
 
+    if (
+      isFinalized &&
+      game &&
+      (generalForm.status !== game.status ||
+        generalForm.endDate !== toInputDate(game.endDate))
+    ) {
+      setValidationError(
+        "Ce jeu a deja ete cloture. Pour organiser une nouvelle edition, utilisez Dupliquer.",
+      );
+      return;
+    }
+
     if (generalForm.startDate && generalForm.endDate && generalForm.endDate < generalForm.startDate) {
       setValidationError("La date de fin doit etre posterieure a la date de debut.");
       return;
@@ -655,6 +676,16 @@ export function GameEditModal({
 
         <form id="game-edit-form" className="flex-1 overflow-y-auto px-5 py-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4">
+            {isFinalized ? (
+              <div className="rounded-[8px] border border-[#F0C895] bg-[#FDF3E7] px-3 py-3 text-[12px] text-[#8A5A1E]">
+                <strong>Jeu deja cloture</strong>
+                <p className="mt-1">
+                  Ce jeu a deja ete cloture. Pour organiser une nouvelle edition, utilisez
+                  Dupliquer.
+                </p>
+              </div>
+            ) : null}
+
             {hasMissingImage ? (
               <div className="rounded-[8px] border border-[#F09595] bg-[#FCEBEB] px-3 py-3 text-[12px] text-[#A32D2D]">
                 <strong>Image manquante</strong>
@@ -695,7 +726,13 @@ export function GameEditModal({
 
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Statut</span>
-                    <select className={inputClassName} value={generalForm.status} onChange={(event) => updateGeneralForm("status", event.target.value as GameStatus)}>
+                    <select
+                      className={inputClassName}
+                      value={generalForm.status}
+                      onChange={(event) => updateGeneralForm("status", event.target.value as GameStatus)}
+                      disabled={isFinalized}
+                      title={isFinalized ? "Jeu cloture : utilisez Dupliquer pour une nouvelle edition." : undefined}
+                    >
                       <option value="actif">Actif</option>
                       <option value="brouillon">Brouillon</option>
                       <option value="prive">Prive</option>
@@ -710,7 +747,14 @@ export function GameEditModal({
 
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Date fin</span>
-                    <input className={inputClassName} type="date" value={generalForm.endDate} onChange={(event) => updateGeneralForm("endDate", event.target.value)} />
+                    <input
+                      className={inputClassName}
+                      type="date"
+                      value={generalForm.endDate}
+                      onChange={(event) => updateGeneralForm("endDate", event.target.value)}
+                      disabled={isFinalized}
+                      title={isFinalized ? "Jeu cloture : utilisez Dupliquer pour une nouvelle edition." : undefined}
+                    />
                   </label>
 
                   <label className="flex flex-col gap-1 sm:col-span-2">

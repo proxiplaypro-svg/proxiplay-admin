@@ -17,6 +17,7 @@ import {
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client-app";
 import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
+import { deriveGameFinalization } from "@/lib/firebase/gamesQueries";
 
 type GameEditPageProps = {
   params: Promise<{
@@ -36,6 +37,13 @@ type FirestoreGameEditDocument = {
   visible_public?: boolean;
   hasMainPrize?: boolean;
   secondary_prizes?: Array<{ name?: string; count?: string | number }>;
+  // Marqueurs de finalisation : voir isGameFinalized() dans
+  // firestore.rules (le vrai point d'application) et
+  // lib/firebase/gamesQueries.ts (deriveGameFinalization).
+  hasWinner?: boolean;
+  main_prize_winner?: DocumentReference | string | null;
+  draw_status?: string | null;
+  drawn_at?: Timestamp | null;
 };
 
 type GameFormState = {
@@ -56,6 +64,7 @@ type EditGameSnapshot = {
   winnersCount: number;
   secondaryPrizes: Array<{ name: string; count: string | number }>;
   form: GameFormState;
+  isFinalized: boolean;
 };
 
 function formatDateTimeInput(date: Date) {
@@ -231,6 +240,7 @@ export default function EditGamePage({ params }: GameEditPageProps) {
             ? data.secondary_prizes.map((prize) => ({ name: prize.name ?? "", count: prize.count ?? "" }))
             : [],
           form: nextForm,
+          isFinalized: deriveGameFinalization(data).isFinalized,
         } satisfies EditGameSnapshot;
 
         setGame(nextGame);
@@ -412,6 +422,16 @@ export default function EditGamePage({ params }: GameEditPageProps) {
       return;
     }
 
+    if (
+      game.isFinalized &&
+      (form.endDate !== game.form.endDate || form.status !== game.form.status)
+    ) {
+      setValidationErrors([
+        "Ce jeu a deja ete cloture. Pour organiser une nouvelle edition, utilisez Dupliquer.",
+      ]);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -489,6 +509,24 @@ export default function EditGamePage({ params }: GameEditPageProps) {
         </div>
       </div>
 
+      {game.isFinalized ? (
+        <div
+          className="panel panel-wide"
+          style={{
+            border: "1px solid #F0C895",
+            background: "#FDF3E7",
+            color: "#8A5A1E",
+            fontSize: "12px",
+            padding: "12px 16px",
+          }}
+        >
+          <strong>Jeu deja cloture</strong>
+          <p style={{ marginTop: "4px" }}>
+            Ce jeu a deja ete cloture. Pour organiser une nouvelle edition, utilisez Dupliquer.
+          </p>
+        </div>
+      ) : null}
+
       <div className="panel panel-wide">
         <form className="game-edit-form" onSubmit={handleSubmit}>
           <div className="panel-heading">
@@ -537,7 +575,12 @@ export default function EditGamePage({ params }: GameEditPageProps) {
                 type="datetime-local"
                 value={form.endDate}
                 onChange={(event) => handleChange("endDate", event.target.value)}
-                disabled={isSubmitting}
+                disabled={isSubmitting || game.isFinalized}
+                title={
+                  game.isFinalized
+                    ? "Jeu cloture : utilisez Dupliquer pour une nouvelle edition."
+                    : undefined
+                }
               />
             </label>
 
@@ -547,7 +590,12 @@ export default function EditGamePage({ params }: GameEditPageProps) {
                 className="games-filter-select"
                 value={form.status}
                 onChange={(event) => handleChange("status", event.target.value)}
-                disabled={isSubmitting}
+                disabled={isSubmitting || game.isFinalized}
+                title={
+                  game.isFinalized
+                    ? "Jeu cloture : utilisez Dupliquer pour une nouvelle edition."
+                    : undefined
+                }
               >
                 <option value="actif">Actif</option>
                 <option value="termine">Termine</option>

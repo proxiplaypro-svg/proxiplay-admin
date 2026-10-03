@@ -353,6 +353,11 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
         image: null,
       })),
       restrictedToAdults: input.restrictedToAdults,
+      isFinalized: false,
+      hasWinner: false,
+      mainPrizeWinnerId: null,
+      drawStatus: null,
+      drawnAt: null,
     },
   };
 }
@@ -512,6 +517,11 @@ export async function duplicateGameDocument(
       source.restrictedToAdults,
       readBoolean(source.prohibited_for_minors, false),
     ),
+    isFinalized: false,
+    hasWinner: false,
+    mainPrizeWinnerId: null,
+    drawStatus: null,
+    drawnAt: null,
   };
 
   return { game };
