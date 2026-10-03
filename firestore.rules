@@ -1,5 +1,19 @@
 rules_version = '2';
 
+// ATTENTION : ce fichier n'est plus deploye en production.
+// Les regles Firestore du projet proxi-play-odzp2e sont gerees
+// exclusivement depuis le repo principal ProxiPlay
+// (firebase/firestore.rules), qui est desormais la seule source
+// canonique. Ce fichier est conserve ici a titre de reference
+// historique et pour l'emulateur local uniquement -- `firebase.json`
+// de ce repo ne declare plus de cible "firestore.rules", donc
+// `firebase deploy` (avec ou sans --only firestore[:rules]) ne peut
+// plus le publier. Ne jamais recreer cette declaration dans
+// firebase.json, et ne jamais lancer un deploiement de regles
+// Firestore depuis ce repo : la derniere publication ecrase toujours
+// entierement les regles en place, sans fusion, ce qui a deja coupe
+// l'acces aux jeux/animations pour les joueurs en production le 2
+// octobre 2026.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
