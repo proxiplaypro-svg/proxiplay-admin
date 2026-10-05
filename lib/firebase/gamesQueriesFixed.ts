@@ -361,6 +361,7 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
         count: String(prize.count),
         image: null,
       })),
+      accessMode: input.accessMode,
       restrictedToAdults: input.restrictedToAdults,
     },
   };
@@ -523,6 +524,7 @@ export async function duplicateGameDocument(
     mainPrizeValue,
     mainPrizeImage: readString(source.main_prize_image) || null,
     secondaryPrizes: mappedSecondaryPrizes,
+    accessMode: source.access_mode === "qr_only" ? "qr_only" : "public",
     restrictedToAdults: readBoolean(
       source.restrictedToAdults,
       readBoolean(source.prohibited_for_minors, false),

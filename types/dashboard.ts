@@ -142,6 +142,7 @@ export interface Game {
   mainPrizeImage: string | null;
   secondaryPrizes: GameSecondaryPrize[];
   restrictedToAdults: boolean;
+  accessMode: "public" | "qr_only";
 }
 
 export interface GameMerchantOption {

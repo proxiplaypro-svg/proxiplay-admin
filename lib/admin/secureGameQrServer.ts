@@ -20,7 +20,8 @@ export async function readSecureGameQr(gameId: string) {
       const owner = gameOwnerPath(shopData);
       if (game.owner_id != null && userPath(game.owner_id) !== owner) return { state: 'regeneration-required' as const };
     } catch { return { state: 'regeneration-required' as const }; }
-    if (!proof || proof.game_path !== gameRef.path || proof.shop_path !== shop ||
+    if (!proof) return { state: "missing" as const };
+    if (proof.game_path !== gameRef.path || proof.shop_path !== shop ||
         (proof.managed_by_admin === true) !== (shopData?.managed_by_admin === true) ||
         proof.owner_path !== userPath(game.owner_id) || proof.shop_owner_path !== shopOwnerPath(shopData ?? {}) ||
         !proof.expires_at?.toMillis || proof.expires_at.toMillis() <= Date.now() ||

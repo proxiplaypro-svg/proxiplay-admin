@@ -6,7 +6,7 @@ import { auth } from "@/lib/firebase/auth";
 import { db, firebaseApp } from "@/lib/firebase/client-app";
 import { buildSecureGameQrLink, QR_REGENERATION_MESSAGE } from "./secureGameQr";
 
-export type GameQrState = { state: "ready" | "public" | "not-found" | "ended" | "regeneration-required"; url?: string };
+export type GameQrState = { state: "ready" | "public" | "not-found" | "ended" | "missing" | "regeneration-required"; url?: string };
 
 export async function readGameQr(gameId: string): Promise<GameQrState> {
   if (!auth.currentUser) throw new Error("Connexion admin requise.");

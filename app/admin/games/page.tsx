@@ -45,6 +45,7 @@ type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
 
 type FirestoreGameDocument = {
+  access_mode?: "public" | "qr_only";
   fulfillment_type?: "merchant" | "partner" | "platform";
   partner_delivery_enabled?: boolean;
   title?: string;
@@ -440,6 +441,7 @@ function mapGameDocument(
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
     restrictedToAdults: game.restrictedToAdults === true,
+    accessMode: game.access_mode === "qr_only" ? "qr_only" : "public",
   };
 }
 

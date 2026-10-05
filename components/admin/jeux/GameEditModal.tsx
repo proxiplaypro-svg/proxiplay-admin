@@ -5,8 +5,10 @@ import { FirebaseError } from "firebase/app";
 import { deleteField, doc, getDoc, Timestamp, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
+import { GameQrSection } from "@/components/admin/jeux/GameQrSection";
 import { openGameFacebookPostWindowWithMerchant, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { db } from "@/lib/firebase/client-app";
+import { isQrOnlyGame } from "@/lib/admin/secureGameQr";
 import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
 import type {
   AnimationOption,
@@ -654,13 +656,13 @@ export function GameEditModal({
                 >
                   Voir les gagnants →
                 </a>
-                <button
+                {!isQrOnlyGame(game.accessMode) ? <button
                   type="button"
                   onClick={() => void handlePrintPoster()}
                   className="inline-flex items-center gap-1 text-[11px] font-medium text-[#185FA5] hover:underline"
                 >
                   Imprimer l affiche
-                </button>
+                </button> : null}
                 <button
                   type="button"
                   onClick={() => void handleOpenFacebookPost()}
@@ -676,6 +678,23 @@ export function GameEditModal({
 
         <form id="game-edit-form" className="flex-1 overflow-y-auto px-5 py-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4">
+            {isQrOnlyGame(game.accessMode) ? (
+              <GameQrSection game={{
+                id: game.id,
+                title: generalForm.title.trim() || game.title,
+                merchantName,
+                description: generalForm.description.trim(),
+                imageUrl: coverPreviewUrl || null,
+                startDateLabel: generalForm.startDate || game.startDate || "",
+                endDateLabel: generalForm.endDate || game.endDate || "",
+                merchantId: generalForm.merchantId || game.merchantId,
+                animationId: generalForm.animationId || game.animationId,
+                restrictedToAdults: generalForm.restrictedToAdults,
+                mainPrizeTitle: mainPrizeForm.title.trim() || game.mainPrizeTitle,
+                secondaryPrizeTitle: secondaryPrizes[0]?.name?.trim() || null,
+                secondaryPrizeSummary: prizeSummary.secondaryPreview ?? prizeSummary.secondaryCountLabel ?? null,
+              }} />
+            ) : null}
             {hasMissingImage ? (
               <div className="rounded-[8px] border border-[#F09595] bg-[#FCEBEB] px-3 py-3 text-[12px] text-[#A32D2D]">
                 <strong>Image manquante</strong>

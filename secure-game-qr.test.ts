@@ -56,9 +56,9 @@ test("lien conforme au scanner mobile, jeton conservé et jeu explicitement cibl
   assert.ok(appLinks.androidIntentUrl.startsWith(`intent://game/${gameId}?qr_token=${token}#Intent;scheme=proxiplay;`));
   for (const invalid of [undefined, "", "true", "a".repeat(63), "x".repeat(64)]) assert.throws(() => buildSecureGameQrLink(gameId, invalid));
 });
-test("ancienne affiche sans preuve : signalement sans écriture ni fallback qr_link", async () => {
+test("ancienne affiche sans preuve : état absent sans écriture ni fallback qr_link", async () => {
   const before = (await db.doc(`games/${gameId}`).get()).data();
-  assert.deepEqual(await read(gameId), { state: "regeneration-required" });
+  assert.deepEqual(await read(gameId), { state: "missing" });
   assert.equal((await db.doc(`game_qr_access/${gameId}`).get()).exists, false);
   assert.deepEqual((await db.doc(`games/${gameId}`).get()).data(), before);
 });
