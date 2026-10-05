@@ -15,6 +15,7 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import type { Game, GameSecondaryPrize, GameStatus } from "@/types/dashboard";
 import { db, storage } from "./client-app";
 import {
+  buildCreateGameDescriptionPayload,
   ensureGamesAuthenticated,
   uploadGameCover,
   validateGameCoverFile,
@@ -245,7 +246,7 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
 
   const prizeValidationError = validateGamePrizes({
     hasMainPrize: input.hasMainPrize,
-    mainPrizeDescription: input.description,
+    mainPrizeDescription: input.mainPrizeDescription,
     secondaryPrizes: input.secondaryPrizes,
   });
   if (prizeValidationError) throw new Error(prizeValidationError);
@@ -261,7 +262,13 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
   let imageUrl: string | null = null;
   if (input.imageFile) imageUrl = await uploadGameCover(gameRef.id, input.imageFile);
 
-  const description = input.description.trim();
+  const descriptionPayload = buildCreateGameDescriptionPayload({
+    accessMode: input.accessMode,
+    gameDescription: input.gameDescription,
+    mainPrizeDescription: input.mainPrizeDescription,
+    hasMainPrize: input.hasMainPrize,
+    prizeValue,
+  });
   const qrLink = `https://play.proxiplay.fr/j/${gameRef.id}`;
   const secondaryPrizes = input.secondaryPrizes
     .map((prize) => ({
@@ -277,8 +284,7 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
     title: input.title.trim(),
     name: input.title.trim(),
     create_by: ownerRef ?? doc(db, "users", user.uid),
-    description,
-    conditions: description,
+    ...descriptionPayload,
     merchantId: input.merchantId,
     merchant_id: input.merchantId,
     merchantName: input.merchantName,
@@ -299,14 +305,6 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
     sessionCount: 0,
     partiesCount: 0,
     hasMainPrize: input.hasMainPrize,
-    ...(input.hasMainPrize
-      ? {
-          main_prize_title: description,
-          main_prize_description: description,
-          ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
-          main_prize_image: "",
-        }
-      : {}),
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
@@ -326,7 +324,7 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
     game: {
       id: gameRef.id,
       title: input.title.trim(),
-      description,
+      description: descriptionPayload.description,
       merchantId: input.merchantId,
       merchantName: input.merchantName,
       animationId: null,
@@ -341,8 +339,8 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
       collectionName: input.collectionName,
       imageMissing: !imageUrl,
       hasMainPrize: input.hasMainPrize,
-      mainPrizeTitle: input.hasMainPrize ? description : "",
-      mainPrizeDescription: input.hasMainPrize ? description : "",
+      mainPrizeTitle: input.hasMainPrize ? input.mainPrizeDescription.trim() : "",
+      mainPrizeDescription: input.hasMainPrize ? input.mainPrizeDescription.trim() : "",
       mainPrizeValue: input.hasMainPrize && prizeValue !== null ? String(prizeValue) : "",
       mainPrizeImage: null,
       secondaryPrizes: secondaryPrizes.map((prize, index) => ({

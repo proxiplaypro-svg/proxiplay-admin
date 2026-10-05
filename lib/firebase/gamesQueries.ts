@@ -857,7 +857,7 @@ export type CreateGameInput = {
   merchantName: string;
   title: string;
   gameDescription?: string;
-  description: string;
+  mainPrizeDescription: string;
   hasMainPrize: boolean;
   startDate: string;
   endDate: string;
@@ -870,6 +870,29 @@ export type CreateGameInput = {
 export type CreateGameResult = {
   game: Game;
 };
+
+export function buildCreateGameDescriptionPayload(input: {
+  accessMode: CreateGameAccessMode;
+  gameDescription?: string;
+  mainPrizeDescription: string;
+  hasMainPrize: boolean;
+  prizeValue: number | null;
+}) {
+  const { gameDescription, mainPrizeDescription } = resolveCreateGameDescriptions(input);
+
+  return {
+    description: gameDescription,
+    conditions: gameDescription,
+    ...(input.hasMainPrize
+      ? {
+          main_prize_title: mainPrizeDescription,
+          main_prize_description: mainPrizeDescription,
+          ...(input.prizeValue !== null ? { prize_value: input.prizeValue } : {}),
+          main_prize_image: "",
+        }
+      : {}),
+  };
+}
 
 /// Création d'un jeu à gratter pour un seul commerçant, en mode public
 /// (jouable librement dans l'app) ou qr_only (le joueur doit scanner le QR
@@ -909,7 +932,7 @@ export async function createGame(
 
   const prizeValidationError = validateGamePrizes({
     hasMainPrize: input.hasMainPrize,
-    mainPrizeDescription: input.description,
+    mainPrizeDescription: input.mainPrizeDescription,
     secondaryPrizes: input.secondaryPrizes,
   });
   if (prizeValidationError) throw new Error(prizeValidationError);
@@ -923,10 +946,12 @@ export async function createGame(
     imageUrl = await uploadGameCover(gameRef.id, input.imageFile);
   }
 
-  const { gameDescription, mainPrizeDescription } = resolveCreateGameDescriptions({
+  const descriptionPayload = buildCreateGameDescriptionPayload({
     accessMode: input.accessMode,
     gameDescription: input.gameDescription,
-    mainPrizeDescription: input.description,
+    mainPrizeDescription: input.mainPrizeDescription,
+    hasMainPrize: input.hasMainPrize,
+    prizeValue,
   });
   const qrLink = `https://play.proxiplay.fr/j/${gameRef.id}`;
 
@@ -944,8 +969,7 @@ export async function createGame(
     title: input.title,
     name: input.title,
     create_by: doc(db, "users", user.uid),
-    description: gameDescription,
-    conditions: gameDescription,
+    ...descriptionPayload,
     merchantId: input.merchantId,
     merchant_id: input.merchantId,
     merchantName: input.merchantName,
@@ -966,14 +990,6 @@ export async function createGame(
     sessionCount: 0,
     partiesCount: 0,
     hasMainPrize: input.hasMainPrize,
-    ...(input.hasMainPrize
-      ? {
-          main_prize_title: mainPrizeDescription,
-          main_prize_description: mainPrizeDescription,
-          ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
-          main_prize_image: "",
-        }
-      : {}),
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
@@ -993,7 +1009,7 @@ export async function createGame(
     game: {
       id: gameRef.id,
       title: input.title,
-      description: gameDescription,
+      description: descriptionPayload.description,
       merchantId: input.merchantId,
       merchantName: input.merchantName,
       animationId: null,
@@ -1008,8 +1024,8 @@ export async function createGame(
       collectionName: input.collectionName,
       imageMissing: !imageUrl,
       hasMainPrize: input.hasMainPrize,
-      mainPrizeTitle: input.hasMainPrize ? mainPrizeDescription : "",
-      mainPrizeDescription: input.hasMainPrize ? mainPrizeDescription : "",
+      mainPrizeTitle: input.hasMainPrize ? input.mainPrizeDescription.trim() : "",
+      mainPrizeDescription: input.hasMainPrize ? input.mainPrizeDescription.trim() : "",
       mainPrizeValue: input.hasMainPrize && prizeValue !== null ? String(prizeValue) : "",
       mainPrizeImage: null,
       secondaryPrizes: secondaryPrizes.map((prize, index) => ({
