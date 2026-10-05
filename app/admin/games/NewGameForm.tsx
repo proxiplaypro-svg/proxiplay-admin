@@ -202,7 +202,7 @@ export default function NewGameForm({
         merchantName: merchant.name,
         title: form.title,
         gameDescription: form.gameDescription,
-        description: form.description,
+        mainPrizeDescription: form.description,
         hasMainPrize: form.hasMainPrize,
         startDate: form.startDate,
         endDate: form.endDate,
