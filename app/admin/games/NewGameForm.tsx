@@ -2,6 +2,7 @@
 import {PrizeDeliveryChoice, PartnerDeliveryContact} from "@/components/admin/jeux/PrizeDeliveryChoice";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { doc, Timestamp, updateDoc } from "firebase/firestore";
 import {
@@ -14,6 +15,8 @@ import {
 import { db } from "@/lib/firebase/client-app";
 import type { GameMerchantOption } from "@/types/dashboard";
 import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
+import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
+import { getNewGamePostCreationRoute, shouldOfferInstantWinnerGeneration } from "@/lib/admin/newGamePostCreation";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -111,10 +114,13 @@ export default function NewGameForm({
   const [activating, setActivating] = useState(false);
   const [activated, setActivated] = useState(false);
   const [activateError, setActivateError] = useState<string | null>(null);
+  const [generatingInstantWinners, setGeneratingInstantWinners] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [secondaryPrizes, setSecondaryPrizes] = useState<SecondaryPrizeFormItem[]>([]);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     let active = true;
@@ -192,6 +198,7 @@ export default function NewGameForm({
         }
       }
 
+      const configuredSecondaryPrizes = secondaryPrizes.filter((prize) => !isSecondaryPrizeEmpty(prize));
       const result = await createGame({
         fulfillmentType: form.fulfillmentType,
         partnerDeliveryEnabled: form.partnerDeliveryEnabled,
@@ -209,8 +216,7 @@ export default function NewGameForm({
         prizeValue: form.prizeValue,
         imageFile,
         restrictedToAdults: form.restrictedToAdults,
-        secondaryPrizes: secondaryPrizes
-          .filter((prize) => !isSecondaryPrizeEmpty(prize))
+        secondaryPrizes: configuredSecondaryPrizes
           .map((prize) => ({
             name: prize.name.trim(),
             fulfillmentType: prize.fulfillmentType ?? "merchant",
@@ -225,17 +231,33 @@ export default function NewGameForm({
         });
       }
 
+      const postCreationRoute = getNewGamePostCreationRoute(merchant.id);
+      if (!shouldOfferInstantWinnerGeneration(configuredSecondaryPrizes.length)) {
+        router.replace(postCreationRoute);
+        return;
+      }
+
       setCreatedGame({ id: result.game.id, merchantId: merchant.id });
       setActivated(false);
       setActivateError(null);
-      setForm(emptyForm);
-      setImageFile(null);
-      setSecondaryPrizes([]);
-      if (imageInputRef.current) imageInputRef.current.value = "";
     } catch (saveError) {
       setError(getGamesQueryErrorMessage(saveError));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleGenerateInstantWinners = async () => {
+    if (!createdGame) return;
+    setGeneratingInstantWinners(true);
+    setGenerationError(null);
+    try {
+      await generateInstantWinnersForGame(createdGame.id);
+      router.replace(getNewGamePostCreationRoute(createdGame.merchantId));
+    } catch {
+      setGenerationError("Impossible de generer les lots secondaires. Tu peux reessayer depuis la fiche du jeu.");
+    } finally {
+      setGeneratingInstantWinners(false);
     }
   };
 
@@ -244,11 +266,7 @@ export default function NewGameForm({
     setActivating(true);
     setActivateError(null);
     try {
-      await updateGameStatus({
-        gameId: createdGame.id,
-        collectionName: gameCollection,
-        status: "actif",
-      });
+      await updateGameStatus({ gameId: createdGame.id, collectionName: gameCollection, status: "actif" });
       setActivated(true);
     } catch (activateGameError) {
       setActivateError(getGamesQueryErrorMessage(activateGameError));
@@ -276,6 +294,11 @@ export default function NewGameForm({
             <p className="mt-1 text-[13px] text-[#3B6D11]">{activated ? "Il est maintenant visible dans l'app." : "Active-le pour le rendre visible dans l'app, ou fais-le depuis la liste des jeux."}</p>
             {activateError ? <p className="mt-2 text-[13px] text-[#E24B4A]">{activateError}</p> : null}
             <div className="mt-3 flex flex-wrap gap-3">
+              <button type="button" onClick={() => void handleGenerateInstantWinners()} disabled={generatingInstantWinners} className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50">
+                {generatingInstantWinners ? "Génération…" : "Générer les lots secondaires"}
+              </button>
+              <button type="button" onClick={() => router.replace(getNewGamePostCreationRoute(createdGame.merchantId))} disabled={generatingInstantWinners} className="inline-flex items-center justify-center rounded-[10px] border border-[#E0E0DA] bg-white px-4 py-2 text-[13px] font-medium text-[#1A1A1A] hover:bg-[#FAFAF8]">Retourner aux jeux</button>
+              {generationError ? <p className="basis-full text-[13px] text-[#E24B4A]">{generationError}</p> : null}
               {!activated ? (
                 <button type="button" onClick={() => void handleActivate()} disabled={activating} className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50">
                   {activating ? "Activation…" : "Activer maintenant"}
@@ -287,6 +310,7 @@ export default function NewGameForm({
           </div>
         ) : null}
 
+        {!createdGame ? (
         <form className="rounded-[12px] border border-[#E8E8E4] bg-white p-5" onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5 sm:col-span-2">
@@ -392,6 +416,7 @@ export default function NewGameForm({
           {error ? <p className="mt-4 text-[13px] text-[#E24B4A]">{error}</p> : null}
           <div className="mt-5 flex items-center gap-3"><button type="submit" disabled={saving || loadingMerchants} className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-5 py-3 text-[14px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50">{saving ? "Création…" : "Créer le jeu"}</button></div>
         </form>
+        ) : null}
       </div>
     </section>
   );
