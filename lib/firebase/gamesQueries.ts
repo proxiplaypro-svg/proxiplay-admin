@@ -32,6 +32,7 @@ import { db, storage, firebaseApp } from "./client-app";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { prepareGameRelaunch, type InstantCalendarResult } from "./gameRelaunchWorkflow";
 import { validateGamePrizes } from "./gamePrizeValidation";
+import { resolveCreateGameDescriptions } from "./gameDescriptions";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -802,6 +803,7 @@ export type CreateGameInput = {
   merchantId: string;
   merchantName: string;
   title: string;
+  gameDescription?: string;
   description: string;
   hasMainPrize: boolean;
   startDate: string;
@@ -872,7 +874,11 @@ export async function createGame(
     imageUrl = await uploadGameCover(gameRef.id, input.imageFile);
   }
 
-  const description = input.description.trim();
+  const { gameDescription, mainPrizeDescription } = resolveCreateGameDescriptions({
+    accessMode: input.accessMode,
+    gameDescription: input.gameDescription,
+    mainPrizeDescription: input.description,
+  });
   const qrLink = `https://play.proxiplay.fr/j/${gameRef.id}`;
 
   const secondaryPrizes = input.secondaryPrizes
@@ -893,8 +899,8 @@ export async function createGame(
     owner_id: ownerRef,
     fulfillment_type: input.fulfillmentType,
     partner_delivery_enabled: input.partnerDeliveryEnabled,
-    description,
-    conditions: description,
+    description: gameDescription,
+    conditions: gameDescription,
     merchantId: input.merchantId,
     merchant_id: input.merchantId,
     merchantName: input.merchantName,
@@ -917,8 +923,8 @@ export async function createGame(
     hasMainPrize: input.hasMainPrize,
     ...(input.hasMainPrize
       ? {
-          main_prize_title: description,
-          main_prize_description: description,
+          main_prize_title: mainPrizeDescription,
+          main_prize_description: mainPrizeDescription,
           ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
           main_prize_image: "",
         }
@@ -942,7 +948,7 @@ export async function createGame(
     game: {
       id: gameRef.id,
       title: input.title,
-      description,
+      description: gameDescription,
       merchantId: input.merchantId,
       merchantName: input.merchantName,
       animationId: null,
@@ -957,8 +963,8 @@ export async function createGame(
       collectionName: input.collectionName,
       imageMissing: !imageUrl,
       hasMainPrize: input.hasMainPrize,
-      mainPrizeTitle: input.hasMainPrize ? description : "",
-      mainPrizeDescription: input.hasMainPrize ? description : "",
+      mainPrizeTitle: input.hasMainPrize ? mainPrizeDescription : "",
+      mainPrizeDescription: input.hasMainPrize ? mainPrizeDescription : "",
       mainPrizeValue: input.hasMainPrize && prizeValue !== null ? String(prizeValue) : "",
       mainPrizeImage: null,
       secondaryPrizes: secondaryPrizes.map((prize, index) => ({

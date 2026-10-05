@@ -30,6 +30,7 @@ type FormState = {
   partnerDeliveryEnabled: boolean;
   merchantId: string;
   title: string;
+  gameDescription: string;
   description: string;
   prizeValue: string;
   hasMainPrize: boolean;
@@ -45,6 +46,7 @@ const emptyForm: FormState = {
   partnerDeliveryEnabled: false,
   merchantId: "",
   title: "",
+  gameDescription: "",
   description: "",
   prizeValue: "",
   hasMainPrize: true,
@@ -199,6 +201,7 @@ export default function NewGameForm({
         merchantId: merchant.id,
         merchantName: merchant.name,
         title: form.title,
+        gameDescription: form.gameDescription,
         description: form.description,
         hasMainPrize: form.hasMainPrize,
         startDate: form.startDate,
@@ -298,6 +301,13 @@ export default function NewGameForm({
               <span className="text-[12px] font-medium text-[#666]">Titre du jeu</span>
               <input className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" type="text" value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} placeholder={titlePlaceholder} required />
             </label>
+
+            {accessMode === "qr_only" ? (
+              <label className="flex flex-col gap-1.5 sm:col-span-2">
+                <span className="text-[12px] font-medium text-[#666]">Description</span>
+                <textarea className="resize-y rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" value={form.gameDescription} onChange={(event) => setForm((prev) => ({ ...prev, gameDescription: event.target.value }))} rows={4} placeholder="Présentez le jeu ou l'événement aux joueurs." />
+              </label>
+            ) : null}
 
             <label className="flex flex-col gap-1.5">
               <span className="text-[12px] font-medium text-[#666]">Date de début</span>
