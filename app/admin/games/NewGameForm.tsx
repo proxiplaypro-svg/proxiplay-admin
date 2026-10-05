@@ -15,7 +15,12 @@ import { db } from "@/lib/firebase/client-app";
 import type { GameMerchantOption } from "@/types/dashboard";
 import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
 import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
-import { getNewGamePostCreationRoute, shouldOfferInstantWinnerGeneration } from "@/lib/admin/newGamePostCreation";
+import { issueGameQr } from "@/lib/admin/gameQrClient";
+import {
+  createGameThenPreparePostCreation,
+  getNewGamePostCreationRoute,
+  shouldOfferInstantWinnerGeneration,
+} from "@/lib/admin/newGamePostCreation";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -104,7 +109,10 @@ export default function NewGameForm({
   const [loadingMerchants, setLoadingMerchants] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [createdGame, setCreatedGame] = useState<{ id: string; merchantId: string } | null>(null);
+  const [createdGame, setCreatedGame] = useState<{ id: string; merchantId: string; hasSecondaryPrizes: boolean } | null>(null);
+  const [qrIssueFailed, setQrIssueFailed] = useState(false);
+  const [retryingQr, setRetryingQr] = useState(false);
+  const [qrRetryError, setQrRetryError] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
   const [activated, setActivated] = useState(false);
   const [activateError, setActivateError] = useState<string | null>(null);
@@ -193,7 +201,10 @@ export default function NewGameForm({
       }
 
       const configuredSecondaryPrizes = secondaryPrizes.filter((prize) => !isSecondaryPrizeEmpty(prize));
-      const result = await createGame({
+      const preparation = await createGameThenPreparePostCreation({
+        accessMode,
+        createGame: async () => {
+          const result = await createGame({
         accessMode,
         collectionName: gameCollection,
         merchantCollectionName: merchantCollection,
@@ -214,7 +225,12 @@ export default function NewGameForm({
             description: prize.description.trim(),
             count: prize.count.trim(),
           })),
+          });
+          return { id: result.game.id, merchantId: merchant.id };
+        },
+        issueGameQr,
       });
+      const result = { game: preparation.game };
 
       if (form.prizeUsageDeadlineEnabled && form.prizeUsageDeadline) {
         await updateDoc(doc(db, gameCollection, result.game.id), {
@@ -223,12 +239,14 @@ export default function NewGameForm({
       }
 
       const postCreationRoute = getNewGamePostCreationRoute(merchant.id);
-      if (!shouldOfferInstantWinnerGeneration(configuredSecondaryPrizes.length)) {
+      const hasSecondaryPrizes = shouldOfferInstantWinnerGeneration(configuredSecondaryPrizes.length);
+      if (!preparation.qrIssueFailed && !hasSecondaryPrizes) {
         router.replace(postCreationRoute);
         return;
       }
 
-      setCreatedGame({ id: result.game.id, merchantId: merchant.id });
+      setCreatedGame({ id: result.game.id, merchantId: merchant.id, hasSecondaryPrizes });
+      setQrIssueFailed(preparation.qrIssueFailed);
       setActivated(false);
       setActivateError(null);
     } catch (saveError) {
@@ -249,6 +267,21 @@ export default function NewGameForm({
       setGenerationError("Impossible de generer les lots secondaires. Tu peux reessayer depuis la fiche du jeu.");
     } finally {
       setGeneratingInstantWinners(false);
+    }
+  };
+
+  const handleRetryQr = async () => {
+    if (!createdGame) return;
+    setRetryingQr(true);
+    setQrRetryError(null);
+    try {
+      await issueGameQr(createdGame.id);
+      setQrIssueFailed(false);
+      if (!createdGame.hasSecondaryPrizes) router.replace(getNewGamePostCreationRoute(createdGame.merchantId));
+    } catch {
+      setQrRetryError("Le QR code n'a pas pu etre genere. Reessaie dans quelques instants.");
+    } finally {
+      setRetryingQr(false);
     }
   };
 
@@ -283,11 +316,16 @@ export default function NewGameForm({
           <div className="rounded-[12px] border border-[#D8E8C4] bg-[#EAF3DE] p-5">
             <p className="text-[14px] font-medium text-[#3B6D11]">{activated ? "Jeu créé et activé." : "Jeu créé en brouillon."}</p>
             <p className="mt-1 text-[13px] text-[#3B6D11]">{activated ? "Il est maintenant visible dans l'app." : "Active-le pour le rendre visible dans l'app, ou fais-le depuis la liste des jeux."}</p>
+            {qrIssueFailed ? <div className="mt-3 rounded-[8px] border border-[#F2CA7E] bg-[#FFF8E8] p-3 text-[13px] text-[#7A4A00]">
+              <p>Le jeu a bien ete cree, mais son QR code securise n&apos;a pas pu etre genere.</p>
+              <button type="button" onClick={() => void handleRetryQr()} disabled={retryingQr} className="mt-2 inline-flex rounded-[8px] bg-[#639922] px-3 py-2 font-medium text-white disabled:opacity-50">{retryingQr ? "Generation..." : "Generer le QR code"}</button>
+              {qrRetryError ? <p className="mt-2 text-[#A32D2D]">{qrRetryError}</p> : null}
+            </div> : null}
             {activateError ? <p className="mt-2 text-[13px] text-[#E24B4A]">{activateError}</p> : null}
             <div className="mt-3 flex flex-wrap gap-3">
-              <button type="button" onClick={() => void handleGenerateInstantWinners()} disabled={generatingInstantWinners} className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50">
+              {createdGame.hasSecondaryPrizes ? <button type="button" onClick={() => void handleGenerateInstantWinners()} disabled={generatingInstantWinners} className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50">
                 {generatingInstantWinners ? "Génération…" : "Générer les lots secondaires"}
-              </button>
+              </button> : null}
               <button type="button" onClick={() => router.replace(getNewGamePostCreationRoute(createdGame.merchantId))} disabled={generatingInstantWinners} className="inline-flex items-center justify-center rounded-[10px] border border-[#E0E0DA] bg-white px-4 py-2 text-[13px] font-medium text-[#1A1A1A] hover:bg-[#FAFAF8]">Retourner aux jeux</button>
               {generationError ? <p className="basis-full text-[13px] text-[#E24B4A]">{generationError}</p> : null}
               {!activated ? (

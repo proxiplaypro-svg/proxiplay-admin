@@ -34,6 +34,7 @@ type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
 
 type FirestoreGameDocument = {
+  access_mode?: "public" | "qr_only";
   title?: string;
   name?: string;
   description?: string;
@@ -486,6 +487,7 @@ export function mapGameDocument(
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
+    accessMode: game.access_mode === "qr_only" ? "qr_only" : "public",
     restrictedToAdults: readBoolean(
       game.prohibited_for_minors ?? game.restrictedToAdults,
       false,
@@ -1035,6 +1037,7 @@ export async function createGame(
         count: String(prize.count),
         image: null,
       })),
+      accessMode: input.accessMode,
       restrictedToAdults: input.restrictedToAdults,
       isFinalized: false,
       hasWinner: false,
@@ -1122,6 +1125,7 @@ export async function duplicateGameDocument(
     })),
     prohibited_for_minors: original.restrictedToAdults,
     restrictedToAdults: original.restrictedToAdults,
+    access_mode: original.accessMode,
     ...buildStatusPatch("brouillon"),
   };
 
@@ -1151,6 +1155,7 @@ export async function duplicateGameDocument(
       mainPrizeValue: original.mainPrizeValue,
       mainPrizeImage: original.mainPrizeImage,
       secondaryPrizes: original.secondaryPrizes.map((prize) => ({ ...prize })),
+      accessMode: original.accessMode,
       restrictedToAdults: original.restrictedToAdults,
       isFinalized: false,
       hasWinner: false,

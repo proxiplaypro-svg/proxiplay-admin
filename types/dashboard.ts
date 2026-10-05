@@ -139,6 +139,7 @@ export interface Game {
   mainPrizeImage: string | null;
   secondaryPrizes: GameSecondaryPrize[];
   restrictedToAdults: boolean;
+  accessMode: "public" | "qr_only";
   /** True once the main-prize draw has produced a real, irreversible
    * result (see main_prize_draw.js: hasWinner, mainPrizeWinner,
    * drawStatus, drawnAt are only ever written together, by the draw
