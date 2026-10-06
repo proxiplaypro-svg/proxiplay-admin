@@ -132,6 +132,14 @@ function buildSections(counts: {
       ],
     },
     {
+      id: "billing",
+      label: "Paiement commercants",
+      items: [
+        { href: "/admin/abonnements", label: "Abonnements", icon: "◆" },
+        { href: "/admin/parrainage-commercants", label: "Parrainage commercants", icon: "€" },
+      ],
+    },
+    {
       id: "system",
       label: "Systeme",
       items: [
