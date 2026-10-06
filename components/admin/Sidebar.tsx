@@ -129,6 +129,7 @@ function buildSections(counts: {
         { href: "/admin/relances-commercants", label: "Relances commercants", icon: "◈" },
         { href: "/admin/relances-auto", label: "Relances auto", icon: "◪" },
         { href: "/admin/parrainage", label: "Parrainage", icon: "△" },
+        { href: "/admin/publicite", label: "Publicite", icon: "▣" },
       ],
     },
     {
