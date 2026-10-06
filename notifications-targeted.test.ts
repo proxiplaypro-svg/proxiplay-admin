@@ -56,8 +56,8 @@ test("immediate notification delegates to the callable without a scheduled time"
       title: " Test ",
       message: " Corps ",
       imageUrl: "",
-      initialPageName: "",
-      parameterData: "",
+      destinationType: "none",
+      destinationId: "",
       audienceMode: "single",
       segmentId: "All",
       userUid: "users/abc123",
@@ -70,6 +70,8 @@ test("immediate notification delegates to the callable without a scheduled time"
       targetDevice: "All",
       targetUserGroup: "All",
       userRefs: ["users/abc123"],
+      destinationType: "none",
+      destinationId: "",
     },
   );
 });
@@ -80,8 +82,8 @@ test("scheduled notification sends the callable timestamp in milliseconds", () =
     title: "Programme",
     message: "Bonjour",
     imageUrl: "https://example.test/image.png",
-    initialPageName: "home",
-    parameterData: "ignored-by-current-callable",
+    destinationType: "internal",
+    destinationId: "home",
     audienceMode: "all",
     segmentId: "All",
     userUid: "",
@@ -89,6 +91,38 @@ test("scheduled notification sends the callable timestamp in milliseconds", () =
   });
   assert.equal(payload.scheduledTimeMs, scheduledAt.getTime());
   assert.deepEqual(payload.userRefs, []);
+  assert.equal(payload.destinationType, "internal");
+  assert.equal(payload.destinationId, "home");
+});
+
+test("destination is sent through unmodified for every type the backend accepts", () => {
+  const base = {
+    title: "Titre",
+    message: "Message",
+    imageUrl: "",
+    audienceMode: "all" as const,
+    segmentId: "All" as const,
+    userUid: "",
+    scheduledAt: null,
+  };
+  assert.equal(
+    buildCreateAdminPushNotificationPayload({ ...base, destinationType: "game", destinationId: "game123" })
+      .destinationId,
+    "game123",
+  );
+  assert.equal(
+    buildCreateAdminPushNotificationPayload({ ...base, destinationType: "merchant", destinationId: "enseigne123" })
+      .destinationType,
+    "merchant",
+  );
+  assert.equal(
+    buildCreateAdminPushNotificationPayload({
+      ...base,
+      destinationType: "external_url",
+      destinationId: " https://proxiplay.fr ",
+    }).destinationId,
+    "https://proxiplay.fr",
+  );
 });
 
 test("admin notification creator delegates to the callable instead of writing the queue", () => {
