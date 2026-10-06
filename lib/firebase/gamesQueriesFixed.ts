@@ -354,6 +354,8 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
       })),
       restrictedToAdults: input.restrictedToAdults,
       isFinalized: false,
+      isRelaunchWorkflow: false,
+      instantWinnersReady: false,
       hasWinner: false,
       mainPrizeWinnerId: null,
       drawStatus: null,
@@ -414,8 +416,6 @@ export async function duplicateGameDocument(
 
   const createdRef = doc(collection(db, input.collectionName));
   const now = Timestamp.now();
-  const startDate = timestampFromSource(source, "start_date", "startDate");
-  const endDate = timestampFromSource(source, "end_date", "endDate");
   const hasMainPrize = resolveHasMainPrize(source.hasMainPrize, source.prize_value);
   const secondaryPrizes = Array.isArray(source.secondary_prizes)
     ? source.secondary_prizes.map((prize) => ({ ...(prize ?? {}) }))
@@ -436,10 +436,6 @@ export async function duplicateGameDocument(
     merchantRef,
     ...(source.animation_id ? { animation_id: source.animation_id } : {}),
     ...(source.campaign_id ? { campaign_id: source.campaign_id } : {}),
-    startDate,
-    start_date: startDate,
-    endDate,
-    end_date: endDate,
     game_type: readString(source.game_type, "scratcher"),
     type: readString(source.type, "standard"),
     access_mode: readString(source.access_mode, "public"),
@@ -485,13 +481,12 @@ export async function duplicateGameDocument(
     views: 0,
     favorites: 0,
     ...buildStatusPatch("brouillon"),
+    relaunch_workflow: true,
+    instant_winners_ready: false,
   };
 
   if (hasMainPrize && source.prize_value !== undefined && source.prize_value !== null) {
     payload.prize_value = source.prize_value;
-  }
-  if (source.prize_usage_deadline instanceof Timestamp) {
-    payload.prize_usage_deadline = source.prize_usage_deadline;
   }
 
   await setDoc(createdRef, payload);
@@ -507,10 +502,10 @@ export async function duplicateGameDocument(
     merchantId: merchantId || null,
     merchantName,
     animationId: readString(source.animation_id) || readString(source.campaign_id) || null,
-    startDate: startDate?.toDate().toISOString() ?? null,
-    endDate: endDate?.toDate().toISOString() ?? null,
-    startDateValue: startDate?.toMillis() ?? null,
-    endDateValue: endDate?.toMillis() ?? null,
+    startDate: null,
+    endDate: null,
+    startDateValue: null,
+    endDateValue: null,
     status: "brouillon",
     imageUrl,
     isPrivate: false,
@@ -534,6 +529,8 @@ export async function duplicateGameDocument(
       readBoolean(source.prohibited_for_minors, false),
     ),
     isFinalized: false,
+    isRelaunchWorkflow: true,
+    instantWinnersReady: false,
     hasWinner: false,
     mainPrizeWinnerId: null,
     drawStatus: null,

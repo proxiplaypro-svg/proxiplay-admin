@@ -139,6 +139,10 @@ export interface Game {
   mainPrizeImage: string | null;
   secondaryPrizes: GameSecondaryPrize[];
   restrictedToAdults: boolean;
+  /** A duplicated game follows the controlled relaunch workflow. */
+  isRelaunchWorkflow: boolean;
+  /** Set only after the saved configuration has its instant-winner calendar. */
+  instantWinnersReady: boolean;
   /** True once the main-prize draw has produced a real, irreversible
    * result (see main_prize_draw.js: hasWinner, mainPrizeWinner,
    * drawStatus, drawnAt are only ever written together, by the draw
