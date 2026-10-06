@@ -1,5 +1,5 @@
 import { httpsCallable } from "firebase/functions";
-import { collection, doc, getDoc, getDocs, type Timestamp } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where, type Timestamp } from "firebase/firestore";
 import { db } from "./client-app";
 import { canonicalFunctionsClient } from "./functions";
 
@@ -13,14 +13,16 @@ export type MerchantSubscriptionStatus =
   | string;
 
 export type AdminMerchantSubscriptionItem = {
-  enseigneId: string;
-  enseigneName: string;
+  merchantUserId: string;
+  merchantLabel: string;
+  enseigneNames: string[];
   offerId: string | null;
-  subscriptionStatus: MerchantSubscriptionStatus;
+  subscriptionStatus: MerchantSubscriptionStatus | "aucun_abonnement";
   currentPeriodEndLabel: string | null;
   cancelAtPeriodEnd: boolean;
   hasReferral: boolean;
-  createdAtLabel: string | null;
+  customOfferAmountHtLabel: string | null;
+  customOfferLabel: string | null;
 };
 
 export type MerchantReferralStatus =
@@ -32,8 +34,8 @@ export type MerchantReferralStatus =
   | "cancelled";
 
 export type AdminMerchantReferralItem = {
-  enseigneId: string;
-  enseigneName: string;
+  merchantUserId: string;
+  merchantLabel: string;
   inviterUserId: string | null;
   inviterLabel: string;
   code: string | null;
@@ -59,20 +61,8 @@ function formatCents(value: number | null | undefined): string | null {
   return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(value / 100);
 }
 
-async function getEnseigneNamesByIds(ids: Iterable<string>) {
+async function getUserLabelsByIds(ids: Iterable<string>) {
   const uniqueIds = [...new Set([...ids].filter(Boolean))];
-  const snapshots = await Promise.all(uniqueIds.map((id) => getDoc(doc(db, "enseignes", id))));
-  const namesById = new Map<string, string>();
-  snapshots.forEach((snapshot) => {
-    if (snapshot.exists()) {
-      namesById.set(snapshot.id, (snapshot.data().name as string | undefined) || snapshot.id);
-    }
-  });
-  return namesById;
-}
-
-async function getUserLabelsByPaths(paths: Iterable<string | null | undefined>) {
-  const uniqueIds = [...new Set([...paths].filter(Boolean).map((p) => (p as string).replace(/^users\//, "")))];
   const snapshots = await Promise.all(uniqueIds.map((id) => getDoc(doc(db, "users", id))));
   const labelsById = new Map<string, string>();
   snapshots.forEach((snapshot) => {
@@ -84,46 +74,77 @@ async function getUserLabelsByPaths(paths: Iterable<string | null | undefined>) 
   return labelsById;
 }
 
+async function getEnseigneNamesByOwner(merchantUserId: string): Promise<string[]> {
+  const ownerRef = doc(db, "users", merchantUserId);
+  const [byOwner, byOwnerId] = await Promise.all([
+    getDocs(query(collection(db, "enseignes"), where("owner", "==", ownerRef))),
+    getDocs(query(collection(db, "enseignes"), where("owner_id", "==", ownerRef))),
+  ]);
+  const namesById = new Map<string, string>();
+  [...byOwner.docs, ...byOwnerId.docs].forEach((d) => {
+    namesById.set(d.id, (d.data().name as string | undefined) || d.id);
+  });
+  return [...namesById.values()];
+}
+
+function pathToUid(path: string | null | undefined): string | null {
+  return path ? path.replace(/^users\//, "") : null;
+}
+
 export async function getMerchantSubscriptionsOverview(): Promise<AdminMerchantSubscriptionItem[]> {
-  const [subscriptionsSnap, referralsSnap] = await Promise.all([
+  const [subscriptionsSnap, referralsSnap, customOffersSnap] = await Promise.all([
     getDocs(collection(db, "merchant_subscriptions")),
     getDocs(collection(db, "merchant_referrals")),
+    getDocs(collection(db, "merchant_custom_offers")),
   ]);
-  const enseigneIdsWithReferral = new Set(referralsSnap.docs.map((d) => d.id));
-  const enseigneNamesById = await getEnseigneNamesByIds(subscriptionsSnap.docs.map((d) => d.id));
+  const merchantUserIdsWithReferral = new Set(referralsSnap.docs.map((d) => d.id));
+  const customOffersById = new Map(customOffersSnap.docs.map((d) => [d.id, d.data()]));
 
-  return subscriptionsSnap.docs.map((snapshot) => {
-    const data = snapshot.data();
+  // Union : un commercant avec un tarif negocie mais pas encore d'abonnement
+  // reste visible (l'Admin doit pouvoir suivre qu'il attend de payer).
+  const allMerchantUserIds = new Set([
+    ...subscriptionsSnap.docs.map((d) => d.id),
+    ...customOffersById.keys(),
+  ]);
+  const subscriptionsById = new Map(subscriptionsSnap.docs.map((d) => [d.id, d.data()]));
+
+  const merchantLabelsById = await getUserLabelsByIds(allMerchantUserIds);
+
+  return Promise.all([...allMerchantUserIds].map(async (merchantUserId) => {
+    const subscription = subscriptionsById.get(merchantUserId);
+    const customOffer = customOffersById.get(merchantUserId);
+    const enseigneNames = await getEnseigneNamesByOwner(merchantUserId);
     return {
-      enseigneId: snapshot.id,
-      enseigneName: enseigneNamesById.get(snapshot.id) || snapshot.id,
-      offerId: (data.offer_id as string | undefined) || null,
-      subscriptionStatus: (data.subscription_status as string | undefined) || "incomplete",
-      currentPeriodEndLabel: formatTimestamp(data.current_period_end as Timestamp | undefined),
-      cancelAtPeriodEnd: data.cancel_at_period_end === true,
-      hasReferral: enseigneIdsWithReferral.has(snapshot.id),
-      createdAtLabel: formatTimestamp(data.created_at as Timestamp | undefined),
+      merchantUserId,
+      merchantLabel: merchantLabelsById.get(merchantUserId) || merchantUserId,
+      enseigneNames,
+      offerId: (subscription?.offer_id as string | undefined) || null,
+      subscriptionStatus: (subscription?.subscription_status as string | undefined) || "aucun_abonnement",
+      currentPeriodEndLabel: formatTimestamp(subscription?.current_period_end as Timestamp | undefined),
+      cancelAtPeriodEnd: subscription?.cancel_at_period_end === true,
+      hasReferral: merchantUserIdsWithReferral.has(merchantUserId),
+      customOfferAmountHtLabel: formatCents(customOffer?.amount_ht_cents as number | undefined),
+      customOfferLabel: (customOffer?.label as string | undefined) || null,
     };
-  });
+  }));
 }
 
 export async function getMerchantReferralsOverview(): Promise<AdminMerchantReferralItem[]> {
   const referralsSnap = await getDocs(collection(db, "merchant_referrals"));
   const docs = referralsSnap.docs.map((snapshot) => ({ id: snapshot.id, data: snapshot.data() }));
 
-  const [enseigneNamesById, inviterLabelsById] = await Promise.all([
-    getEnseigneNamesByIds(docs.map((d) => d.id)),
-    getUserLabelsByPaths(docs.map((d) => (d.data.inviter_user_id as { path?: string } | undefined)?.path)),
+  const labelsById = await getUserLabelsByIds([
+    ...docs.map((d) => d.id),
+    ...docs.map((d) => pathToUid((d.data.inviter_user_id as { path?: string } | undefined)?.path)).filter(Boolean) as string[],
   ]);
 
   return docs.map(({ id, data }) => {
-    const inviterPath = (data.inviter_user_id as { path?: string } | undefined)?.path || null;
-    const inviterId = inviterPath ? inviterPath.replace(/^users\//, "") : null;
+    const inviterId = pathToUid((data.inviter_user_id as { path?: string } | undefined)?.path);
     return {
-      enseigneId: id,
-      enseigneName: enseigneNamesById.get(id) || id,
+      merchantUserId: id,
+      merchantLabel: labelsById.get(id) || id,
       inviterUserId: inviterId,
-      inviterLabel: inviterId ? inviterLabelsById.get(inviterId) || inviterId : "—",
+      inviterLabel: inviterId ? labelsById.get(inviterId) || inviterId : "—",
       code: (data.code as string | undefined) || null,
       status: (data.status as AdminMerchantReferralItem["status"]) || "linked",
       linkedAtLabel: formatTimestamp(data.linked_at as Timestamp | undefined),
@@ -135,26 +156,42 @@ export async function getMerchantReferralsOverview(): Promise<AdminMerchantRefer
   });
 }
 
-export async function approveMerchantReferral(enseigneId: string) {
-  const callable = httpsCallable<{ enseigneId: string }, { status: string }>(
+export async function approveMerchantReferral(merchantUserId: string) {
+  const callable = httpsCallable<{ merchantUserId: string }, { status: string }>(
     canonicalFunctionsClient,
     "adminApproveMerchantReferral",
   );
-  await callable({ enseigneId });
+  await callable({ merchantUserId });
 }
 
-export async function rejectMerchantReferral(enseigneId: string, reason: string) {
-  const callable = httpsCallable<{ enseigneId: string; reason: string }, { status: string }>(
+export async function rejectMerchantReferral(merchantUserId: string, reason: string) {
+  const callable = httpsCallable<{ merchantUserId: string; reason: string }, { status: string }>(
     canonicalFunctionsClient,
     "adminRejectMerchantReferral",
   );
-  await callable({ enseigneId, reason });
+  await callable({ merchantUserId, reason });
 }
 
-export async function markMerchantReferralPaid(enseigneId: string, paidReference: string) {
-  const callable = httpsCallable<{ enseigneId: string; paidReference: string }, { status: string }>(
+export async function markMerchantReferralPaid(merchantUserId: string, paidReference: string) {
+  const callable = httpsCallable<{ merchantUserId: string; paidReference: string }, { status: string }>(
     canonicalFunctionsClient,
     "adminMarkMerchantReferralPaid",
   );
-  await callable({ enseigneId, paidReference });
+  await callable({ merchantUserId, paidReference });
+}
+
+export async function setMerchantCustomOffer(merchantUserId: string, amountHtCents: number, label: string) {
+  const callable = httpsCallable<
+    { merchantUserId: string; amountHtCents: number; label: string },
+    { status: string }
+  >(canonicalFunctionsClient, "adminSetMerchantCustomOffer");
+  await callable({ merchantUserId, amountHtCents, label });
+}
+
+export async function removeMerchantCustomOffer(merchantUserId: string) {
+  const callable = httpsCallable<
+    { merchantUserId: string; amountHtCents: null },
+    { status: string }
+  >(canonicalFunctionsClient, "adminSetMerchantCustomOffer");
+  await callable({ merchantUserId, amountHtCents: null });
 }
