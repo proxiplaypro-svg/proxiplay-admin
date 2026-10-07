@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateAdCampaign } from "@/lib/admin/adCampaign";
+import {
+  adCampaignsOverlap,
+  createAdPlacementWrite,
+  getAdCampaignStatus,
+  readAdPlacement,
+  validateAdCampaign,
+} from "@/lib/admin/adCampaign";
 
 const validCampaign = {
   enabled: true,
@@ -49,4 +55,50 @@ test("allows a banner without opening-only frequency", () => {
     validateAdCampaign({ ...validCampaign, frequencyCapHours: "", requiresFrequencyCap: false }),
     null,
   );
+});
+
+function assertSaveThenReadPreservesCampaign(requiresFrequencyCap: boolean) {
+  const form = {
+    enabled: true,
+    imageUrl: "https://firebasestorage.googleapis.com/ads/campaign.png",
+    destinationUrl: "https://example.com/offre",
+    startDate: "2026-10-10",
+    endDate: "2026-10-20",
+    frequencyCapHours: requiresFrequencyCap ? "24" : "",
+    impressions: 12,
+    clicks: 3,
+  };
+
+  const written = createAdPlacementWrite(form, {
+    requiresFrequencyCap,
+    createTimestamp: (date) => ({ toDate: () => date }),
+  });
+  const reloaded = readAdPlacement({
+    ...written,
+    impressions: form.impressions,
+    clicks: form.clicks,
+  });
+
+  assert.deepEqual(reloaded, form);
+}
+
+test("save then reload preserves an opening campaign", () => {
+  assertSaveThenReadPreservesCampaign(true);
+});
+
+test("save then reload preserves a Home banner campaign", () => {
+  assertSaveThenReadPreservesCampaign(false);
+});
+
+test("campaign status distinguishes draft, scheduled, active, ended and disabled", () => {
+  const base = { ...validCampaign, id: "c", name: "Campagne", advertiser: "Annonceur", placement: "open" as const, sourceCampaignId: null, impressions: 0, clicks: 0, createdAt: null, updatedAt: null, enabled: true, published: true, status: "draft" as const };
+  assert.equal(getAdCampaignStatus({ ...base, startDate: "2026-10-20", endDate: "2026-10-30" }, new Date("2026-10-15")), "scheduled");
+  assert.equal(getAdCampaignStatus({ ...base, startDate: "2026-10-10", endDate: "2026-10-20" }, new Date("2026-10-15")), "active");
+  assert.equal(getAdCampaignStatus({ ...base, startDate: "2026-10-01", endDate: "2026-10-10" }, new Date("2026-10-15")), "ended");
+  assert.equal(getAdCampaignStatus({ ...base, published: false, status: "disabled" }, new Date("2026-10-15")), "disabled");
+});
+
+test("overlapping campaigns on one placement are detected", () => {
+  assert.equal(adCampaignsOverlap({ startDate: "2026-10-10", endDate: "2026-10-20" }, { startDate: "2026-10-19", endDate: "2026-10-30" }), true);
+  assert.equal(adCampaignsOverlap({ startDate: "2026-10-10", endDate: "2026-10-20" }, { startDate: "2026-10-20", endDate: "2026-10-30" }), false);
 });
