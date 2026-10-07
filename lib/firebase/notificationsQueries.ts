@@ -90,12 +90,18 @@ export type NotificationAudienceSnapshot = {
   segments: Record<NotificationSegmentId, number>;
 };
 
+// Les 5 types techniques valides serveur (voir
+// firebase/functions/notification_destination.js, source de verite).
+// "Accueil" et "Un ecran ProxiPlay" sont tous deux portes par "internal" --
+// seul destination_id change (voir INTERNAL_DESTINATION_OPTIONS ci-dessous).
+export type NotificationDestinationType = "none" | "game" | "merchant" | "internal" | "external_url";
+
 export type CreatePushNotificationInput = {
   title: string;
   message: string;
   imageUrl: string;
-  initialPageName: string;
-  parameterData: string;
+  destinationType: NotificationDestinationType;
+  destinationId: string;
   audienceMode: NotificationTabAudience;
   segmentId: NotificationSegmentId | "All";
   userUid: string;
@@ -116,6 +122,8 @@ type CreateAdminPushNotificationPayload = {
   targetUserGroup: string;
   userRefs: string[];
   scheduledTimeMs?: number;
+  destinationType: NotificationDestinationType;
+  destinationId: string;
 };
 
 type CreateAdminPushNotificationResult = {
@@ -364,6 +372,8 @@ export function buildCreateAdminPushNotificationPayload(input: CreatePushNotific
     targetDevice: target.target_audience,
     targetUserGroup: target.target_user_group,
     userRefs: target.user_refs ? [target.user_refs] : [],
+    destinationType: input.destinationType,
+    destinationId: input.destinationId.trim(),
     ...(scheduledTimeMs === undefined ? {} : { scheduledTimeMs }),
   };
 }
@@ -500,6 +510,36 @@ export async function getNotificationRecipientPushAvailability(userId: string) {
   return !tokens.empty;
 }
 
+// Validation client, en complement de la validation serveur (qui reste la
+// source de verite -- voir firebase/functions/notification_destination.js).
+// Permet d'afficher une erreur immediate dans le formulaire avant l'envoi.
+export function getNotificationDestinationValidationError(
+  destinationType: NotificationDestinationType,
+  destinationId: string,
+): string | null {
+  const id = destinationId.trim();
+
+  switch (destinationType) {
+    case "none":
+      return null;
+    case "game":
+      return id ? null : "Selectionne un jeu pour cette destination.";
+    case "merchant":
+      return id ? null : "Selectionne un commerce pour cette destination.";
+    case "internal":
+      return id ? null : "Selectionne un ecran ProxiPlay pour cette destination.";
+    case "external_url":
+      if (!id) return "Renseigne l URL de destination.";
+      try {
+        return new URL(id).protocol === "https:" ? null : "L URL doit commencer par https://.";
+      } catch {
+        return "L URL de destination est invalide.";
+      }
+    default:
+      return "Type de destination invalide.";
+  }
+}
+
 export async function createPushNotification(input: CreatePushNotificationInput) {
   await ensureNotificationsAuthenticated();
   const title = input.title.trim();
@@ -508,6 +548,14 @@ export async function createPushNotification(input: CreatePushNotificationInput)
 
   if (!title || !message) {
     throw new Error("Titre et message sont obligatoires.");
+  }
+
+  const destinationError = getNotificationDestinationValidationError(
+    input.destinationType,
+    input.destinationId,
+  );
+  if (destinationError) {
+    throw new Error(destinationError);
   }
 
   if (isMerchantSegment) {

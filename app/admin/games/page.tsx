@@ -13,6 +13,7 @@ import {
   query,
   startAfter,
   Timestamp,
+  updateDoc,
   where,
   type DocumentData,
   type DocumentReference,
@@ -27,7 +28,6 @@ import {
 import { GameEditModal } from "@/components/admin/jeux/GameEditModal";
 import { duplicateGame } from "@/lib/firebase/adminActions";
 import { db } from "@/lib/firebase/client-app";
-import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
 import { resolveHasMainPrize } from "@/lib/firebase/gamePrizeValidation";
 import {
   deriveGameFinalization,
@@ -68,6 +68,8 @@ type FirestoreGameDocument = {
   photo?: string;
   coverUrl?: string;
   visible_public?: boolean;
+  relaunch_workflow?: boolean;
+  instant_winners_ready?: boolean;
   isPrivate?: boolean;
   private?: boolean;
   sessionCount?: number | string;
@@ -448,6 +450,8 @@ function mapGameDocument(
     secondaryPrizes,
     restrictedToAdults: game.restrictedToAdults === true,
     accessMode: game.access_mode === "qr_only" ? "qr_only" : "public",
+    isRelaunchWorkflow: game.relaunch_workflow === true,
+    instantWinnersReady: game.instant_winners_ready === true,
     ...deriveGameFinalization(game),
   };
 }
@@ -695,6 +699,10 @@ function AdminGamesPageInner() {
   };
 
   const handleToggle = async (game: Game) => {
+    if (game.isRelaunchWorkflow && !game.instantWinnersReady) {
+      setError("Generez les lots instantanes avant de publier ce brouillon.");
+      return;
+    }
     const previousStatus = game.status;
     const nextStatus = game.status === "actif" || game.status === "prive" ? "brouillon" : "actif";
 
@@ -781,8 +789,10 @@ function AdminGamesPageInner() {
     // publier un jeu dont les lots secondaires configures n'ont pas de
     // calendrier d'instants garanti : elle reste en brouillon (non visible
     // des joueurs) tant que generateInstantWinnersForGame n'a pas reussi.
-    const isRelaunch = modalMode === "duplicate";
-    const draftStatus: Game["status"] = "brouillon";
+    const isRelaunch = selectedGame.isRelaunchWorkflow;
+    const hasInstantWinners = payload.secondaryPrizes.some(
+      (prize) => (Number.parseInt(prize.count, 10) || 0) > 0,
+    );
 
     try {
       const result = await updateGame({
@@ -790,51 +800,16 @@ function AdminGamesPageInner() {
         collectionName: selectedGame.collectionName,
         merchantCollectionName,
         ...payload,
-        status: isRelaunch ? draftStatus : payload.status,
+        status: isRelaunch && hasInstantWinners && !selectedGame.instantWinnersReady ? "brouillon" : payload.status,
         restrictedToAdults: payload.restrictedToAdults,
+        relaunchWorkflow: isRelaunch,
+        instantWinnersReady: isRelaunch
+          ? selectedGame.instantWinnersReady && payload.status === "actif"
+          : undefined,
       });
 
-      let effectiveStatus: Game["status"] = isRelaunch ? draftStatus : payload.status;
-
-      if (isRelaunch) {
-        const expectedInstantCount = payload.secondaryPrizes.reduce(
-          (total, prize) => total + Math.max(0, Number.parseInt(prize.count, 10) || 0),
-          0,
-        );
-
-        if (expectedInstantCount > 0) {
-          try {
-            const calendar = await generateInstantWinnersForGame(selectedGame.id);
-            const existingCount = calendar.existingCount ?? 0;
-            const createdCount = calendar.createdCount ?? 0;
-            if (
-              calendar.ok !== true ||
-              calendar.desiredCount !== expectedInstantCount ||
-              !Number.isSafeInteger(existingCount) ||
-              !Number.isSafeInteger(createdCount) ||
-              existingCount < 0 ||
-              createdCount < 0 ||
-              existingCount + createdCount !== expectedInstantCount
-            ) {
-              throw new Error("Le calendrier des gains instantanes est incoherent.");
-            }
-          } catch (instantError) {
-            console.error(instantError);
-            setModalFeedback(
-              "Impossible de préparer les gains instantanés. Le jeu reste en brouillon, non publié. Réessayez.",
-            );
-            setModalFeedbackTone("error");
-            return;
-          }
-        }
-
-        await updateGameStatus({
-          gameId: selectedGame.id,
-          collectionName: selectedGame.collectionName,
-          status: "actif",
-        });
-        effectiveStatus = "actif";
-      }
+      let effectiveStatus: Game["status"] =
+        isRelaunch && hasInstantWinners && !selectedGame.instantWinnersReady ? "brouillon" : payload.status;
 
       const updatedGame: Game = {
         ...selectedGame,
@@ -858,6 +833,10 @@ function AdminGamesPageInner() {
         mainPrizeImage: result.mainPrizeImage,
         secondaryPrizes: result.secondaryPrizes,
         restrictedToAdults: payload.restrictedToAdults,
+        isRelaunchWorkflow: isRelaunch,
+        instantWinnersReady: isRelaunch
+          ? selectedGame.instantWinnersReady && payload.status === "actif"
+          : selectedGame.instantWinnersReady,
       };
 
       setGames((current) =>
@@ -1049,7 +1028,11 @@ function AdminGamesPageInner() {
         animations={animations}
         open={selectedGame !== null}
         saving={modalSaving}
-        submitLabel={modalMode === "duplicate" ? "Relancer le jeu" : "Enregistrer"}
+        submitLabel={selectedGame?.isRelaunchWorkflow
+          ? selectedGame.instantWinnersReady ? "Publier le jeu" : "Enregistrer le brouillon"
+          : "Enregistrer"}
+        relaunchWorkflow={selectedGame?.isRelaunchWorkflow}
+        instantWinnersReady={selectedGame?.instantWinnersReady}
         feedback={modalFeedback}
         feedbackTone={modalFeedbackTone}
         onClose={() => {
@@ -1061,6 +1044,17 @@ function AdminGamesPageInner() {
           }
         }}
         onSave={handleSave}
+        onInstantWinnersGenerated={async () => {
+          if (!selectedGame) return;
+          await updateDoc(doc(db, selectedGame.collectionName, selectedGame.id), {
+            instant_winners_ready: true,
+          });
+          const updated = { ...selectedGame, instantWinnersReady: true };
+          setSelectedGame(updated);
+          setGames((current) => current.map((game) => game.id === updated.id ? updated : game));
+          setModalFeedback("Lots instantanes generes. Controlez le brouillon puis publiez explicitement le jeu.");
+          setModalFeedbackTone("success");
+        }}
         onDelete={handleDelete}
       />
     </section>

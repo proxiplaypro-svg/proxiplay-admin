@@ -56,6 +56,8 @@ type FirestoreGameDocument = {
   photo?: string;
   coverUrl?: string;
   visible_public?: boolean;
+  relaunch_workflow?: boolean;
+  instant_winners_ready?: boolean;
   isPrivate?: boolean;
   private?: boolean;
   sessionCount?: number | string;
@@ -133,6 +135,8 @@ export type UpdateGameInput = {
   secondaryPrizes: GameSecondaryPrize[];
   secondaryPrizeImageFiles?: Array<File | null>;
   restrictedToAdults: boolean;
+  relaunchWorkflow?: boolean;
+  instantWinnersReady?: boolean;
 };
 
 export type DuplicateGameInput = {
@@ -492,6 +496,8 @@ export function mapGameDocument(
       game.prohibited_for_minors ?? game.restrictedToAdults,
       false,
     ),
+    isRelaunchWorkflow: game.relaunch_workflow === true,
+    instantWinnersReady: game.instant_winners_ready === true,
     ...finalization,
   };
 }
@@ -673,6 +679,12 @@ function buildGamePatch(
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
+    ...(input.relaunchWorkflow === undefined
+      ? {}
+      : { relaunch_workflow: input.relaunchWorkflow }),
+    ...(input.instantWinnersReady === undefined
+      ? {}
+      : { instant_winners_ready: input.instantWinnersReady }),
     ...buildStatusPatch(input.status),
   };
 }
@@ -1039,6 +1051,8 @@ export async function createGame(
       })),
       accessMode: input.accessMode,
       restrictedToAdults: input.restrictedToAdults,
+      isRelaunchWorkflow: false,
+      instantWinnersReady: false,
       isFinalized: false,
       hasWinner: false,
       mainPrizeWinnerId: null,
@@ -1062,7 +1076,6 @@ export async function duplicateGameDocument(
   }
 
   const now = new Date();
-  const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const merchantRef = getMerchantReference(merchantCollectionName, original.merchantId);
   let ownerRef: DocumentReference | null = null;
 
@@ -1096,10 +1109,8 @@ export async function duplicateGameDocument(
     enseigne_name: original.merchantName,
     enseigne_id: merchantRef,
     merchantRef,
-    startDate: Timestamp.fromDate(now),
-    start_date: Timestamp.fromDate(now),
-    endDate: Timestamp.fromDate(endDate),
-    end_date: Timestamp.fromDate(endDate),
+    // A relaunch starts with a new calendar: dates and prize-use deadline
+    // are intentionally not inherited from the preceding edition.
     game_type: "scratcher",
     created_time: Timestamp.fromDate(now),
     hasWinner: false,
@@ -1127,6 +1138,8 @@ export async function duplicateGameDocument(
     restrictedToAdults: original.restrictedToAdults,
     access_mode: original.accessMode,
     ...buildStatusPatch("brouillon"),
+    relaunch_workflow: true,
+    instant_winners_ready: false,
   };
 
   const createdRef = await addDoc(collection(db, input.collectionName), payload);
@@ -1139,10 +1152,10 @@ export async function duplicateGameDocument(
       merchantId: original.merchantId,
       merchantName: original.merchantName,
       animationId: original.animationId,
-      startDate: now.toISOString(),
-      endDate: endDate.toISOString(),
-      startDateValue: now.getTime(),
-      endDateValue: endDate.getTime(),
+      startDate: null,
+      endDate: null,
+      startDateValue: null,
+      endDateValue: null,
       status: "brouillon",
       imageUrl: original.imageUrl,
       isPrivate: false,
@@ -1157,6 +1170,8 @@ export async function duplicateGameDocument(
       secondaryPrizes: original.secondaryPrizes.map((prize) => ({ ...prize })),
       accessMode: original.accessMode,
       restrictedToAdults: original.restrictedToAdults,
+      isRelaunchWorkflow: true,
+      instantWinnersReady: false,
       isFinalized: false,
       hasWinner: false,
       mainPrizeWinnerId: null,

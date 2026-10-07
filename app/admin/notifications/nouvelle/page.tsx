@@ -4,14 +4,50 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  type NotificationDestinationType,
   type NotificationRecipientUser,
   type NotificationSegmentId,
   createPushNotification,
+  getNotificationDestinationValidationError,
   getNotificationsAudienceSnapshot,
   getNotificationsErrorMessage,
   getNotificationRecipientPushAvailability,
   searchNotificationUsers,
 } from "@/lib/firebase/notificationsQueries";
+import { getGameMerchantOptions, getGamesAdminData } from "@/lib/firebase/gamesQueries";
+import type { Game, GameMerchantOption } from "@/types/dashboard";
+
+// Choix presente a l'Admin ("Au clic, ouvrir"). "Accueil" et "Un ecran
+// ProxiPlay" portent tous deux destination_type "internal" cote backend --
+// seul destination_id change (voir INTERNAL_SCREEN_OPTIONS plus bas).
+type DestinationChoice = "home" | "game" | "merchant" | "internal" | "external_url" | "none";
+
+const DESTINATION_CHOICES: Array<{ id: DestinationChoice; label: string }> = [
+  { id: "home", label: "Accueil ProxiPlay" },
+  { id: "game", label: "Un jeu" },
+  { id: "merchant", label: "Un commerce" },
+  { id: "internal", label: "Un ecran ProxiPlay" },
+  { id: "external_url", label: "Un lien externe" },
+  { id: "none", label: "Rien de particulier" },
+];
+
+// Whitelist des ecrans internes (hors Accueil, deja son propre choix).
+// Doit rester synchronisee avec kInternalDestinations cote backend
+// (firebase/functions/notification_destination.js).
+const INTERNAL_SCREEN_OPTIONS = [
+  { id: "favoris", label: "Favoris" },
+  { id: "profil", label: "Profil" },
+  { id: "gagnants", label: "Mes lots / gagnants" },
+  { id: "parrainage_joueur", label: "Parrainage joueur" },
+  { id: "parrainage_commercant", label: "Parrainage commercant" },
+];
+
+const GAME_STATUS_LABELS: Record<string, string> = {
+  actif: "Actif",
+  expire: "Expire",
+  brouillon: "Brouillon",
+  prive: "Prive",
+};
 
 const SEGMENT_OPTIONS: Array<{
   id: NotificationSegmentId;
@@ -74,7 +110,16 @@ export default function NewNotificationPage() {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [imageUrl, setImageUrl] = useState("");
-  const [initialPageName, setInitialPageName] = useState("");
+  const [destinationChoice, setDestinationChoice] = useState<DestinationChoice>("none");
+  const [destinationGameId, setDestinationGameId] = useState("");
+  const [destinationGameSearch, setDestinationGameSearch] = useState("");
+  const [destinationMerchantId, setDestinationMerchantId] = useState("");
+  const [destinationMerchantSearch, setDestinationMerchantSearch] = useState("");
+  const [destinationInternalKey, setDestinationInternalKey] = useState(INTERNAL_SCREEN_OPTIONS[0].id);
+  const [destinationUrl, setDestinationUrl] = useState("");
+  const [games, setGames] = useState<Game[]>([]);
+  const [merchants, setMerchants] = useState<GameMerchantOption[]>([]);
+  const [loadingDestinationOptions, setLoadingDestinationOptions] = useState(false);
   const [audienceMode, setAudienceMode] = useState<"all" | "segment" | "single">("all");
   const [segmentId, setSegmentId] = useState<NotificationSegmentId>("ios_inactifs_j7");
   const [selectedUser, setSelectedUser] = useState<NotificationRecipientUser | null>(null);
@@ -131,6 +176,46 @@ export default function NewNotificationPage() {
   }, []);
 
   useEffect(() => {
+    if (destinationChoice !== "game" && destinationChoice !== "merchant") {
+      return;
+    }
+    if (destinationChoice === "game" && games.length > 0) {
+      return;
+    }
+    if (destinationChoice === "merchant" && merchants.length > 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      setLoadingDestinationOptions(true);
+      try {
+        if (destinationChoice === "game") {
+          const data = await getGamesAdminData();
+          if (!cancelled) setGames(data.games);
+        } else {
+          const data = await getGameMerchantOptions();
+          if (!cancelled) setMerchants(data.merchants);
+        }
+      } catch (fetchError) {
+        if (!cancelled) {
+          console.error(fetchError);
+          setFeedback({ tone: "error", text: getNotificationsErrorMessage(fetchError) });
+        }
+      } finally {
+        if (!cancelled) setLoadingDestinationOptions(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationChoice, games.length, merchants.length]);
+
+  useEffect(() => {
     if (audienceMode !== "single" || selectedUser || userSearch.trim().length < 2) {
       setSearchResults([]);
       setSearchError(null);
@@ -179,6 +264,84 @@ export default function NewNotificationPage() {
     return new Date(`${scheduledDate}T${scheduledTime}:00`);
   }, [scheduleMode, scheduledDate, scheduledTime]);
 
+  const filteredGames = useMemo(() => {
+    const normalized = destinationGameSearch.trim().toLowerCase();
+    const pool = normalized
+      ? games.filter(
+          (game) =>
+            game.title.toLowerCase().includes(normalized) ||
+            game.merchantName.toLowerCase().includes(normalized),
+        )
+      : games;
+    return pool.slice(0, 20);
+  }, [games, destinationGameSearch]);
+
+  const filteredMerchants = useMemo(() => {
+    const normalized = destinationMerchantSearch.trim().toLowerCase();
+    const pool = normalized
+      ? merchants.filter((merchant) => merchant.name.toLowerCase().includes(normalized))
+      : merchants;
+    return pool.slice(0, 20);
+  }, [merchants, destinationMerchantSearch]);
+
+  const selectedDestinationGame = games.find((game) => game.id === destinationGameId) ?? null;
+  const selectedDestinationMerchant =
+    merchants.find((merchant) => merchant.id === destinationMerchantId) ?? null;
+
+  const { destinationType, destinationId, destinationSummaryLabel } = useMemo((): {
+    destinationType: NotificationDestinationType;
+    destinationId: string;
+    destinationSummaryLabel: string;
+  } => {
+    switch (destinationChoice) {
+      case "home":
+        return { destinationType: "internal", destinationId: "home", destinationSummaryLabel: "Accueil ProxiPlay" };
+      case "game":
+        return {
+          destinationType: "game",
+          destinationId: destinationGameId,
+          destinationSummaryLabel: selectedDestinationGame
+            ? `Jeu : ${selectedDestinationGame.title} (${selectedDestinationGame.merchantName})`
+            : "Jeu : aucun selectionne",
+        };
+      case "merchant":
+        return {
+          destinationType: "merchant",
+          destinationId: destinationMerchantId,
+          destinationSummaryLabel: selectedDestinationMerchant
+            ? `Commerce : ${selectedDestinationMerchant.name}`
+            : "Commerce : aucun selectionne",
+        };
+      case "internal": {
+        const option = INTERNAL_SCREEN_OPTIONS.find((item) => item.id === destinationInternalKey);
+        return {
+          destinationType: "internal",
+          destinationId: destinationInternalKey,
+          destinationSummaryLabel: option ? `Ecran : ${option.label}` : "Ecran : aucun selectionne",
+        };
+      }
+      case "external_url":
+        return {
+          destinationType: "external_url",
+          destinationId: destinationUrl,
+          destinationSummaryLabel: destinationUrl.trim() ? `Lien : ${destinationUrl.trim()}` : "Lien : aucune URL",
+        };
+      case "none":
+      default:
+        return { destinationType: "none", destinationId: "", destinationSummaryLabel: "Ouverture normale de l application" };
+    }
+  }, [
+    destinationChoice,
+    destinationGameId,
+    destinationMerchantId,
+    destinationInternalKey,
+    destinationUrl,
+    selectedDestinationGame,
+    selectedDestinationMerchant,
+  ]);
+
+  const destinationValidationError = getNotificationDestinationValidationError(destinationType, destinationId);
+
   const recipientsCount = useMemo(() => {
     if (audienceMode === "segment") {
       return segmentCounts[segmentId] ?? 0;
@@ -224,6 +387,11 @@ export default function NewNotificationPage() {
       return;
     }
 
+    if (destinationValidationError) {
+      setFeedback({ tone: "error", text: destinationValidationError });
+      return;
+    }
+
     setSubmitting(true);
     setFeedback(null);
 
@@ -232,8 +400,8 @@ export default function NewNotificationPage() {
         title,
         message,
         imageUrl,
-        initialPageName,
-        parameterData: "",
+        destinationType,
+        destinationId,
         audienceMode,
         segmentId: audienceMode === "segment" ? segmentId : "All",
         userUid: selectedUser?.id ?? "",
@@ -320,15 +488,169 @@ export default function NewNotificationPage() {
                 />
               </label>
 
-              <label className="grid gap-2 text-[12px] text-[#666666]">
-                <span>Page de destination</span>
+            </div>
+          </section>
+
+          <section className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
+            <h2 className="text-[16px] font-medium text-[#1A1A1A]">Au clic, ouvrir</h2>
+            <div className="mt-4 grid gap-4">
+              <select
+                value={destinationChoice}
+                onChange={(event) => setDestinationChoice(event.target.value as DestinationChoice)}
+                className="min-h-[44px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1A1A1A] outline-none transition focus:border-[#C0DD97] focus:bg-white"
+              >
+                {DESTINATION_CHOICES.map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+
+              {destinationChoice === "game" ? (
+                <div className="grid gap-2">
+                  <input
+                    value={destinationGameSearch}
+                    onChange={(event) => {
+                      setDestinationGameSearch(event.target.value);
+                      setDestinationGameId("");
+                    }}
+                    placeholder="Rechercher un jeu par titre ou commerce"
+                    className="min-h-[44px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1A1A1A] outline-none transition placeholder:text-[#999999] focus:border-[#C0DD97] focus:bg-white"
+                  />
+                  {loadingDestinationOptions ? (
+                    <p className="text-[12px] text-[#666666]">Chargement des jeux...</p>
+                  ) : selectedDestinationGame ? (
+                    <div className="flex items-center justify-between rounded-[10px] border border-[#E8E8E4] bg-[#FCFCFB] p-3 text-[12.5px]">
+                      <div>
+                        <p className="font-medium text-[#1A1A1A]">{selectedDestinationGame.title}</p>
+                        <p className="mt-1 text-[#999999]">
+                          {selectedDestinationGame.merchantName} ·{" "}
+                          {GAME_STATUS_LABELS[selectedDestinationGame.status] ?? selectedDestinationGame.status}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDestinationGameId("");
+                          setDestinationGameSearch("");
+                        }}
+                        className="text-[11px] text-[#A32D2D]"
+                      >
+                        Changer
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="max-h-[220px] overflow-y-auto rounded-[10px] border border-[#F0F0EC] bg-[#FCFCFB]">
+                      {filteredGames.length === 0 ? (
+                        <p className="px-4 py-3 text-[12px] text-[#666666]">Aucun jeu trouve.</p>
+                      ) : (
+                        filteredGames.map((game) => (
+                          <button
+                            key={game.id}
+                            type="button"
+                            onClick={() => {
+                              setDestinationGameId(game.id);
+                              setDestinationGameSearch(`${game.title} — ${game.merchantName}`);
+                            }}
+                            className="flex w-full flex-col items-start border-b border-[#F0F0EC] px-4 py-3 text-left last:border-b-0 hover:bg-[#FAFAF8]"
+                          >
+                            <span className="text-[12.5px] font-medium text-[#1A1A1A]">{game.title}</span>
+                            <span className="text-[11px] text-[#999999]">
+                              {game.merchantName} · {GAME_STATUS_LABELS[game.status] ?? game.status}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {destinationChoice === "merchant" ? (
+                <div className="grid gap-2">
+                  <input
+                    value={destinationMerchantSearch}
+                    onChange={(event) => {
+                      setDestinationMerchantSearch(event.target.value);
+                      setDestinationMerchantId("");
+                    }}
+                    placeholder="Rechercher un commerce"
+                    className="min-h-[44px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1A1A1A] outline-none transition placeholder:text-[#999999] focus:border-[#C0DD97] focus:bg-white"
+                  />
+                  {loadingDestinationOptions ? (
+                    <p className="text-[12px] text-[#666666]">Chargement des commerces...</p>
+                  ) : selectedDestinationMerchant ? (
+                    <div className="flex items-center justify-between rounded-[10px] border border-[#E8E8E4] bg-[#FCFCFB] p-3 text-[12.5px]">
+                      <p className="font-medium text-[#1A1A1A]">{selectedDestinationMerchant.name}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDestinationMerchantId("");
+                          setDestinationMerchantSearch("");
+                        }}
+                        className="text-[11px] text-[#A32D2D]"
+                      >
+                        Changer
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="max-h-[220px] overflow-y-auto rounded-[10px] border border-[#F0F0EC] bg-[#FCFCFB]">
+                      {filteredMerchants.length === 0 ? (
+                        <p className="px-4 py-3 text-[12px] text-[#666666]">Aucun commerce trouve.</p>
+                      ) : (
+                        filteredMerchants.map((merchant) => (
+                          <button
+                            key={merchant.id}
+                            type="button"
+                            disabled={merchant.collectionName !== "enseignes"}
+                            onClick={() => {
+                              setDestinationMerchantId(merchant.id);
+                              setDestinationMerchantSearch(merchant.name);
+                            }}
+                            className="flex w-full items-center justify-between border-b border-[#F0F0EC] px-4 py-3 text-left last:border-b-0 hover:bg-[#FAFAF8] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <span className="text-[12.5px] font-medium text-[#1A1A1A]">{merchant.name}</span>
+                            {merchant.collectionName !== "enseignes" ? (
+                              <span className="text-[11px] text-[#999999]">Indisponible</span>
+                            ) : null}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {destinationChoice === "internal" ? (
+                <select
+                  value={destinationInternalKey}
+                  onChange={(event) => setDestinationInternalKey(event.target.value)}
+                  className="min-h-[44px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1A1A1A] outline-none transition focus:border-[#C0DD97] focus:bg-white"
+                >
+                  {INTERNAL_SCREEN_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+
+              {destinationChoice === "external_url" ? (
                 <input
-                  value={initialPageName}
-                  onChange={(event) => setInitialPageName(event.target.value)}
-                  placeholder="ex: HomePage, GamePage"
+                  value={destinationUrl}
+                  onChange={(event) => setDestinationUrl(event.target.value)}
+                  placeholder="https://..."
                   className="min-h-[44px] rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1A1A1A] outline-none transition placeholder:text-[#999999] focus:border-[#C0DD97] focus:bg-white"
                 />
-              </label>
+              ) : null}
+
+              <div className="rounded-[10px] border border-[#F0F0EC] bg-[#FCFCFB] px-4 py-3 text-[12.5px] text-[#666666]">
+                <span className="text-[11px] uppercase tracking-[0.06em] text-[#999999]">Destination</span>
+                <p className="mt-1 font-medium text-[#1A1A1A]">{destinationSummaryLabel}</p>
+                {destinationValidationError ? (
+                  <p className="mt-1 text-[#A32D2D]">{destinationValidationError}</p>
+                ) : null}
+              </div>
             </div>
           </section>
 
@@ -575,6 +897,10 @@ export default function NewNotificationPage() {
                         ? selectedUser?.displayName ?? "Aucun joueur"
                         : "Tous"}
                   </strong>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Au clic</span>
+                  <strong className="text-right text-[#1A1A1A]">{destinationSummaryLabel}</strong>
                 </div>
               </div>
               <button

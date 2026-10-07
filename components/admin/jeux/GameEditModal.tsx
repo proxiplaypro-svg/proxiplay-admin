@@ -46,10 +46,13 @@ type GameEditModalProps = {
   open: boolean;
   saving: boolean;
   submitLabel?: string;
+  relaunchWorkflow?: boolean;
+  instantWinnersReady?: boolean;
   feedback: string | null;
   feedbackTone: "success" | "error" | null;
   onClose: () => void;
   onSave: (payload: SavePayload) => Promise<void>;
+  onInstantWinnersGenerated?: () => Promise<void>;
   onDelete?: (game: Game) => Promise<void>;
 };
 
@@ -286,10 +289,13 @@ export function GameEditModal({
   open,
   saving,
   submitLabel = "Enregistrer",
+  relaunchWorkflow = false,
+  instantWinnersReady = false,
   feedback,
   feedbackTone,
   onClose,
   onSave,
+  onInstantWinnersGenerated,
   onDelete,
 }: GameEditModalProps) {
   const [generalForm, setGeneralForm] = useState<GeneralFormState>(() => buildInitialGeneralForm(game));
@@ -300,7 +306,9 @@ export function GameEditModal({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [backfillLoading, setBackfillLoading] = useState(false);
+  const generationLockRef = useRef(false);
   const [backfillFeedback, setBackfillFeedback] = useState<BackfillFeedback | null>(null);
+  const [formDirty, setFormDirty] = useState(false);
   // Un jeu deja finalise (vrai tirage effectue, voir Game.isFinalized) ne
   // doit plus jamais pouvoir redevenir actif/visible sur ce meme document
   // -- l'incident production "Memphis" (instant_winners et participants
@@ -320,6 +328,7 @@ export function GameEditModal({
       setDeleteConfirm(false);
       setBackfillLoading(false);
       setBackfillFeedback(null);
+      setFormDirty(false);
     }
   }, [game, open]);
 
@@ -374,14 +383,17 @@ export function GameEditModal({
   });
 
   const updateGeneralForm = <T extends keyof GeneralFormState>(key: T, value: GeneralFormState[T]) => {
+    setFormDirty(true);
     setGeneralForm((current) => ({ ...current, [key]: value }));
   };
 
   const updateMainPrizeForm = <T extends keyof MainPrizeFormState>(key: T, value: MainPrizeFormState[T]) => {
+    setFormDirty(true);
     setMainPrizeForm((current) => ({ ...current, [key]: value }));
   };
 
   const updateSecondaryPrize = (prizeId: string, updater: (current: SecondaryPrizeFormItem) => SecondaryPrizeFormItem) => {
+    setFormDirty(true);
     setSecondaryPrizes((current) => current.map((prize) => (prize.id === prizeId ? updater(prize) : prize)));
   };
 
@@ -402,6 +414,8 @@ export function GameEditModal({
   };
 
   const runGenerateInstantWinners = async () => {
+    if (formDirty || generationLockRef.current) return;
+    generationLockRef.current = true;
     setBackfillLoading(true);
     setBackfillFeedback(null);
 
@@ -409,6 +423,13 @@ export function GameEditModal({
       const result = await generateInstantWinnersForGame(game.id);
       const createdCount = typeof result?.createdCount === "number" ? result.createdCount : 0;
       const existingCount = typeof result?.existingCount === "number" ? result.existingCount : 0;
+
+      const desiredCount = typeof result?.desiredCount === "number" ? result.desiredCount : null;
+      if (result?.ok !== true || desiredCount === null || createdCount < 0 || existingCount < 0 || createdCount + existingCount !== desiredCount) {
+        throw new Error("La reponse de generation des lots instantanes est incoherente.");
+      }
+
+      await onInstantWinnersGenerated?.();
 
       if (createdCount > 0) {
         setBackfillFeedback({
@@ -431,6 +452,7 @@ export function GameEditModal({
         message: getBackfillErrorMessage(backfillError),
       });
     } finally {
+      generationLockRef.current = false;
       setBackfillLoading(false);
     }
   };
@@ -513,6 +535,27 @@ export function GameEditModal({
     if (!generalForm.title.trim()) {
       setValidationError("Le titre du jeu est obligatoire.");
       return;
+    }
+
+    const hasInstantWinners = secondaryPrizes.some(
+      (prize) => (parsePrizeCount(prize.count) ?? 0) > 0,
+    );
+    const isPublishingRelaunch = relaunchWorkflow && !formDirty && (!hasInstantWinners || instantWinnersReady);
+    if (isPublishingRelaunch) {
+      if (!generalForm.startDate || !generalForm.endDate) {
+        setValidationError("Les dates de debut et de fin sont obligatoires avant publication.");
+        return;
+      }
+      const start = new Date(`${generalForm.startDate}T00:00:00`);
+      const end = new Date(`${generalForm.endDate}T23:59:59`);
+      if (start.getTime() >= end.getTime()) {
+        setValidationError("La date de debut doit etre anterieure a la date de fin.");
+        return;
+      }
+      if (end.getTime() <= Date.now()) {
+        setValidationError("La date de fin doit etre dans le futur avant publication.");
+        return;
+      }
     }
 
     if (
@@ -612,7 +655,9 @@ export function GameEditModal({
       animationId: generalForm.animationId || null,
       startDate: normalizeDate(generalForm.startDate),
       endDate: normalizeDate(generalForm.endDate),
-      status: generalForm.status,
+      status: relaunchWorkflow
+        ? (!hasInstantWinners || instantWinnersReady) && !formDirty ? "actif" : "brouillon"
+        : generalForm.status,
       imageUrl: generalForm.imageUrl.trim() || null,
       imageFile: generalForm.imageFile,
       hasMainPrize: mainPrizeForm.hasMainPrize,
@@ -749,8 +794,8 @@ export function GameEditModal({
                       className={inputClassName}
                       value={generalForm.status}
                       onChange={(event) => updateGeneralForm("status", event.target.value as GameStatus)}
-                      disabled={isFinalized}
-                      title={isFinalized ? "Jeu cloture : utilisez Dupliquer pour une nouvelle edition." : undefined}
+                      disabled={isFinalized || relaunchWorkflow}
+                      title={isFinalized ? "Jeu cloture : utilisez Dupliquer pour une nouvelle edition." : relaunchWorkflow ? "La publication est disponible apres la generation controlee des gains instantanes." : undefined}
                     >
                       <option value="actif">Actif</option>
                       <option value="brouillon">Brouillon</option>
@@ -783,7 +828,10 @@ export function GameEditModal({
                       type="date"
                       min={generalForm.endDate || undefined}
                       value={prizeUsageDeadline}
-                      onChange={(event) => setPrizeUsageDeadline(event.target.value)}
+                      onChange={(event) => {
+                        setFormDirty(true);
+                        setPrizeUsageDeadline(event.target.value);
+                      }}
                       disabled={saving || deadlineLoading}
                     />
                     <span className="text-[11px] text-[#666666]">
@@ -882,7 +930,10 @@ export function GameEditModal({
                 <button
                   type="button"
                   className="rounded-[8px] border border-[#639922] bg-[#639922] px-3 py-2 text-[11px] font-medium text-white"
-                  onClick={() => setSecondaryPrizes((current) => [...current, createEmptySecondaryPrize()])}
+                  onClick={() => {
+                    setFormDirty(true);
+                    setSecondaryPrizes((current) => [...current, createEmptySecondaryPrize()]);
+                  }}
                   disabled={saving}
                 >
                   Ajouter un lot secondaire
@@ -914,7 +965,10 @@ export function GameEditModal({
                       <button
                         type="button"
                         className="rounded-[8px] border border-[#F09595] bg-white px-3 py-2 text-[11px] font-medium text-[#A32D2D]"
-                        onClick={() => setSecondaryPrizes((current) => current.filter((item) => item.id !== prize.id))}
+                        onClick={() => {
+                          setFormDirty(true);
+                          setSecondaryPrizes((current) => current.filter((item) => item.id !== prize.id));
+                        }}
                         disabled={saving}
                       >
                         Supprimer
@@ -945,11 +999,16 @@ export function GameEditModal({
                       type="button"
                       className="rounded-[8px] border border-[#185FA5] bg-white px-3 py-2 text-[11px] font-medium text-[#185FA5] hover:bg-[#F5FAFE] disabled:cursor-not-allowed disabled:opacity-60"
                       onClick={() => void runGenerateInstantWinners()}
-                      disabled={saving || backfillLoading}
+                      disabled={saving || backfillLoading || formDirty}
                     >
                       {backfillLoading ? "Creation..." : "Generer les lots instantanes"}
                     </button>
                   </div>
+                  {formDirty ? (
+                    <p className="text-[11px] text-[#8A5A1E]">
+                      Enregistrez d&apos;abord les modifications avant de generer les lots instantanes.
+                    </p>
+                  ) : null}
                   {backfillFeedback ? (
                     <div
                       className={`rounded-[8px] border px-3 py-3 text-[12px] ${
