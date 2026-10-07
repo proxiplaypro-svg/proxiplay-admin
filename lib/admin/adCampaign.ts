@@ -184,8 +184,8 @@ export function validateAdCampaign(input: AdCampaignInput): string | null {
 
   if (input.requiresFrequencyCap && input.frequencyCapHours.trim()) {
     const frequency = Number(input.frequencyCapHours);
-    if (!Number.isInteger(frequency) || frequency <= 0) {
-      return "La fréquence doit être un nombre d’heures positif.";
+    if (!Number.isInteger(frequency) || frequency < 0) {
+      return "La fréquence doit être un nombre d’heures positif ou nul.";
     }
   }
 

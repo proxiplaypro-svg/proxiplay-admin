@@ -37,10 +37,17 @@ test("rejects an invalid click destination", () => {
   );
 });
 
-test("rejects a non-positive opening frequency", () => {
+test("accepts a zero opening frequency for every app opening", () => {
   assert.equal(
     validateAdCampaign({ ...validCampaign, frequencyCapHours: "0" }),
-    "La fréquence doit être un nombre d’heures positif.",
+    null,
+  );
+});
+
+test("rejects a negative opening frequency", () => {
+  assert.equal(
+    validateAdCampaign({ ...validCampaign, frequencyCapHours: "-1" }),
+    "La fréquence doit être un nombre d’heures positif ou nul.",
   );
 });
 

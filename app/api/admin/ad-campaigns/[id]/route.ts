@@ -68,7 +68,7 @@ function mergeCampaign(current: CampaignData, body: Record<string, unknown>): Ca
     destination_url: body.destination_url === undefined ? current.destination_url : text(body.destination_url),
   };
   if (!candidate.name || !candidate.advertiser || !candidate.image_url ||
-    (candidate.placement === "open" && (!Number.isInteger(frequency) || (frequency ?? 0) <= 0))) return null;
+    (candidate.placement === "open" && (!Number.isInteger(frequency) || (frequency ?? -1) < 0))) return null;
   if (candidate.placement === "home_banner" && frequency !== null) return null;
   if (candidate.destination_url) {
     try { const url = new URL(candidate.destination_url); if (!["http:", "https:"].includes(url.protocol)) return null; } catch { return null; }
