@@ -163,3 +163,44 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "Impossible de modifier la campagne publicitaire." }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await assertIsAdminRequest(request);
+    const { id } = await params;
+    const db = getAdminDb();
+    const result = await db.runTransaction(async (transaction) => {
+      const campaignRef = db.collection("ad_campaigns").doc(id);
+      const openProjectionRef = db.collection("ads").doc("open");
+      const homeBannerProjectionRef = db.collection("ads").doc("home_banner");
+      const [campaignSnapshot, openProjection, homeBannerProjection] = await Promise.all([
+        transaction.get(campaignRef),
+        transaction.get(openProjectionRef),
+        transaction.get(homeBannerProjectionRef),
+      ]);
+
+      if (!campaignSnapshot.exists) return { error: "Campagne introuvable.", status: 404 };
+      const campaign = asCampaign(campaignSnapshot.data() ?? {});
+      if (!campaign) return { error: "Campagne invalide.", status: 409 };
+      if (campaign.status !== "disabled") {
+        return { error: "Seules les campagnes désactivées peuvent être supprimées.", status: 409 };
+      }
+
+      const activeProjectionStillReferencesCampaign = [openProjection, homeBannerProjection]
+        .some((projection) => projection.data()?.campaign_id === id && projection.data()?.enabled === true);
+      if (activeProjectionStillReferencesCampaign) {
+        return { error: "Cette campagne est encore référencée par une projection publicitaire active.", status: 409 };
+      }
+
+      transaction.delete(campaignRef);
+      return { ok: true };
+    });
+    if ("error" in result) return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const authError = handleAdminAuthError(error);
+    if (authError) return authError;
+    console.error("[AD_CAMPAIGN_DELETE]", error);
+    return NextResponse.json({ error: "Impossible de supprimer la campagne publicitaire." }, { status: 500 });
+  }
+}
