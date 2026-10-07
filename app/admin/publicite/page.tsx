@@ -74,7 +74,7 @@ async function uploadAdImage(placement: AdPlacement, file: File) {
     | null;
 
   if (!response.ok || !payload?.url) {
-    throw new Error(payload?.error?.trim() || "Impossible d uploader l image.");
+    throw new Error(payload?.error?.trim() || "Impossible d’envoyer l’image.");
   }
 
   return payload.url;
@@ -159,7 +159,7 @@ function AdPlacementCard({
       setData((previous) => ({ ...previous, imageUrl: url }));
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : "Upload de l image impossible.");
+      setError(err instanceof Error ? err.message : "Envoi de l’image impossible.");
     } finally {
       setUploading(false);
     }
@@ -199,7 +199,7 @@ function AdPlacementCard({
         },
         { merge: true },
       );
-      setFeedback("Enregistre.");
+      setFeedback("Enregistré.");
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Enregistrement impossible.");
@@ -222,7 +222,7 @@ function AdPlacementCard({
             onChange={(event) => setData((previous) => ({ ...previous, enabled: event.target.checked }))}
             className="h-4 w-4"
           />
-          Activee
+          Activée
         </label>
       </div>
 
@@ -251,7 +251,7 @@ function AdPlacementCard({
                 onClick={() => fileInputRef.current?.click()}
                 className="rounded-[7px] border border-[#E8E8E4] bg-white px-3 py-1.5 text-[12px] font-medium text-[#1a1a1a] transition hover:bg-[#F7F7F5] disabled:opacity-50"
               >
-                {uploading ? "Envoi..." : "Changer l image"}
+                {uploading ? "Envoi…" : "Changer l’image"}
               </button>
               <input
                 ref={fileInputRef}
@@ -276,7 +276,7 @@ function AdPlacementCard({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[12px] font-medium text-[#666]">Debut</label>
+              <label className="text-[12px] font-medium text-[#666]">Début</label>
               <input
                 type="date"
                 value={data.startDate}
@@ -298,7 +298,7 @@ function AdPlacementCard({
           {showFrequencyCap && (
             <div>
               <label className="text-[12px] font-medium text-[#666]">
-                Frequence (heures entre deux affichages par appareil)
+                Fréquence (heures entre deux affichages par appareil)
               </label>
               <input
                 type="number"
@@ -354,25 +354,25 @@ export default function AdminPublicitePage() {
     <section className="min-h-full bg-[#F7F7F5]">
       <div className="mx-auto grid max-w-[900px] gap-6">
         <div>
-          <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Publicite</h1>
+          <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Publicité</h1>
           <p className="mt-1 text-[14px] text-[#666]">
-            Publicites vendues en direct par ProxiPlay (pas d AdMob). Tant qu un emplacement n est pas active avec
-            une image, rien ne s affiche dans l application -- le systeme est fail-closed sur l activation, et
-            fail-open en cas de probleme reseau ou de chargement au moment de l affichage.
+            Publicités vendues en direct par ProxiPlay (pas d’AdMob). Tant qu’un emplacement n’est pas activé avec
+            une image, rien ne s’affiche dans l’application — le système est fail-closed sur l’activation, et
+            fail-open en cas de problème réseau ou de chargement au moment de l’affichage.
           </p>
         </div>
 
         <AdPlacementCard
           placement="open"
-          title="Publicite d ouverture (pleine page)"
-          description="Affichee en plein ecran au lancement de l application, au plus une fois par fenetre de frequence et par appareil. N empeche jamais l acces a ProxiPlay en cas d echec de chargement."
+          title="Publicité d’ouverture (pleine page)"
+          description="Affichée en plein écran au lancement de l’application, au plus une fois par fenêtre de fréquence et par appareil. N’empêche jamais l’accès à ProxiPlay en cas d’échec de chargement."
           showFrequencyCap
         />
 
         <AdPlacementCard
           placement="home_banner"
           title="Bandeau Home"
-          description="Affiche dans la Home joueur, juste apres le carrousel 'Jeux a la une', sur les 3 variantes de Home (standard, mineur, valeur de lot filtree)."
+          description="Affiché dans la Home joueur, juste après le carrousel « Jeux à la une », sur les trois variantes de Home (standard, mineur, valeur de lot filtrée)."
           showFrequencyCap={false}
         />
       </div>

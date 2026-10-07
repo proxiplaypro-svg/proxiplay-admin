@@ -26,7 +26,7 @@ const DESTINATION_CHOICES: Array<{ id: DestinationChoice; label: string }> = [
   { id: "home", label: "Accueil ProxiPlay" },
   { id: "game", label: "Un jeu" },
   { id: "merchant", label: "Un commerce" },
-  { id: "internal", label: "Un ecran ProxiPlay" },
+  { id: "internal", label: "Un écran ProxiPlay" },
   { id: "external_url", label: "Un lien externe" },
   { id: "none", label: "Rien de particulier" },
 ];
@@ -39,12 +39,12 @@ const INTERNAL_SCREEN_OPTIONS = [
   { id: "profil", label: "Profil" },
   { id: "gagnants", label: "Mes lots / gagnants" },
   { id: "parrainage_joueur", label: "Parrainage joueur" },
-  { id: "parrainage_commercant", label: "Parrainage commercant" },
+  { id: "parrainage_commercant", label: "Parrainage commerçant" },
 ];
 
 const GAME_STATUS_LABELS: Record<string, string> = {
   actif: "Actif",
-  expire: "Expire",
+  expire: "Expiré",
   brouillon: "Brouillon",
   prive: "Prive",
 };
@@ -57,11 +57,11 @@ const SEGMENT_OPTIONS: Array<{
 }> = [
   { id: "ios_inactifs_j7", label: "iOS inactifs J7", description: "users iOS sans activite J7" },
   { id: "inactifs_j30", label: "Inactifs J30", description: "users sans activite 30j" },
-  { id: "nouveaux_j7", label: "Nouveaux J7", description: "users crees cette semaine" },
+  { id: "nouveaux_j7", label: "Nouveaux J7", description: "utilisateurs créés cette semaine" },
   { id: "ambassadeurs", label: "Ambassadeurs", description: "users avec 5+ referrals" },
   {
     id: "commercants",
-    label: "Commercants",
+    label: "Commerçants",
     description: "segment suspendu le temps de corriger le ciblage par jeu actif",
     disabled: true,
   },
@@ -302,7 +302,7 @@ export default function NewNotificationPage() {
           destinationId: destinationGameId,
           destinationSummaryLabel: selectedDestinationGame
             ? `Jeu : ${selectedDestinationGame.title} (${selectedDestinationGame.merchantName})`
-            : "Jeu : aucun selectionne",
+            : "Jeu : aucun sélectionné",
         };
       case "merchant":
         return {
@@ -310,14 +310,14 @@ export default function NewNotificationPage() {
           destinationId: destinationMerchantId,
           destinationSummaryLabel: selectedDestinationMerchant
             ? `Commerce : ${selectedDestinationMerchant.name}`
-            : "Commerce : aucun selectionne",
+            : "Commerce : aucun sélectionné",
         };
       case "internal": {
         const option = INTERNAL_SCREEN_OPTIONS.find((item) => item.id === destinationInternalKey);
         return {
           destinationType: "internal",
           destinationId: destinationInternalKey,
-          destinationSummaryLabel: option ? `Ecran : ${option.label}` : "Ecran : aucun selectionne",
+          destinationSummaryLabel: option ? `Écran : ${option.label}` : "Écran : aucun sélectionné",
         };
       }
       case "external_url":
@@ -365,12 +365,12 @@ export default function NewNotificationPage() {
     }
 
     if (audienceMode === "single" && !selectedUser) {
-      setFeedback({ tone: "error", text: "Selectionne un joueur avant l envoi cible." });
+      setFeedback({ tone: "error", text: "Sélectionne un joueur avant l’envoi ciblé." });
       return;
     }
 
     if (audienceMode === "single" && selectedUser?.pushAvailable !== true) {
-      setFeedback({ tone: "error", text: "Ce joueur ne peut pas recevoir de notification push : aucun token FCM actif n est disponible." });
+      setFeedback({ tone: "error", text: "Ce joueur ne peut pas recevoir de notification push : aucun token FCM actif n’est disponible." });
       return;
     }
 
@@ -382,7 +382,7 @@ export default function NewNotificationPage() {
     if (audienceMode === "segment" && isSegmentDisabled(segmentId)) {
       setFeedback({
         tone: "error",
-        text: "Le segment commercants est temporairement suspendu tant que le ciblage par jeu actif n est pas corrige.",
+        text: "Le segment commerçants est temporairement suspendu tant que le ciblage par jeu actif n’est pas corrigé.",
       });
       return;
     }
@@ -408,7 +408,7 @@ export default function NewNotificationPage() {
         scheduledAt,
       });
 
-      setFeedback({ tone: "success", text: "Notification transmise au moteur d envoi." });
+      setFeedback({ tone: "success", text: "Notification transmise au moteur d’envoi." });
       window.setTimeout(() => {
         router.push("/admin/notifications");
       }, 2000);
@@ -542,7 +542,7 @@ export default function NewNotificationPage() {
                   ) : (
                     <div className="max-h-[220px] overflow-y-auto rounded-[10px] border border-[#F0F0EC] bg-[#FCFCFB]">
                       {filteredGames.length === 0 ? (
-                        <p className="px-4 py-3 text-[12px] text-[#666666]">Aucun jeu trouve.</p>
+                        <p className="px-4 py-3 text-[12px] text-[#666666]">Aucun jeu trouvé.</p>
                       ) : (
                         filteredGames.map((game) => (
                           <button
@@ -596,7 +596,7 @@ export default function NewNotificationPage() {
                   ) : (
                     <div className="max-h-[220px] overflow-y-auto rounded-[10px] border border-[#F0F0EC] bg-[#FCFCFB]">
                       {filteredMerchants.length === 0 ? (
-                        <p className="px-4 py-3 text-[12px] text-[#666666]">Aucun commerce trouve.</p>
+                        <p className="px-4 py-3 text-[12px] text-[#666666]">Aucun commerce trouvé.</p>
                       ) : (
                         filteredMerchants.map((merchant) => (
                           <button
@@ -704,7 +704,7 @@ export default function NewNotificationPage() {
                   <p className="mt-1">{selectedSegment?.description}</p>
                   {selectedSegment?.disabled ? (
                     <p className="mt-2 text-[#A32D2D]">
-                      Envoi bloque jusqu a la correction du ciblage des commercants avec jeu actif.
+                      Envoi bloqué jusqu’à la correction du ciblage des commerçants avec jeu actif.
                     </p>
                   ) : null}
                   <p className="mt-2 text-[#999999]">
@@ -768,7 +768,7 @@ export default function NewNotificationPage() {
                 {searchingUsers ? <p className="text-[12px] text-[#666666]">Recherche...</p> : null}
                 {searchError ? <p className="text-[12px] text-[#A32D2D]">{searchError}</p> : null}
                 {searchDone && !searchingUsers && !searchError && searchResults.length === 0 && !selectedUser ? (
-                  <p className="text-[12px] text-[#666666]">Aucun joueur trouve.</p>
+                  <p className="text-[12px] text-[#666666]">Aucun joueur trouvé.</p>
                 ) : null}
 
                 {selectedUser ? (
@@ -840,8 +840,8 @@ export default function NewNotificationPage() {
 
             <p className="mt-4 text-[12px] text-[#999999]">
               {scheduleMode === "later" && scheduledAt
-                ? `Sera envoyee le ${formatSendDate(scheduledAt)}`
-                : "scheduled_time utilisera serverTimestamp() pour un envoi immediat."}
+                ? `Sera envoyée le ${formatSendDate(scheduledAt)}`
+                : "scheduled_time utilisera serverTimestamp() pour un envoi immédiat."}
             </p>
           </section>
         </div>
@@ -876,7 +876,7 @@ export default function NewNotificationPage() {
             </div>
 
             <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
-              <h2 className="text-[16px] font-medium text-[#1A1A1A]">Resume envoi</h2>
+              <h2 className="text-[16px] font-medium text-[#1A1A1A]">Résumé de l’envoi</h2>
               <div className="mt-4 grid gap-3 text-[12.5px] text-[#666666]">
                 <div className="flex items-center justify-between gap-4">
                   <span>Destinataires</span>

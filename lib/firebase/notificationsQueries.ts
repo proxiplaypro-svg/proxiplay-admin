@@ -108,7 +108,7 @@ export type CreatePushNotificationInput = {
   scheduledAt: Date | null;
 };
 
-const NOTIFICATIONS_AUTH_ERROR_MESSAGE = "Connexion requise pour gerer les notifications.";
+const NOTIFICATIONS_AUTH_ERROR_MESSAGE = "Connexion requise pour gérer les notifications.";
 
 // The mobile Firebase backend exposes this v1 callable in its default region.
 // It owns the ff_push_notifications queue contract.
@@ -523,17 +523,17 @@ export function getNotificationDestinationValidationError(
     case "none":
       return null;
     case "game":
-      return id ? null : "Selectionne un jeu pour cette destination.";
+      return id ? null : "Sélectionne un jeu pour cette destination.";
     case "merchant":
-      return id ? null : "Selectionne un commerce pour cette destination.";
+      return id ? null : "Sélectionne un commerce pour cette destination.";
     case "internal":
-      return id ? null : "Selectionne un ecran ProxiPlay pour cette destination.";
+      return id ? null : "Sélectionne un écran ProxiPlay pour cette destination.";
     case "external_url":
       if (!id) return "Renseigne l URL de destination.";
       try {
         return new URL(id).protocol === "https:" ? null : "L URL doit commencer par https://.";
       } catch {
-        return "L URL de destination est invalide.";
+        return "L’URL de destination est invalide.";
       }
     default:
       return "Type de destination invalide.";
@@ -560,7 +560,7 @@ export async function createPushNotification(input: CreatePushNotificationInput)
 
   if (isMerchantSegment) {
     throw new Error(
-      "Le segment commercants est temporairement suspendu tant que le ciblage par jeu actif n est pas corrige.",
+      "Le segment commerçants est temporairement suspendu tant que le ciblage par jeu actif n’est pas corrigé.",
     );
   }
 
@@ -572,7 +572,7 @@ export async function createPushNotification(input: CreatePushNotificationInput)
   const result = await create(payload);
 
   if (!result.data?.ok || !result.data.id) {
-    throw new Error("Le moteur de notifications n a pas confirme la creation de la notification.");
+  throw new Error("Le moteur de notifications n’a pas confirmé la création de la notification.");
   }
 
   return result.data.id;
@@ -595,7 +595,7 @@ export function getNotificationsErrorMessage(error: unknown) {
     switch (error.code) {
       case "permission-denied":
       case "functions/permission-denied":
-        return "Impossible d acceder aux notifications avec cette session.";
+        return "Impossible d’accéder aux notifications avec cette session.";
       case "failed-precondition":
       case "functions/failed-precondition":
         return "Le moteur de notifications a refuse cette demande.";
@@ -605,7 +605,7 @@ export function getNotificationsErrorMessage(error: unknown) {
       case "functions/not-found":
         return "Le moteur de notifications est indisponible. Contacte un administrateur technique.";
       default:
-        return error.message || "Une erreur Firebase a bloque l operation notifications.";
+        return error.message || "Une erreur Firebase a bloqué l’opération notifications.";
     }
   }
 
@@ -613,5 +613,5 @@ export function getNotificationsErrorMessage(error: unknown) {
     return error.message;
   }
 
-  return "Une erreur inattendue a bloque l operation notifications.";
+  return "Une erreur inattendue a bloqué l’opération notifications.";
 }

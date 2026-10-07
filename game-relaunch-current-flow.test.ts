@@ -17,6 +17,6 @@ test("la relance conserve les etapes brouillon, generation et publication separe
   assert.match(page, /"Enregistrer le brouillon"/);
   assert.match(page, /"Publier le jeu"/);
   assert.doesNotMatch(page, /false && isRelaunch/);
-  assert.match(modal, /Les dates de debut et de fin sont obligatoires avant publication/);
-  assert.match(modal, /La date de fin doit etre dans le futur avant publication/);
+  assert.match(modal, /Les dates de début et de fin sont obligatoires avant publication/);
+  assert.match(modal, /La date de fin doit être dans le futur avant publication/);
 });

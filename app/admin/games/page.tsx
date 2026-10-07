@@ -503,7 +503,7 @@ function formatCount(value: number) {
 
 function buildCsv(games: Game[]) {
   const lines = [
-    ["Titre", "Marchand", "Statut", "Date debut", "Date fin", "Parties"].join(";"),
+    ["Titre", "Marchand", "Statut", "Date début", "Date fin", "Parties"].join(";"),
     ...games.map((game) =>
       [
         `"${game.title.replaceAll('"', '""')}"`,

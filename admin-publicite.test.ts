@@ -19,28 +19,28 @@ test("accepts a valid opening campaign", () => {
 test("requires an image before activating a campaign", () => {
   assert.equal(
     validateAdCampaign({ ...validCampaign, imageUrl: "  " }),
-    "Une image est obligatoire pour activer une publicite.",
+    "Une image est obligatoire pour activer une publicité.",
   );
 });
 
 test("rejects an invalid click destination", () => {
   assert.equal(
     validateAdCampaign({ ...validCampaign, destinationUrl: "javascript:alert(1)" }),
-    "La destination doit etre une URL http(s) valide.",
+    "La destination doit être une URL http(s) valide.",
   );
 });
 
 test("rejects a non-positive opening frequency", () => {
   assert.equal(
     validateAdCampaign({ ...validCampaign, frequencyCapHours: "0" }),
-    "La frequence doit etre un nombre d heures positif.",
+    "La fréquence doit être un nombre d’heures positif.",
   );
 });
 
 test("rejects an empty or reversed campaign window", () => {
   assert.equal(
     validateAdCampaign({ ...validCampaign, startDate: "2026-10-20", endDate: "2026-10-20" }),
-    "La date de fin doit etre posterieure a la date de debut.",
+    "La date de fin doit être postérieure à la date de début.",
   );
 });
 

@@ -10,12 +10,12 @@ import {
 } from "@/lib/firebase/merchantBillingQueries";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  linked: { label: "Lie (en attente de paiement)", className: "bg-[#F0F0EC] text-[#999]" },
+  linked: { label: "Lié (en attente de paiement)", className: "bg-[#F0F0EC] text-[#999]" },
   eligible: { label: "Eligible", className: "bg-[#FDF3D9] text-[#8A6D1A]" },
   approved: { label: "Approuve", className: "bg-[#DCE9FB] text-[#1D4E89]" },
-  paid: { label: "Paye", className: "bg-[#EAF3DE] text-[#3B6D11]" },
+  paid: { label: "Payé", className: "bg-[#EAF3DE] text-[#3B6D11]" },
   rejected: { label: "Rejete", className: "bg-[#FCEBEB] text-[#A32D2D]" },
-  cancelled: { label: "Annule", className: "bg-[#FCEBEB] text-[#A32D2D]" },
+  cancelled: { label: "Annulé", className: "bg-[#FCEBEB] text-[#A32D2D]" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -46,7 +46,7 @@ export default function AdminParrainageCommercantsPage() {
       setItems(data);
     } catch (err) {
       console.error(err);
-      setError("Impossible de charger les parrainages commercants.");
+      setError("Impossible de charger les parrainages commerçants.");
     } finally {
       setLoading(false);
     }
@@ -57,7 +57,7 @@ export default function AdminParrainageCommercantsPage() {
   }, []);
 
   const handleApprove = async (item: AdminMerchantReferralItem) => {
-    if (!window.confirm(`Approuver la prime de 100€ pour ${item.inviterLabel} (commercant ${item.merchantLabel}) ?`)) {
+    if (!window.confirm(`Approuver la prime de 100 € pour ${item.inviterLabel} (commerçant ${item.merchantLabel}) ?`)) {
       return;
     }
     setBusyMerchantUserId(item.merchantUserId);
@@ -101,7 +101,7 @@ export default function AdminParrainageCommercantsPage() {
       await load();
     } catch (err) {
       console.error(err);
-      setActionFeedback("Marquage paye impossible pour le moment.");
+      setActionFeedback("Marquage payé impossible pour le moment.");
     } finally {
       setBusyMerchantUserId(null);
     }
@@ -111,10 +111,10 @@ export default function AdminParrainageCommercantsPage() {
     <section className="min-h-full bg-[#F7F7F5]">
       <div className="mx-auto grid max-w-[1440px] gap-6">
         <div>
-          <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Parrainage commercants</h1>
+          <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Parrainage commerçants</h1>
           <p className="mt-1 text-[14px] text-[#666]">
-            Prime de 100€ pour un joueur ayant parraine un commercant devenu client payant. La prime n&apos;est
-            jamais acquise avant confirmation serveur du premier paiement Stripe ; le paiement des 100€ reste
+            Prime de 100 € pour un joueur ayant parrainé un commerçant devenu client payant. La prime n&apos;est
+            jamais acquise avant confirmation serveur du premier paiement Stripe ; le paiement des 100 € reste
             manuel (V1) et trace ici.
           </p>
         </div>
@@ -133,7 +133,7 @@ export default function AdminParrainageCommercantsPage() {
               <thead>
                 <tr className="border-b border-[#E8E8E4] text-left text-[11px] uppercase tracking-[0.06em] text-[#999]">
                   <th className="px-4 py-3 font-medium">Parrain</th>
-                  <th className="px-4 py-3 font-medium">Commercant</th>
+                  <th className="px-4 py-3 font-medium">Commerçant</th>
                   <th className="px-4 py-3 font-medium">Code</th>
                   <th className="px-4 py-3 font-medium">Abonnement</th>
                   <th className="px-4 py-3 font-medium">Statut</th>
@@ -144,7 +144,7 @@ export default function AdminParrainageCommercantsPage() {
                 {items.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-8 text-center text-[#999]">
-                      Aucun parrainage commercant pour le moment.
+                      Aucun parrainage commerçant pour le moment.
                     </td>
                   </tr>
                 )}
@@ -199,7 +199,7 @@ export default function AdminParrainageCommercantsPage() {
                               onClick={() => { setPayTarget(item); setPayReference(""); }}
                               className="rounded-[7px] border border-[#639922] bg-white px-3 py-1.5 text-[12px] font-medium text-[#639922] transition hover:bg-[#F0F7E8] disabled:opacity-50"
                             >
-                              Marquer paye
+                              Marquer payé
                             </button>
                             <button
                               type="button"
@@ -262,14 +262,14 @@ export default function AdminParrainageCommercantsPage() {
       {payTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="w-full max-w-sm rounded-[12px] border border-[#E8E8E4] bg-white p-6 shadow-lg">
-            <h3 className="text-[16px] font-medium text-[#1a1a1a]">Marquer les 100€ comme payes ?</h3>
+            <h3 className="text-[16px] font-medium text-[#1a1a1a]">Marquer les 100 € comme payés ?</h3>
             <p className="mt-2 text-[13px] text-[#666]">
               {payTarget.inviterLabel} · {payTarget.merchantLabel}. Le paiement reste manuel (V1) : indiquez une
               reference fiable (virement, transaction...).
             </p>
             <input
               className="mt-3 w-full rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px]"
-              placeholder="Reference de paiement (obligatoire)"
+              placeholder="Référence de paiement (obligatoire)"
               value={payReference}
               onChange={(e) => setPayReference(e.target.value)}
             />
