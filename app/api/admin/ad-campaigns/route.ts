@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
   adCampaignsOverlap,
+  formatAdDateInput,
   getAdCampaignStatus,
   isAdPlacement,
+  parseAdDateInput,
   type AdCampaignRecord,
   type AdPlacement,
 } from "@/lib/admin/adCampaign";
@@ -37,22 +39,13 @@ function readTimestamp(value: unknown): Timestamp | null {
   return value instanceof Timestamp ? value : null;
 }
 
-function toDateInput(value: unknown) {
-  const timestamp = readTimestamp(value);
-  if (!timestamp) return "";
-  const date = timestamp.toDate();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
+function toDateInput(value: unknown, boundary: "start" | "end" = "start") {
+  return formatAdDateInput(value, boundary);
 }
 
-function parseDate(value: unknown) {
-  const text = readText(value);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
-  const [year, month, day] = text.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
-  return Timestamp.fromDate(date);
+function parseDate(value: unknown, boundary: "start" | "end") {
+  const date = parseAdDateInput(readText(value), boundary);
+  return date ? Timestamp.fromDate(date) : null;
 }
 
 function asRecord(id: string, raw: Record<string, unknown>): AdCampaignRecord {
@@ -65,8 +58,8 @@ function asRecord(id: string, raw: Record<string, unknown>): AdCampaignRecord {
     placement: isAdPlacement(raw.placement) ? raw.placement : "home_banner",
     imageUrl: readText(raw.image_url),
     destinationUrl: readText(raw.destination_url),
-    startDate: toDateInput(raw.start_at),
-    endDate: toDateInput(raw.end_at),
+    startDate: toDateInput(raw.start_at, "start"),
+    endDate: toDateInput(raw.end_at, "end"),
     frequencyCapHours: raw.frequency_cap_hours == null ? "" : String(raw.frequency_cap_hours),
     status: raw.status === "disabled" ? "disabled" : "draft",
     published,
@@ -82,8 +75,8 @@ function asRecord(id: string, raw: Record<string, unknown>): AdCampaignRecord {
 function parseCampaign(body: Record<string, unknown>, existing?: CampaignData): CampaignData | null {
   const placement = body.placement === undefined ? existing?.placement : body.placement;
   if (!isAdPlacement(placement)) return null;
-  const startAt = body.start_date === undefined ? existing?.start_at ?? null : parseDate(body.start_date);
-  const endAt = body.end_date === undefined ? existing?.end_at ?? null : parseDate(body.end_date);
+  const startAt = body.start_date === undefined ? existing?.start_at ?? null : parseDate(body.start_date, "start");
+  const endAt = body.end_date === undefined ? existing?.end_at ?? null : parseDate(body.end_date, "end");
   const name = body.name === undefined ? existing?.name ?? "" : readText(body.name);
   const advertiser = body.advertiser === undefined ? existing?.advertiser ?? "" : readText(body.advertiser);
   const imageUrl = body.image_url === undefined ? existing?.image_url ?? "" : readText(body.image_url);
@@ -171,8 +164,8 @@ async function migrateLegacyPlacements() {
 
 function overlaps(candidate: CampaignData, other: CampaignData) {
   return adCampaignsOverlap(
-    { startDate: toDateInput(candidate.start_at), endDate: toDateInput(candidate.end_at) },
-    { startDate: toDateInput(other.start_at), endDate: toDateInput(other.end_at) },
+    { startDate: toDateInput(candidate.start_at, "start"), endDate: toDateInput(candidate.end_at, "end") },
+    { startDate: toDateInput(other.start_at, "start"), endDate: toDateInput(other.end_at, "end") },
   );
 }
 

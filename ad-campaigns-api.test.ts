@@ -168,3 +168,30 @@ test("publie, bloque les chevauchements et désactive le bandeau sous parrainage
   assert.equal((await PATCH(request(firstId, "PATCH", { action: "deactivate" }), context(firstId))).status, 200);
   assert.equal((await db.collection("ads").doc("home_banner_referral").get()).data()?.enabled, false);
 });
+
+test("interprète les dates civiles dans Europe/Paris à la création et à la modification", async () => {
+  const input = {
+    name: "Dates Paris",
+    advertiser: "Annonceur test",
+    placement: "home_banner",
+    image_url: "https://example.com/paris-banner.png",
+    destination_url: "https://example.com/offre",
+    start_date: "2026-07-14",
+    end_date: "2026-07-14",
+    frequency_cap_hours: null,
+  };
+  const created = await POST(collectionRequest("POST", input));
+  assert.equal(created.status, 201);
+  const id = (await created.json() as { id: string }).id;
+  generatedCampaignIds.push(id);
+
+  let data = (await db.collection("ad_campaigns").doc(id).get()).data();
+  assert.equal(data?.start_at?.toDate().toISOString(), "2026-07-13T22:00:00.000Z");
+  assert.equal(data?.end_at?.toDate().toISOString(), "2026-07-14T22:00:00.000Z");
+
+  const updated = await PATCH(request(id, "PATCH", { start_date: "2026-01-15", end_date: "2026-01-15" }), context(id));
+  assert.equal(updated.status, 200);
+  data = (await db.collection("ad_campaigns").doc(id).get()).data();
+  assert.equal(data?.start_at?.toDate().toISOString(), "2026-01-14T23:00:00.000Z");
+  assert.equal(data?.end_at?.toDate().toISOString(), "2026-01-15T23:00:00.000Z");
+});

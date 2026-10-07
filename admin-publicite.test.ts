@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   adCampaignsOverlap,
   createAdPlacementWrite,
+  formatAdDateInput,
   getAdCampaignStatus,
   isAdPlacement,
+  parseAdDateInput,
   readAdPlacement,
   validateAdCampaign,
 } from "@/lib/admin/adCampaign";
@@ -52,11 +54,33 @@ test("rejects a negative opening frequency", () => {
   );
 });
 
-test("rejects an empty or reversed campaign window", () => {
-  assert.equal(
-    validateAdCampaign({ ...validCampaign, startDate: "2026-10-20", endDate: "2026-10-20" }),
-    "La date de fin doit être postérieure à la date de début.",
-  );
+test("allows a one-day campaign and rejects a reversed campaign window", () => {
+  assert.equal(validateAdCampaign({ ...validCampaign, startDate: "2026-10-20", endDate: "2026-10-20" }), null);
+  assert.notEqual(validateAdCampaign({ ...validCampaign, startDate: "2026-10-20", endDate: "2026-10-19" }), null);
+});
+
+test("stores civil summer dates at Paris midnight and keeps the end date inclusive", () => {
+  const start = parseAdDateInput("2026-07-14", "start");
+  const end = parseAdDateInput("2026-07-14", "end");
+  assert.equal(start?.toISOString(), "2026-07-13T22:00:00.000Z");
+  assert.equal(end?.toISOString(), "2026-07-14T22:00:00.000Z");
+  assert.equal(formatAdDateInput({ toDate: () => start! }, "start"), "2026-07-14");
+  assert.equal(formatAdDateInput({ toDate: () => end! }, "end"), "2026-07-14");
+});
+
+test("stores civil winter dates at Paris midnight and keeps the end date inclusive", () => {
+  const start = parseAdDateInput("2026-01-15", "start");
+  const end = parseAdDateInput("2026-01-15", "end");
+  assert.equal(start?.toISOString(), "2026-01-14T23:00:00.000Z");
+  assert.equal(end?.toISOString(), "2026-01-15T23:00:00.000Z");
+  assert.equal(formatAdDateInput({ toDate: () => start! }, "start"), "2026-01-15");
+  assert.equal(formatAdDateInput({ toDate: () => end! }, "end"), "2026-01-15");
+});
+
+test("considers a campaign active through the full Paris end date", () => {
+  const campaign = { ...validCampaign, id: "c", name: "Campagne", advertiser: "Annonceur", placement: "open" as const, sourceCampaignId: null, impressions: 0, clicks: 0, createdAt: null, updatedAt: null, enabled: true, published: true, status: "draft" as const, startDate: "2026-10-08", endDate: "2026-10-11" };
+  assert.equal(getAdCampaignStatus(campaign, new Date("2026-10-11T21:59:59.999Z")), "active");
+  assert.equal(getAdCampaignStatus(campaign, new Date("2026-10-11T22:00:00.000Z")), "ended");
 });
 
 test("allows a banner without opening-only frequency", () => {
@@ -109,7 +133,7 @@ test("campaign status distinguishes draft, scheduled, active, ended and disabled
 
 test("overlapping campaigns on one placement are detected", () => {
   assert.equal(adCampaignsOverlap({ startDate: "2026-10-10", endDate: "2026-10-20" }, { startDate: "2026-10-19", endDate: "2026-10-30" }), true);
-  assert.equal(adCampaignsOverlap({ startDate: "2026-10-10", endDate: "2026-10-20" }, { startDate: "2026-10-20", endDate: "2026-10-30" }), false);
+  assert.equal(adCampaignsOverlap({ startDate: "2026-10-10", endDate: "2026-10-20" }, { startDate: "2026-10-21", endDate: "2026-10-30" }), false);
 });
 
 test("accepts flexible 3:1 Home banner dimensions and warns on a vertical image", () => {

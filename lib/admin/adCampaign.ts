@@ -47,6 +47,10 @@ type TimestampLike = {
   toDate: () => Date;
 };
 
+type AdDateBoundary = "start" | "end";
+
+export const AD_CAMPAIGN_TIME_ZONE = "Europe/Paris";
+
 type FirestoreAdPlacement = {
   enabled?: unknown;
   image_url?: unknown;
@@ -74,24 +78,69 @@ function isTimestampLike(value: unknown): value is TimestampLike {
     typeof (value as TimestampLike).toDate === "function";
 }
 
-export function formatAdDateInput(value: unknown): string {
-  if (!isTimestampLike(value)) return "";
-  const date = value.toDate();
-  if (Number.isNaN(date.getTime())) return "";
-
-  // Les champs date HTML representent une date civile, pas un instant UTC.
-  // Utiliser les composantes locales evite de relire la veille en France.
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function parisDateParts(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: AD_CAMPAIGN_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const fields = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    year: Number(fields.year),
+    month: Number(fields.month),
+    day: Number(fields.day),
+    hour: Number(fields.hour === "24" ? "0" : fields.hour),
+    minute: Number(fields.minute),
+    second: Number(fields.second),
+  };
 }
 
-export function parseAdDateInput(value: string): Date | null {
+function isValidCivilDate(year: number, month: number, day: number) {
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  return candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month - 1 && candidate.getUTCDate() === day;
+}
+
+function parisMidnightAsUtc(year: number, month: number, day: number) {
+  const utcMidnight = Date.UTC(year, month - 1, day);
+  const offsetAt = (instant: number) => {
+    const parts = parisDateParts(new Date(instant));
+    return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - instant;
+  };
+
+  // Re-evaluate the offset after conversion: this covers CET/CEST changes
+  // without relying on the server's own timezone.
+  let instant = utcMidnight - offsetAt(utcMidnight);
+  instant = utcMidnight - offsetAt(instant);
+  return new Date(instant);
+}
+
+export function formatAdDateInput(value: unknown, boundary: AdDateBoundary = "start"): string {
+  if (!isTimestampLike(value)) return "";
+  const timestamp = value.toDate();
+  const date = boundary === "end" ? new Date(timestamp.getTime() - 1) : timestamp;
+  if (Number.isNaN(date.getTime())) return "";
+
+  const { year, month, day } = parisDateParts(date);
+  const formattedMonth = String(month).padStart(2, "0");
+  const formattedDay = String(day).padStart(2, "0");
+  return `${year}-${formattedMonth}-${formattedDay}`;
+}
+
+export function parseAdDateInput(value: string, boundary: AdDateBoundary = "start"): Date | null {
   if (!value) return null;
   const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return null;
-  return new Date(year, month - 1, day);
+  if (!year || !month || !day || !isValidCivilDate(year, month, day)) return null;
+
+  if (boundary === "end") {
+    const nextDay = new Date(Date.UTC(year, month - 1, day + 1));
+    return parisMidnightAsUtc(nextDay.getUTCFullYear(), nextDay.getUTCMonth() + 1, nextDay.getUTCDate());
+  }
+  return parisMidnightAsUtc(year, month, day);
 }
 
 export function readAdPlacement(raw: FirestoreAdPlacement | undefined): AdPlacementForm {
@@ -99,8 +148,8 @@ export function readAdPlacement(raw: FirestoreAdPlacement | undefined): AdPlacem
     enabled: raw?.enabled === true,
     imageUrl: typeof raw?.image_url === "string" ? raw.image_url : "",
     destinationUrl: typeof raw?.destination_url === "string" ? raw.destination_url : "",
-    startDate: formatAdDateInput(raw?.start_at),
-    endDate: formatAdDateInput(raw?.end_at),
+    startDate: formatAdDateInput(raw?.start_at, "start"),
+    endDate: formatAdDateInput(raw?.end_at, "end"),
     frequencyCapHours: raw?.frequency_cap_hours != null ? String(raw.frequency_cap_hours) : "",
     impressions: typeof raw?.impressions === "number" ? raw.impressions : 0,
     clicks: typeof raw?.clicks === "number" ? raw.clicks : 0,
@@ -114,8 +163,8 @@ export function createAdPlacementWrite<TTimestamp>(
     createTimestamp: (date: Date) => TTimestamp;
   },
 ) {
-  const startDate = parseAdDateInput(input.startDate);
-  const endDate = parseAdDateInput(input.endDate);
+  const startDate = parseAdDateInput(input.startDate, "start");
+  const endDate = parseAdDateInput(input.endDate, "end");
   const frequencyCapHours = input.frequencyCapHours.trim();
 
   return {
@@ -139,10 +188,10 @@ export function getAdCampaignStatus(
   now = new Date(),
 ): AdCampaignStatus {
   if (!campaign.published || campaign.status === "disabled") return campaign.status === "disabled" ? "disabled" : "draft";
-  const start = parseAdDateInput(campaign.startDate);
-  const end = parseAdDateInput(campaign.endDate);
+  const start = parseAdDateInput(campaign.startDate, "start");
+  const end = parseAdDateInput(campaign.endDate, "end");
   if (!start || !end) return "draft";
-  if (end.getTime() < now.getTime()) return "ended";
+  if (end.getTime() <= now.getTime()) return "ended";
   if (start.getTime() > now.getTime()) return "scheduled";
   return "active";
 }
@@ -151,10 +200,10 @@ export function adCampaignsOverlap(
   left: Pick<AdCampaignRecord, "startDate" | "endDate">,
   right: Pick<AdCampaignRecord, "startDate" | "endDate">,
 ): boolean {
-  const leftStart = parseAdDateInput(left.startDate);
-  const leftEnd = parseAdDateInput(left.endDate);
-  const rightStart = parseAdDateInput(right.startDate);
-  const rightEnd = parseAdDateInput(right.endDate);
+  const leftStart = parseAdDateInput(left.startDate, "start");
+  const leftEnd = parseAdDateInput(left.endDate, "end");
+  const rightStart = parseAdDateInput(right.startDate, "start");
+  const rightEnd = parseAdDateInput(right.endDate, "end");
   if (!leftStart || !leftEnd || !rightStart || !rightEnd) return false;
   return leftStart.getTime() < rightEnd.getTime() && rightStart.getTime() < leftEnd.getTime();
 }
@@ -178,8 +227,8 @@ export function validateAdCampaign(input: AdCampaignInput): string | null {
     }
   }
 
-  if (input.startDate && input.endDate && input.endDate <= input.startDate) {
-    return "La date de fin doit être postérieure à la date de début.";
+  if (input.startDate && input.endDate && input.endDate < input.startDate) {
+    return "La date de fin doit être égale ou postérieure à la date de début.";
   }
 
   if (input.requiresFrequencyCap && input.frequencyCapHours.trim()) {
