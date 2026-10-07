@@ -7,6 +7,7 @@ import {
   readAdPlacement,
   validateAdCampaign,
 } from "@/lib/admin/adCampaign";
+import { getAdImageFormat, isAdImageRatioCompatible } from "@/lib/admin/adImageFormat";
 
 const validCampaign = {
   enabled: true,
@@ -101,4 +102,18 @@ test("campaign status distinguishes draft, scheduled, active, ended and disabled
 test("overlapping campaigns on one placement are detected", () => {
   assert.equal(adCampaignsOverlap({ startDate: "2026-10-10", endDate: "2026-10-20" }, { startDate: "2026-10-19", endDate: "2026-10-30" }), true);
   assert.equal(adCampaignsOverlap({ startDate: "2026-10-10", endDate: "2026-10-20" }, { startDate: "2026-10-20", endDate: "2026-10-30" }), false);
+});
+
+test("accepts flexible 3:1 Home banner dimensions and warns on a vertical image", () => {
+  assert.equal(getAdImageFormat("home_banner").ratioLabel, "3:1");
+  assert.equal(isAdImageRatioCompatible("home_banner", 1200, 400), true);
+  assert.equal(isAdImageRatioCompatible("home_banner", 1800, 600), true);
+  assert.equal(isAdImageRatioCompatible("home_banner", 1080, 1920), false);
+});
+
+test("accepts flexible 9:16 opening dimensions and warns on a banner", () => {
+  assert.equal(getAdImageFormat("open").ratioLabel, "9:16");
+  assert.equal(isAdImageRatioCompatible("open", 1080, 1920), true);
+  assert.equal(isAdImageRatioCompatible("open", 2160, 3840), true);
+  assert.equal(isAdImageRatioCompatible("open", 1200, 400), false);
 });
