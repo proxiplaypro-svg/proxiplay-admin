@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { doc, onSnapshot, setDoc, Timestamp } from "firebase/firestore";
 import { auth } from "@/lib/firebase/auth";
 import { db } from "@/lib/firebase/client-app";
+import { validateAdCampaign } from "@/lib/admin/adCampaign";
 
 type AdPlacement = "open" | "home_banner";
 
@@ -169,18 +170,22 @@ function AdPlacementCard({
     setError(null);
     setFeedback(null);
     try {
+      const validationError = validateAdCampaign({
+        enabled: data.enabled,
+        imageUrl: data.imageUrl,
+        destinationUrl: data.destinationUrl,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        frequencyCapHours: data.frequencyCapHours,
+        requiresFrequencyCap: showFrequencyCap,
+      });
+      if (validationError) throw new Error(validationError);
+
       const startAt = parseDateInput(data.startDate);
       const endAt = parseDateInput(data.endDate);
-      if (startAt && endAt && endAt.toMillis() < startAt.toMillis()) {
-        throw new Error("La date de fin doit etre posterieure a la date de debut.");
-      }
-
       const frequencyCapHours = showFrequencyCap && data.frequencyCapHours.trim()
-        ? Number.parseInt(data.frequencyCapHours, 10)
+        ? Number(data.frequencyCapHours)
         : null;
-      if (frequencyCapHours != null && (!Number.isFinite(frequencyCapHours) || frequencyCapHours <= 0)) {
-        throw new Error("La frequence doit etre un nombre d heures positif.");
-      }
 
       await setDoc(
         doc(db, "ads", placement),
@@ -331,7 +336,7 @@ function AdPlacementCard({
           <div>
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || uploading}
               onClick={() => void handleSave()}
               className="rounded-[8px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white transition hover:bg-[#558020] disabled:opacity-50"
             >
