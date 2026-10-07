@@ -10,6 +10,7 @@ export type AdImageFormat = {
 
 export const AD_IMAGE_FORMATS: Record<AdPlacement, AdImageFormat> = {
   home_banner: { width: 1200, height: 400, ratioLabel: "3:1", cssAspectRatio: "3 / 1", expectedRatio: 3 },
+  home_banner_referral: { width: 1200, height: 400, ratioLabel: "3:1", cssAspectRatio: "3 / 1", expectedRatio: 3 },
   open: { width: 1080, height: 1920, ratioLabel: "9:16", cssAspectRatio: "9 / 16", expectedRatio: 9 / 16 },
 };
 

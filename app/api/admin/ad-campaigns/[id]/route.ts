@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { adCampaignsOverlap, getAdCampaignStatus, isAdPlacement, type AdCampaignRecord } from "@/lib/admin/adCampaign";
+import { adCampaignsOverlap, getAdCampaignStatus, isAdPlacement, type AdCampaignRecord, type AdPlacement } from "@/lib/admin/adCampaign";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 
 type CampaignData = {
   name: string;
   advertiser: string;
-  placement: "open" | "home_banner";
+  placement: AdPlacement;
   image_url: string;
   destination_url: string;
   start_at: Timestamp;
@@ -69,7 +69,7 @@ function mergeCampaign(current: CampaignData, body: Record<string, unknown>): Ca
   };
   if (!candidate.name || !candidate.advertiser || !candidate.image_url ||
     (candidate.placement === "open" && (!Number.isInteger(frequency) || (frequency ?? -1) < 0))) return null;
-  if (candidate.placement === "home_banner" && frequency !== null) return null;
+  if (candidate.placement !== "open" && frequency !== null) return null;
   if (candidate.destination_url) {
     try { const url = new URL(candidate.destination_url); if (!["http:", "https:"].includes(url.protocol)) return null; } catch { return null; }
   }
@@ -173,10 +173,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       const campaignRef = db.collection("ad_campaigns").doc(id);
       const openProjectionRef = db.collection("ads").doc("open");
       const homeBannerProjectionRef = db.collection("ads").doc("home_banner");
-      const [campaignSnapshot, openProjection, homeBannerProjection] = await Promise.all([
+      const homeReferralBannerProjectionRef = db.collection("ads").doc("home_banner_referral");
+      const [campaignSnapshot, openProjection, homeBannerProjection, homeReferralBannerProjection] = await Promise.all([
         transaction.get(campaignRef),
         transaction.get(openProjectionRef),
         transaction.get(homeBannerProjectionRef),
+        transaction.get(homeReferralBannerProjectionRef),
       ]);
 
       if (!campaignSnapshot.exists) return { error: "Campagne introuvable.", status: 404 };
@@ -186,7 +188,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         return { error: "Seules les campagnes désactivées peuvent être supprimées.", status: 409 };
       }
 
-      const activeProjectionStillReferencesCampaign = [openProjection, homeBannerProjection]
+      const activeProjectionStillReferencesCampaign = [openProjection, homeBannerProjection, homeReferralBannerProjection]
         .some((projection) => projection.data()?.campaign_id === id && projection.data()?.enabled === true);
       if (activeProjectionStillReferencesCampaign) {
         return { error: "Cette campagne est encore référencée par une projection publicitaire active.", status: 409 };

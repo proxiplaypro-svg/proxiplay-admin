@@ -4,6 +4,7 @@ import {
   adCampaignsOverlap,
   createAdPlacementWrite,
   getAdCampaignStatus,
+  isAdPlacement,
   readAdPlacement,
   validateAdCampaign,
 } from "@/lib/admin/adCampaign";
@@ -116,6 +117,13 @@ test("accepts flexible 3:1 Home banner dimensions and warns on a vertical image"
   assert.equal(isAdImageRatioCompatible("home_banner", 1200, 400), true);
   assert.equal(isAdImageRatioCompatible("home_banner", 1800, 600), true);
   assert.equal(isAdImageRatioCompatible("home_banner", 1080, 1920), false);
+});
+
+test("accepts the referral Home banner as an independent 3:1 placement", () => {
+  assert.equal(isAdPlacement("home_banner_referral"), true);
+  assert.equal(getAdImageFormat("home_banner_referral").ratioLabel, "3:1");
+  assert.equal(isAdImageRatioCompatible("home_banner_referral", 1200, 400), true);
+  assert.equal(isAdImageRatioCompatible("home_banner_referral", 1080, 1920), false);
 });
 
 test("accepts flexible 9:16 opening dimensions and warns on a banner", () => {

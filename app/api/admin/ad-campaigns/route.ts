@@ -96,7 +96,7 @@ function parseCampaign(body: Record<string, unknown>, existing?: CampaignData): 
 
   if (!name || !advertiser || !startAt || !endAt || startAt.toMillis() >= endAt.toMillis()) return null;
   if (placement === "open" && (!Number.isInteger(frequency) || (frequency ?? -1) < 0)) return null;
-  if (placement === "home_banner" && frequency !== null) return null;
+  if (placement !== "open" && frequency !== null) return null;
   if (destinationUrl) {
     try {
       const destination = new URL(destinationUrl);

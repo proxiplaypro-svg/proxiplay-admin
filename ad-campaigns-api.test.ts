@@ -19,16 +19,28 @@ if (getApps().length === 0) {
 }
 
 let DELETE: typeof import("./app/api/admin/ad-campaigns/[id]/route").DELETE;
+let PATCH: typeof import("./app/api/admin/ad-campaigns/[id]/route").PATCH;
+let POST: typeof import("./app/api/admin/ad-campaigns/route").POST;
 let db: ReturnType<typeof import("./lib/firebase/admin-app").getAdminDb>;
 let adminToken = "";
 const campaignA = "api-ad-campaign-delete-a";
 const campaignB = "api-ad-campaign-delete-b";
+const generatedCampaignIds: string[] = [];
 const context = (id: string) => ({ params: Promise.resolve({ id }) });
 
-function request(id: string, token = adminToken) {
+function request(id: string, method = "DELETE", body?: unknown, token = adminToken) {
   return new NextRequest(`http://localhost/api/admin/ad-campaigns/${id}`, {
-    method: "DELETE",
-    headers: token ? { authorization: `Bearer ${token}` } : {},
+    method,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }) },
+  });
+}
+
+function collectionRequest(method: string, body: unknown, token = adminToken) {
+  return new NextRequest("http://localhost/api/admin/ad-campaigns", {
+    method,
+    body: JSON.stringify(body),
+    headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
   });
 }
 
@@ -56,11 +68,15 @@ async function clearState() {
     db.collection("ad_campaigns").doc(campaignB).delete(),
     db.collection("ads").doc("open").delete(),
     db.collection("ads").doc("home_banner").delete(),
+    db.collection("ads").doc("home_banner_referral").delete(),
+    ...generatedCampaignIds.splice(0).map((id) => db.collection("ad_campaigns").doc(id).delete()),
   ]);
 }
 
 test.before(async () => {
   ({ DELETE } = await import("./app/api/admin/ad-campaigns/[id]/route"));
+  ({ PATCH } = await import("./app/api/admin/ad-campaigns/[id]/route"));
+  ({ POST } = await import("./app/api/admin/ad-campaigns/route"));
   const adminApp = await import("./lib/firebase/admin-app");
   db = adminApp.getAdminDb();
   const response = await fetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key`, {
@@ -106,6 +122,7 @@ test("refuse une campagne désactivée encore référencée par une projection a
   await seedCampaign(campaignA);
   await db.collection("ads").doc("open").set({ campaign_id: campaignA, enabled: true });
   await db.collection("ads").doc("home_banner").set({ campaign_id: campaignA, enabled: true });
+  await db.collection("ads").doc("home_banner_referral").set({ campaign_id: campaignA, enabled: true });
 
   const response = await DELETE(request(campaignA), context(campaignA));
 
@@ -114,6 +131,7 @@ test("refuse une campagne désactivée encore référencée par une projection a
   assert.equal((await db.collection("ad_campaigns").doc(campaignA).get()).exists, true);
   assert.equal((await db.collection("ads").doc("open").get()).data()?.campaign_id, campaignA);
   assert.equal((await db.collection("ads").doc("home_banner").get()).data()?.campaign_id, campaignA);
+  assert.equal((await db.collection("ads").doc("home_banner_referral").get()).data()?.campaign_id, campaignA);
 });
 
 test("retourne 404 pour une campagne inexistante", async () => {
@@ -121,4 +139,32 @@ test("retourne 404 pour une campagne inexistante", async () => {
 
   assert.equal(response.status, 404);
   assert.match((await response.json() as { error: string }).error, /introuvable/i);
+});
+
+test("publie, bloque les chevauchements et désactive le bandeau sous parrainage", async () => {
+  const input = {
+    name: "Bandeau parrainage",
+    advertiser: "Annonceur test",
+    placement: "home_banner_referral",
+    image_url: "https://example.com/referral-banner.png",
+    destination_url: "https://example.com/offre",
+    start_date: "2026-10-10",
+    end_date: "2026-10-20",
+    frequency_cap_hours: null,
+  };
+  const createFirst = await POST(collectionRequest("POST", input));
+  assert.equal(createFirst.status, 201);
+  const firstId = (await createFirst.json() as { id: string }).id;
+  generatedCampaignIds.push(firstId);
+  assert.equal((await PATCH(request(firstId, "PATCH", { action: "publish" }), context(firstId))).status, 200);
+  assert.equal((await db.collection("ads").doc("home_banner_referral").get()).data()?.campaign_id, firstId);
+
+  const createSecond = await POST(collectionRequest("POST", { ...input, name: "Chevauchement" }));
+  assert.equal(createSecond.status, 201);
+  const secondId = (await createSecond.json() as { id: string }).id;
+  generatedCampaignIds.push(secondId);
+  assert.equal((await PATCH(request(secondId, "PATCH", { action: "publish" }), context(secondId))).status, 409);
+
+  assert.equal((await PATCH(request(firstId, "PATCH", { action: "deactivate" }), context(firstId))).status, 200);
+  assert.equal((await db.collection("ads").doc("home_banner_referral").get()).data()?.enabled, false);
 });

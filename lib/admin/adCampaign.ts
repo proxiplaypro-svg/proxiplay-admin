@@ -8,7 +8,7 @@ export type AdCampaignInput = {
   requiresFrequencyCap: boolean;
 };
 
-export const AD_PLACEMENTS = ["open", "home_banner"] as const;
+export const AD_PLACEMENTS = ["open", "home_banner", "home_banner_referral"] as const;
 export type AdPlacement = (typeof AD_PLACEMENTS)[number];
 
 export const AD_CAMPAIGN_STATUSES = [
