@@ -4,8 +4,10 @@ import { FirebaseError } from "firebase/app";
 import { deleteField, doc, getDoc, Timestamp, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPrizeSummary } from "@/components/admin/jeux/buildPrizeSummary";
+import { GameQrSection } from "@/components/admin/jeux/GameQrSection";
 import { openGameFacebookPostWindowWithMerchant, openGamePosterPrintWindow } from "@/lib/admin/gamePoster";
 import { db } from "@/lib/firebase/client-app";
+import { isQrOnlyGame } from "@/lib/admin/secureGameQr";
 import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
 import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
 import type {
@@ -187,14 +189,14 @@ function getBackfillErrorMessage(error: unknown) {
       case "functions/permission-denied":
         return "Seuls les admins autorises peuvent lancer le backfill.";
       case "functions/internal":
-        return "Le backend a echoue pendant la generation des lots instantanes.";
+        return "Le backend a échoué pendant la génération des lots instantanés.";
       case "functions/not-found":
       case "functions/unavailable":
-        return "La fonction de backfill n est pas disponible.";
+        return "La fonction de backfill n’est pas disponible.";
       default:
         return error.message && error.message !== "internal"
           ? error.message
-          : "Le backend a retourne une erreur pendant le backfill.";
+          : "Le backend a retourné une erreur pendant le backfill.";
     }
   }
 
@@ -202,7 +204,7 @@ function getBackfillErrorMessage(error: unknown) {
     return error.message;
   }
 
-  return "Une erreur inattendue a empeche le backfill.";
+  return "Une erreur inattendue a empêché le backfill.";
 }
 
 function isSecondaryPrizeEmpty(prize: SecondaryPrizeFormItem) {
@@ -232,7 +234,7 @@ function ImageInputCard({ label, previewUrl, emptyLabel, emptyHint, onFileSelect
           onClick={() => inputRef.current?.click()}
           disabled={disabled}
         >
-          {previewUrl ? "Remplacer l image" : "Ajouter une image"}
+          {previewUrl ? "Remplacer l’image" : "Ajouter une image"}
         </button>
       </div>
       <input
@@ -246,7 +248,7 @@ function ImageInputCard({ label, previewUrl, emptyLabel, emptyHint, onFileSelect
         <div className="flex items-center gap-3 rounded-[8px] border border-[#E8E8E4] bg-white px-3 py-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="h-[52px] w-[52px] rounded-[8px] object-cover" src={previewUrl} alt={label} />
-          <div className="text-[11px] text-[#666666]">Image prete. Tu peux la remplacer avant d enregistrer.</div>
+          <div className="text-[11px] text-[#666666]">Image prête. Tu peux la remplacer avant d’enregistrer.</div>
         </div>
       ) : (
         <div
@@ -427,7 +429,7 @@ export function GameEditModal({
 
       const desiredCount = typeof result?.desiredCount === "number" ? result.desiredCount : null;
       if (result?.ok !== true || desiredCount === null || createdCount < 0 || existingCount < 0 || createdCount + existingCount !== desiredCount) {
-        throw new Error("La reponse de generation des lots instantanes est incoherente.");
+        throw new Error("La réponse de génération des lots instantanés est incohérente.");
       }
 
       await onInstantWinnersGenerated?.();
@@ -435,7 +437,7 @@ export function GameEditModal({
       if (createdCount > 0) {
         setBackfillFeedback({
           tone: "success",
-          message: `${formatCount(createdCount)} instant winners crees`,
+          message: `${formatCount(createdCount)} gains instantanés créés`,
         });
         return;
       }
@@ -445,7 +447,7 @@ export function GameEditModal({
         message:
           existingCount > 0
             ? `${formatCount(existingCount)} instant winners deja presents, rien a faire`
-            : "Aucun instant winner a creer pour ce jeu",
+            : "Aucun gain instantané à créer pour ce jeu",
       });
     } catch (backfillError) {
       setBackfillFeedback({
@@ -476,8 +478,8 @@ export function GameEditModal({
           merchantName,
           description: lotDescription,
           imageUrl: coverPreviewUrl || null,
-          startDateLabel: generalForm.startDate || "Date a definir",
-          endDateLabel: generalForm.endDate || "Date a definir",
+          startDateLabel: generalForm.startDate || "Date à définir",
+          endDateLabel: generalForm.endDate || "Date à définir",
           merchantId: generalForm.merchantId || game.merchantId,
           animationId: generalForm.animationId || game.animationId,
           restrictedToAdults: generalForm.restrictedToAdults,
@@ -492,7 +494,7 @@ export function GameEditModal({
       setValidationError(
         printError instanceof Error
           ? printError.message
-          : "Impossible d imprimer l affiche du jeu.",
+          : "Impossible d’imprimer l’affiche du jeu.",
       );
     }
   };
@@ -525,7 +527,7 @@ export function GameEditModal({
       setValidationError(
         postError instanceof Error
           ? postError.message
-          : "Impossible de creer le post Facebook du jeu.",
+          : "Impossible de créer le post Facebook du jeu.",
       );
     }
   };
@@ -544,17 +546,17 @@ export function GameEditModal({
     const isPublishingRelaunch = relaunchWorkflow && !formDirty && (!hasInstantWinners || instantWinnersReady);
     if (isPublishingRelaunch) {
       if (!generalForm.startDate || !generalForm.endDate) {
-        setValidationError("Les dates de debut et de fin sont obligatoires avant publication.");
+      setValidationError("Les dates de début et de fin sont obligatoires avant publication.");
         return;
       }
       const start = new Date(`${generalForm.startDate}T00:00:00`);
       const end = new Date(`${generalForm.endDate}T23:59:59`);
       if (start.getTime() >= end.getTime()) {
-        setValidationError("La date de debut doit etre anterieure a la date de fin.");
+        setValidationError("La date de début doit être antérieure à la date de fin.");
         return;
       }
       if (end.getTime() <= Date.now()) {
-        setValidationError("La date de fin doit etre dans le futur avant publication.");
+        setValidationError("La date de fin doit être dans le futur avant publication.");
         return;
       }
     }
@@ -566,18 +568,18 @@ export function GameEditModal({
         generalForm.endDate !== toInputDate(game.endDate))
     ) {
       setValidationError(
-        "Ce jeu a deja ete cloture. Pour organiser une nouvelle edition, utilisez Dupliquer.",
+        "Ce jeu a déjà été clôturé. Pour organiser une nouvelle édition, utilisez Dupliquer.",
       );
       return;
     }
 
     if (generalForm.startDate && generalForm.endDate && generalForm.endDate < generalForm.startDate) {
-      setValidationError("La date de fin doit etre posterieure a la date de debut.");
+      setValidationError("La date de fin doit être postérieure à la date de début.");
       return;
     }
 
     if (prizeUsageDeadline && generalForm.endDate && prizeUsageDeadline < generalForm.endDate) {
-      setValidationError("La date limite d utilisation du lot doit etre posterieure ou egale a la date de fin du jeu.");
+      setValidationError("La date limite d’utilisation du lot doit être postérieure ou égale à la date de fin du jeu.");
       return;
     }
 
@@ -642,7 +644,7 @@ export function GameEditModal({
           : { prize_usage_deadline: deleteField() },
       );
     } catch {
-      setValidationError("Impossible d enregistrer la date limite d utilisation du lot.");
+      setValidationError("Impossible d’enregistrer la date limite d’utilisation du lot.");
       return;
     }
 
@@ -705,19 +707,19 @@ export function GameEditModal({
                 >
                   Voir les gagnants →
                 </a>
-                <button
+                {!isQrOnlyGame(game.accessMode) ? <button
                   type="button"
                   onClick={() => void handlePrintPoster()}
                   className="inline-flex items-center gap-1 text-[11px] font-medium text-[#185FA5] hover:underline"
                 >
-                  Imprimer l affiche
-                </button>
+                  Imprimer l’affiche
+                </button> : null}
                 <button
                   type="button"
                   onClick={() => void handleOpenFacebookPost()}
                   className="inline-flex items-center gap-1 text-[11px] font-medium text-[#A0134D] hover:underline"
                 >
-                  Creer le post Facebook
+                  Créer le post Facebook
                 </button>
               </div>
             )}
@@ -727,11 +729,28 @@ export function GameEditModal({
 
         <form id="game-edit-form" className="flex-1 overflow-y-auto px-5 py-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4">
+            {isQrOnlyGame(game.accessMode) ? (
+              <GameQrSection game={{
+                id: game.id,
+                title: generalForm.title.trim() || game.title,
+                merchantName,
+                description: generalForm.description.trim(),
+                imageUrl: coverPreviewUrl || null,
+                startDateLabel: generalForm.startDate || game.startDate || "",
+                endDateLabel: generalForm.endDate || game.endDate || "",
+                merchantId: generalForm.merchantId || game.merchantId,
+                animationId: generalForm.animationId || game.animationId,
+                restrictedToAdults: generalForm.restrictedToAdults,
+                mainPrizeTitle: mainPrizeForm.title.trim() || game.mainPrizeTitle,
+                secondaryPrizeTitle: secondaryPrizes[0]?.name?.trim() || null,
+                secondaryPrizeSummary: prizeSummary.secondaryPreview ?? prizeSummary.secondaryCountLabel ?? null,
+              }} />
+            ) : null}
             {isFinalized ? (
               <div className="rounded-[8px] border border-[#F0C895] bg-[#FDF3E7] px-3 py-3 text-[12px] text-[#8A5A1E]">
-                <strong>Jeu deja cloture</strong>
+                <strong>Jeu déjà clôturé</strong>
                 <p className="mt-1">
-                  Ce jeu a deja ete cloture. Pour organiser une nouvelle edition, utilisez
+                  Ce jeu a déjà été clôturé. Pour organiser une nouvelle édition, utilisez
                   Dupliquer.
                 </p>
               </div>
@@ -740,7 +759,7 @@ export function GameEditModal({
             {hasMissingImage ? (
               <div className="rounded-[8px] border border-[#F09595] bg-[#FCEBEB] px-3 py-3 text-[12px] text-[#A32D2D]">
                 <strong>Image manquante</strong>
-                <p className="mt-1">Ce jeu ne s affiche pas correctement sans image.</p>
+                <p className="mt-1">Ce jeu ne s’affiche pas correctement sans image.</p>
               </div>
             ) : null}
 
@@ -782,7 +801,7 @@ export function GameEditModal({
                       value={generalForm.status}
                       onChange={(event) => updateGeneralForm("status", event.target.value as GameStatus)}
                       disabled={isFinalized || relaunchWorkflow}
-                      title={isFinalized ? "Jeu cloture : utilisez Dupliquer pour une nouvelle edition." : relaunchWorkflow ? "La publication est disponible apres la generation controlee des gains instantanes." : undefined}
+                      title={isFinalized ? "Jeu clôturé : utilisez Dupliquer pour une nouvelle édition." : relaunchWorkflow ? "La publication est disponible après la génération contrôlée des gains instantanés." : undefined}
                     >
                       <option value="actif">Actif</option>
                       <option value="brouillon">Brouillon</option>
@@ -792,7 +811,7 @@ export function GameEditModal({
                   </label>
 
                   <label className="flex flex-col gap-1">
-                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Date debut</span>
+                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Date début</span>
                     <input className={inputClassName} type="date" value={generalForm.startDate} onChange={(event) => updateGeneralForm("startDate", event.target.value)} />
                   </label>
 
@@ -804,12 +823,12 @@ export function GameEditModal({
                       value={generalForm.endDate}
                       onChange={(event) => updateGeneralForm("endDate", event.target.value)}
                       disabled={isFinalized}
-                      title={isFinalized ? "Jeu cloture : utilisez Dupliquer pour une nouvelle edition." : undefined}
+                      title={isFinalized ? "Jeu clôturé : utilisez Dupliquer pour une nouvelle édition." : undefined}
                     />
                   </label>
 
                   <label className="flex flex-col gap-1 sm:col-span-2">
-                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Date limite d utilisation du lot (facultatif)</span>
+                    <span className="text-[11px] font-medium text-[var(--color-text-secondary,#7b7b7b)]">Date limite d’utilisation du lot (facultatif)</span>
                     <input
                       className={inputClassName}
                       type="date"

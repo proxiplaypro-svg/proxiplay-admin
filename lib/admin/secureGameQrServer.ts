@@ -15,7 +15,8 @@ export async function readSecureGameQr(gameId: string) {
     const proof = (await tx.get(db.doc(`game_qr_access/${gameId}`))).data();
     const shop = (game.enseigne_id || game.enseigne_ref)?.path || "";
     const shopData = /^enseignes\/[^/]+$/.test(shop) ? (await tx.get(db.doc(shop))).data() : undefined;
-    if (!proof || proof.game_path !== gameRef.path || proof.shop_path !== shop ||
+    if (!proof) return { state: "missing" as const };
+    if (proof.game_path !== gameRef.path || proof.shop_path !== shop ||
         proof.owner_path !== userPath(game.owner_id) || proof.shop_owner_path !== shopOwnerPath(shopData ?? {}) ||
         !proof.expires_at?.toMillis || proof.expires_at.toMillis() <= Date.now() ||
         typeof proof.token !== "string" || !/^[a-f0-9]{64}$/.test(proof.token)) {

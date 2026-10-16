@@ -101,7 +101,7 @@ function buildSections(counts: {
         { href: "/admin/prospection", label: "Prospection", icon: "⌕" },
         {
           href: "/admin/commercants",
-          label: "Commercants",
+          label: "Commerçants",
           icon: "◫",
           badge:
             counts.merchantsWithoutGame > 0
@@ -126,18 +126,18 @@ function buildSections(counts: {
       label: "Communication",
       items: [
         { href: "/admin/notifications/nouvelle", label: "Notifications", icon: "◯" },
-        { href: "/admin/relances-commercants", label: "Relances commercants", icon: "◈" },
+        { href: "/admin/relances-commercants", label: "Relances commerçants", icon: "◈" },
         { href: "/admin/relances-auto", label: "Relances auto", icon: "◪" },
         { href: "/admin/parrainage", label: "Parrainage", icon: "△" },
-        { href: "/admin/publicite", label: "Publicite", icon: "▣" },
+        { href: "/admin/publicite", label: "Publicité", icon: "▣" },
       ],
     },
     {
       id: "billing",
-      label: "Paiement commercants",
+      label: "Paiement commerçants",
       items: [
         { href: "/admin/abonnements", label: "Abonnements", icon: "◆" },
-        { href: "/admin/parrainage-commercants", label: "Parrainage commercants", icon: "€" },
+        { href: "/admin/parrainage-commercants", label: "Parrainage commerçants", icon: "€" },
       ],
     },
     {

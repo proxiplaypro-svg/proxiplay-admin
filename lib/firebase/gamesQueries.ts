@@ -28,11 +28,13 @@ import type {
 import { auth } from "./auth";
 import { db, storage } from "./client-app";
 import { resolveHasMainPrize, validateGamePrizes } from "./gamePrizeValidation";
+import { resolveCreateGameDescriptions } from "./gameDescriptions";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
 
 type FirestoreGameDocument = {
+  access_mode?: "public" | "qr_only";
   title?: string;
   name?: string;
   description?: string;
@@ -70,7 +72,6 @@ type FirestoreGameDocument = {
   secondary_prizes?: FirestoreSecondaryPrizeDocument[] | null;
   prohibited_for_minors?: boolean;
   restrictedToAdults?: boolean;
-  access_mode?: "public" | "qr_only";
   qr_consumes_participation?: boolean;
   // Marqueurs de finalisation : ecrits ensemble, une seule fois, par le
   // resultat reel d'un tirage (main_prize_draw.js cote app mobile).
@@ -492,11 +493,11 @@ export function mapGameDocument(
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
+    accessMode: game.access_mode === "qr_only" ? "qr_only" : "public",
     restrictedToAdults: readBoolean(
       game.prohibited_for_minors ?? game.restrictedToAdults,
       false,
     ),
-    accessMode: game.access_mode === "qr_only" ? "qr_only" : "public",
     // Missing is deliberately true for backwards compatibility with QR games
     // created before this setting existed.
     qrConsumesParticipation: game.qr_consumes_participation !== false,
@@ -878,7 +879,8 @@ export type CreateGameInput = {
   merchantId: string;
   merchantName: string;
   title: string;
-  description: string;
+  gameDescription?: string;
+  mainPrizeDescription: string;
   hasMainPrize: boolean;
   startDate: string;
   endDate: string;
@@ -891,6 +893,29 @@ export type CreateGameInput = {
 export type CreateGameResult = {
   game: Game;
 };
+
+export function buildCreateGameDescriptionPayload(input: {
+  accessMode: CreateGameAccessMode;
+  gameDescription?: string;
+  mainPrizeDescription: string;
+  hasMainPrize: boolean;
+  prizeValue: number | null;
+}) {
+  const { gameDescription, mainPrizeDescription } = resolveCreateGameDescriptions(input);
+
+  return {
+    description: gameDescription,
+    conditions: gameDescription,
+    ...(input.hasMainPrize
+      ? {
+          main_prize_title: mainPrizeDescription,
+          main_prize_description: mainPrizeDescription,
+          ...(input.prizeValue !== null ? { prize_value: input.prizeValue } : {}),
+          main_prize_image: "",
+        }
+      : {}),
+  };
+}
 
 /// Création d'un jeu à gratter pour un seul commerçant, en mode public
 /// (jouable librement dans l'app) ou qr_only (le joueur doit scanner le QR
@@ -930,7 +955,7 @@ export async function createGame(
 
   const prizeValidationError = validateGamePrizes({
     hasMainPrize: input.hasMainPrize,
-    mainPrizeDescription: input.description,
+    mainPrizeDescription: input.mainPrizeDescription,
     secondaryPrizes: input.secondaryPrizes,
   });
   if (prizeValidationError) throw new Error(prizeValidationError);
@@ -944,7 +969,13 @@ export async function createGame(
     imageUrl = await uploadGameCover(gameRef.id, input.imageFile);
   }
 
-  const description = input.description.trim();
+  const descriptionPayload = buildCreateGameDescriptionPayload({
+    accessMode: input.accessMode,
+    gameDescription: input.gameDescription,
+    mainPrizeDescription: input.mainPrizeDescription,
+    hasMainPrize: input.hasMainPrize,
+    prizeValue,
+  });
   const qrLink = `https://play.proxiplay.fr/j/${gameRef.id}`;
 
   const secondaryPrizes = input.secondaryPrizes
@@ -961,8 +992,7 @@ export async function createGame(
     title: input.title,
     name: input.title,
     create_by: doc(db, "users", user.uid),
-    description,
-    conditions: description,
+    ...descriptionPayload,
     merchantId: input.merchantId,
     merchant_id: input.merchantId,
     merchantName: input.merchantName,
@@ -986,14 +1016,6 @@ export async function createGame(
     sessionCount: 0,
     partiesCount: 0,
     hasMainPrize: input.hasMainPrize,
-    ...(input.hasMainPrize
-      ? {
-          main_prize_title: description,
-          main_prize_description: description,
-          ...(prizeValue !== null ? { prize_value: prizeValue } : {}),
-          main_prize_image: "",
-        }
-      : {}),
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
@@ -1013,7 +1035,7 @@ export async function createGame(
     game: {
       id: gameRef.id,
       title: input.title,
-      description,
+      description: descriptionPayload.description,
       merchantId: input.merchantId,
       merchantName: input.merchantName,
       animationId: null,
@@ -1028,8 +1050,8 @@ export async function createGame(
       collectionName: input.collectionName,
       imageMissing: !imageUrl,
       hasMainPrize: input.hasMainPrize,
-      mainPrizeTitle: input.hasMainPrize ? description : "",
-      mainPrizeDescription: input.hasMainPrize ? description : "",
+      mainPrizeTitle: input.hasMainPrize ? input.mainPrizeDescription.trim() : "",
+      mainPrizeDescription: input.hasMainPrize ? input.mainPrizeDescription.trim() : "",
       mainPrizeValue: input.hasMainPrize && prizeValue !== null ? String(prizeValue) : "",
       mainPrizeImage: null,
       secondaryPrizes: secondaryPrizes.map((prize, index) => ({
@@ -1039,8 +1061,8 @@ export async function createGame(
         count: String(prize.count),
         image: null,
       })),
-      restrictedToAdults: input.restrictedToAdults,
       accessMode: input.accessMode,
+      restrictedToAdults: input.restrictedToAdults,
       qrConsumesParticipation:
         input.accessMode === "qr_only" ? input.qrConsumesParticipation : true,
       isRelaunchWorkflow: false,

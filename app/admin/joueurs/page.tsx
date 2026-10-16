@@ -125,7 +125,7 @@ function getBulkPushModalState(userIds: string[]): PushModalState {
     title: "",
     message: "",
     heading: "Envoyer une notif push",
-    description: "La notification sera creee dans ff_push_notifications pour les joueurs selectionnes.",
+    description: "La notification sera créée dans ff_push_notifications pour les joueurs sélectionnés.",
   };
 }
 function getSinglePushModalState(playerId: string): PushModalState {
@@ -135,7 +135,7 @@ function getSinglePushModalState(playerId: string): PushModalState {
     title: "On vous a reserve des parties !",
     message: "Revenez jouer sur ProxiPlay, vos chances vous attendent.",
     heading: "Relancer le joueur par notification push",
-    description: "Tu peux ajuster le titre et le message avant l envoi.",
+    description: "Tu peux ajuster le titre et le message avant l’envoi.",
   };
 }
 function startOfLocalDay(value: number | Date) {
@@ -399,7 +399,7 @@ export default function AdminPlayersPage() {
 
   const openBulkPushModal = (userIds: string[]) => {
     if (userIds.length === 0) {
-      setFeedback({ tone: "error", text: "Selectionne au moins un joueur avant l envoi." });
+      setFeedback({ tone: "error", text: "Sélectionne au moins un joueur avant l’envoi." });
       return;
     }
 
@@ -484,7 +484,7 @@ export default function AdminPlayersPage() {
 
         setFeedback({
           tone: "success",
-          text: `Notification creee dans ff_push_notifications pour ${userIds.length} joueur${userIds.length > 1 ? "s" : ""}.`,
+          text: `Notification créée dans ff_push_notifications pour ${userIds.length} joueur${userIds.length > 1 ? "s" : ""}.`,
         });
         setPushModal({
           open: false,
@@ -497,7 +497,7 @@ export default function AdminPlayersPage() {
         setSelection(new Set());
       } catch (e) {
         console.error(e);
-        const messageText = e instanceof Error ? e.message : "Impossible de creer la notification push.";
+        const messageText = e instanceof Error ? e.message : "Impossible de créer la notification push.";
         setFeedback({ tone: "error", text: messageText });
       } finally {
         setPushSubmitting(false);

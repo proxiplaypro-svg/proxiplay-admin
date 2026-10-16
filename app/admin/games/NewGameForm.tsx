@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { doc, Timestamp, updateDoc } from "firebase/firestore";
 import {
@@ -13,6 +14,13 @@ import {
 import { db } from "@/lib/firebase/client-app";
 import type { GameMerchantOption } from "@/types/dashboard";
 import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
+import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
+import { issueGameQr } from "@/lib/admin/gameQrClient";
+import {
+  createGameThenPreparePostCreation,
+  getNewGamePostCreationRoute,
+  shouldOfferInstantWinnerGeneration,
+} from "@/lib/admin/newGamePostCreation";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -27,6 +35,7 @@ type NewGameFormProps = {
 type FormState = {
   merchantId: string;
   title: string;
+  gameDescription: string;
   description: string;
   prizeValue: string;
   hasMainPrize: boolean;
@@ -41,6 +50,7 @@ type FormState = {
 const emptyForm: FormState = {
   merchantId: "",
   title: "",
+  gameDescription: "",
   description: "",
   prizeValue: "",
   hasMainPrize: true,
@@ -101,14 +111,20 @@ export default function NewGameForm({
   const [loadingMerchants, setLoadingMerchants] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [createdGame, setCreatedGame] = useState<{ id: string; merchantId: string } | null>(null);
+  const [createdGame, setCreatedGame] = useState<{ id: string; merchantId: string; hasSecondaryPrizes: boolean } | null>(null);
+  const [qrIssueFailed, setQrIssueFailed] = useState(false);
+  const [retryingQr, setRetryingQr] = useState(false);
+  const [qrRetryError, setQrRetryError] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
   const [activated, setActivated] = useState(false);
   const [activateError, setActivateError] = useState<string | null>(null);
+  const [generatingInstantWinners, setGeneratingInstantWinners] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [secondaryPrizes, setSecondaryPrizes] = useState<SecondaryPrizeFormItem[]>([]);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     let active = true;
@@ -186,7 +202,11 @@ export default function NewGameForm({
         }
       }
 
-      const result = await createGame({
+      const configuredSecondaryPrizes = secondaryPrizes.filter((prize) => !isSecondaryPrizeEmpty(prize));
+      const preparation = await createGameThenPreparePostCreation({
+        accessMode,
+        createGame: async () => {
+          const result = await createGame({
         accessMode,
         qrConsumesParticipation: form.qrConsumesParticipation,
         collectionName: gameCollection,
@@ -194,21 +214,26 @@ export default function NewGameForm({
         merchantId: merchant.id,
         merchantName: merchant.name,
         title: form.title,
-        description: form.description,
+        gameDescription: form.gameDescription,
+        mainPrizeDescription: form.description,
         hasMainPrize: form.hasMainPrize,
         startDate: form.startDate,
         endDate: form.endDate,
         prizeValue: form.prizeValue,
         imageFile,
         restrictedToAdults: form.restrictedToAdults,
-        secondaryPrizes: secondaryPrizes
-          .filter((prize) => !isSecondaryPrizeEmpty(prize))
+        secondaryPrizes: configuredSecondaryPrizes
           .map((prize) => ({
             name: prize.name.trim(),
             description: prize.description.trim(),
             count: prize.count.trim(),
           })),
+          });
+          return { id: result.game.id, merchantId: merchant.id };
+        },
+        issueGameQr,
       });
+      const result = { game: preparation.game };
 
       if (form.prizeUsageDeadlineEnabled && form.prizeUsageDeadline) {
         await updateDoc(doc(db, gameCollection, result.game.id), {
@@ -216,17 +241,50 @@ export default function NewGameForm({
         });
       }
 
-      setCreatedGame({ id: result.game.id, merchantId: merchant.id });
+      const postCreationRoute = getNewGamePostCreationRoute(merchant.id);
+      const hasSecondaryPrizes = shouldOfferInstantWinnerGeneration(configuredSecondaryPrizes.length);
+      if (!preparation.qrIssueFailed && !hasSecondaryPrizes) {
+        router.replace(postCreationRoute);
+        return;
+      }
+
+      setCreatedGame({ id: result.game.id, merchantId: merchant.id, hasSecondaryPrizes });
+      setQrIssueFailed(preparation.qrIssueFailed);
       setActivated(false);
       setActivateError(null);
-      setForm(emptyForm);
-      setImageFile(null);
-      setSecondaryPrizes([]);
-      if (imageInputRef.current) imageInputRef.current.value = "";
     } catch (saveError) {
       setError(getGamesQueryErrorMessage(saveError));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleGenerateInstantWinners = async () => {
+    if (!createdGame) return;
+    setGeneratingInstantWinners(true);
+    setGenerationError(null);
+    try {
+      await generateInstantWinnersForGame(createdGame.id);
+      router.replace(getNewGamePostCreationRoute(createdGame.merchantId));
+    } catch {
+      setGenerationError("Impossible de generer les lots secondaires. Tu peux reessayer depuis la fiche du jeu.");
+    } finally {
+      setGeneratingInstantWinners(false);
+    }
+  };
+
+  const handleRetryQr = async () => {
+    if (!createdGame) return;
+    setRetryingQr(true);
+    setQrRetryError(null);
+    try {
+      await issueGameQr(createdGame.id);
+      setQrIssueFailed(false);
+      if (!createdGame.hasSecondaryPrizes) router.replace(getNewGamePostCreationRoute(createdGame.merchantId));
+    } catch {
+      setQrRetryError("Le QR code n'a pas pu etre genere. Reessaie dans quelques instants.");
+    } finally {
+      setRetryingQr(false);
     }
   };
 
@@ -235,11 +293,7 @@ export default function NewGameForm({
     setActivating(true);
     setActivateError(null);
     try {
-      await updateGameStatus({
-        gameId: createdGame.id,
-        collectionName: gameCollection,
-        status: "actif",
-      });
+      await updateGameStatus({ gameId: createdGame.id, collectionName: gameCollection, status: "actif" });
       setActivated(true);
     } catch (activateGameError) {
       setActivateError(getGamesQueryErrorMessage(activateGameError));
@@ -265,8 +319,18 @@ export default function NewGameForm({
           <div className="rounded-[12px] border border-[#D8E8C4] bg-[#EAF3DE] p-5">
             <p className="text-[14px] font-medium text-[#3B6D11]">{activated ? "Jeu créé et activé." : "Jeu créé en brouillon."}</p>
             <p className="mt-1 text-[13px] text-[#3B6D11]">{activated ? "Il est maintenant visible dans l'app." : "Active-le pour le rendre visible dans l'app, ou fais-le depuis la liste des jeux."}</p>
+            {qrIssueFailed ? <div className="mt-3 rounded-[8px] border border-[#F2CA7E] bg-[#FFF8E8] p-3 text-[13px] text-[#7A4A00]">
+              <p>Le jeu a bien ete cree, mais son QR code securise n&apos;a pas pu etre genere.</p>
+              <button type="button" onClick={() => void handleRetryQr()} disabled={retryingQr} className="mt-2 inline-flex rounded-[8px] bg-[#639922] px-3 py-2 font-medium text-white disabled:opacity-50">{retryingQr ? "Generation..." : "Generer le QR code"}</button>
+              {qrRetryError ? <p className="mt-2 text-[#A32D2D]">{qrRetryError}</p> : null}
+            </div> : null}
             {activateError ? <p className="mt-2 text-[13px] text-[#E24B4A]">{activateError}</p> : null}
             <div className="mt-3 flex flex-wrap gap-3">
+              {createdGame.hasSecondaryPrizes ? <button type="button" onClick={() => void handleGenerateInstantWinners()} disabled={generatingInstantWinners} className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50">
+                {generatingInstantWinners ? "Génération…" : "Générer les lots secondaires"}
+              </button> : null}
+              <button type="button" onClick={() => router.replace(getNewGamePostCreationRoute(createdGame.merchantId))} disabled={generatingInstantWinners} className="inline-flex items-center justify-center rounded-[10px] border border-[#E0E0DA] bg-white px-4 py-2 text-[13px] font-medium text-[#1A1A1A] hover:bg-[#FAFAF8]">Retourner aux jeux</button>
+              {generationError ? <p className="basis-full text-[13px] text-[#E24B4A]">{generationError}</p> : null}
               {!activated ? (
                 <button type="button" onClick={() => void handleActivate()} disabled={activating} className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50">
                   {activating ? "Activation…" : "Activer maintenant"}
@@ -278,6 +342,7 @@ export default function NewGameForm({
           </div>
         ) : null}
 
+        {!createdGame ? (
         <form className="rounded-[12px] border border-[#E8E8E4] bg-white p-5" onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5 sm:col-span-2">
@@ -292,6 +357,13 @@ export default function NewGameForm({
               <span className="text-[12px] font-medium text-[#666]">Titre du jeu</span>
               <input className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" type="text" value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} placeholder={titlePlaceholder} required />
             </label>
+
+            {accessMode === "qr_only" ? (
+              <label className="flex flex-col gap-1.5 sm:col-span-2">
+                <span className="text-[12px] font-medium text-[#666]">Description</span>
+                <textarea className="resize-y rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" value={form.gameDescription} onChange={(event) => setForm((prev) => ({ ...prev, gameDescription: event.target.value }))} rows={4} placeholder="Présentez le jeu ou l'événement aux joueurs." />
+              </label>
+            ) : null}
 
             <label className="flex flex-col gap-1.5">
               <span className="text-[12px] font-medium text-[#666]">Date de début</span>
@@ -385,6 +457,7 @@ export default function NewGameForm({
           {error ? <p className="mt-4 text-[13px] text-[#E24B4A]">{error}</p> : null}
           <div className="mt-5 flex items-center gap-3"><button type="submit" disabled={saving || loadingMerchants} className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-5 py-3 text-[14px] font-medium text-white hover:bg-[#5a8b1f] disabled:opacity-50">{saving ? "Création…" : "Créer le jeu"}</button></div>
         </form>
+        ) : null}
       </div>
     </section>
   );

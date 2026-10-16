@@ -1,5 +1,13 @@
 export const QR_REGENERATION_MESSAGE = "QR sécurisé absent ou expiré : une génération et une réimpression sont nécessaires. Les anciennes affiches sans jeton ne permettent pas l’accès avec le moteur sécurisé.";
 
+export function isQrOnlyGame(accessMode: unknown) {
+  return accessMode === "qr_only";
+}
+
+export function getQrGenerationActionLabel(state: "missing" | "regeneration-required") {
+  return state === "missing" ? "Générer le QR code" : "Régénérer le QR code";
+}
+
 export function buildSecureGameQrLink(gameId: string, token: unknown): string {
   if (!gameId || gameId.includes("/") || typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) {
     throw new Error("Réponse QR sécurisée invalide.");

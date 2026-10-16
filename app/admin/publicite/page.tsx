@@ -1,381 +1,159 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { doc, onSnapshot, setDoc, Timestamp } from "firebase/firestore";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { auth } from "@/lib/firebase/auth";
-import { db } from "@/lib/firebase/client-app";
-import { validateAdCampaign } from "@/lib/admin/adCampaign";
+import { getAdCampaignStatus, type AdCampaignRecord, type AdPlacement } from "@/lib/admin/adCampaign";
+import { getAdImageFormat, isAdImageRatioCompatible } from "@/lib/admin/adImageFormat";
 
-type AdPlacement = "open" | "home_banner";
-
-type AdPlacementDoc = {
-  enabled: boolean;
-  imageUrl: string;
-  destinationUrl: string;
-  startDate: string;
-  endDate: string;
-  frequencyCapHours: string;
-  impressions: number;
-  clicks: number;
+type Form = {
+  id: string | null; sourceCampaignId: string | null; name: string; advertiser: string;
+  placement: AdPlacement; imageUrl: string; destinationUrl: string; startDate: string;
+  endDate: string; frequencyCapHours: string;
 };
+type ImageDimensions = { width: number; height: number };
 
-const EMPTY_DOC: AdPlacementDoc = {
-  enabled: false,
-  imageUrl: "",
-  destinationUrl: "",
-  startDate: "",
-  endDate: "",
-  frequencyCapHours: "",
-  impressions: 0,
-  clicks: 0,
+const EMPTY: Form = { id: null, sourceCampaignId: null, name: "", advertiser: "", placement: "home_banner", imageUrl: "", destinationUrl: "", startDate: "", endDate: "", frequencyCapHours: "" };
+const LABEL = { draft: "Brouillon", scheduled: "Programmée", active: "Active", ended: "Terminée", disabled: "Désactivée" } as const;
+const PLACEMENT_LABEL: Record<AdPlacement, string> = {
+  open: "Ouverture",
+  home_banner: "Bandeau Home",
+  home_banner_referral: "Bandeau Home — sous parrainage commerçant",
 };
+const date = (value: string) => value ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(new Date(`${value}T12:00:00`)) : "—";
+const ctr = (impressions: number, clicks: number) => impressions ? `${((clicks / impressions) * 100).toFixed(1)} %` : "—";
 
-function formatInputDate(value: Timestamp | null | undefined) {
-  if (!value) return "";
-  const date = value.toDate();
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
+function clone(campaign: AdCampaignRecord, relaunch = false): Form {
+  return { id: null, sourceCampaignId: campaign.id, name: `${campaign.name}${relaunch ? " — relance" : " — copie"}`, advertiser: campaign.advertiser, placement: campaign.placement, imageUrl: campaign.imageUrl, destinationUrl: campaign.destinationUrl, startDate: relaunch ? "" : campaign.startDate, endDate: relaunch ? "" : campaign.endDate, frequencyCapHours: campaign.frequencyCapHours };
 }
 
-function parseDateInput(value: string): Timestamp | null {
-  return value ? Timestamp.fromDate(new Date(`${value}T00:00:00`)) : null;
-}
-
-async function getAuthToken(): Promise<string> {
+async function token() {
   const user = auth.currentUser;
-  if (!user) throw new Error("Connexion admin requise.");
+  if (!user) throw new Error("Connexion administrateur requise.");
   return user.getIdToken();
 }
 
-async function adminFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = await getAuthToken();
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...(options.headers as Record<string, string> | undefined),
-      Authorization: `Bearer ${token}`,
-    },
+async function request(url: string, options: RequestInit = {}) {
+  return fetch(url, { ...options, headers: { ...(options.headers as Record<string, string> | undefined), Authorization: `Bearer ${await token()}` } });
+}
+
+async function responseError(response: Response, fallback: string) {
+  const body = await response.json().catch(() => null) as { error?: string } | null;
+  return body?.error?.trim() || fallback;
+}
+
+function readImageDimensions(file: File): Promise<ImageDimensions> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(objectUrl); resolve({ width: image.naturalWidth, height: image.naturalHeight }); };
+    image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Impossible de lire les dimensions de cette image.")); };
+    image.src = objectUrl;
   });
 }
 
-async function uploadAdImage(placement: AdPlacement, file: File) {
-  const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("path", `ads/${placement}/${Date.now()}.${extension}`);
-
-  const response = await adminFetch("/api/admin/upload", {
-    method: "POST",
-    body: formData,
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | { url?: string; error?: string }
-    | null;
-
-  if (!response.ok || !payload?.url) {
-    throw new Error(payload?.error?.trim() || "Impossible d uploader l image.");
-  }
-
-  return payload.url;
+function ImageFormatHelp({ placement }: { placement: AdPlacement }) {
+  const format = getAdImageFormat(placement);
+  return <p className="text-sm text-[#666]">Format recommandé : {format.width} × {format.height} px ({format.ratioLabel})</p>;
 }
 
-function formatCtr(impressions: number, clicks: number) {
-  if (impressions <= 0) return "—";
-  return `${((clicks / impressions) * 100).toFixed(1)}%`;
-}
-
-function AdPlacementCard({
-  placement,
-  title,
-  description,
-  showFrequencyCap,
-}: {
-  placement: AdPlacement;
-  title: string;
-  description: string;
-  showFrequencyCap: boolean;
-}) {
-  const [data, setData] = useState<AdPlacementDoc>(EMPTY_DOC);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+function Editor({ form, change, close, saved }: { form: Form; change: (next: Form) => void; close: () => void; saved: () => Promise<void> }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const hasLoadedOnce = useRef(false);
+  const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(null);
+  const format = getAdImageFormat(form.placement);
+  const compatible = imageDimensions === null ? null : isAdImageRatioCompatible(form.placement, imageDimensions.width, imageDimensions.height);
 
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      doc(db, "ads", placement),
-      (snapshot) => {
-        const raw = snapshot.data() as Record<string, unknown> | undefined;
-        setLoading(false);
+  useEffect(() => { setImageDimensions(null); }, [form.id, form.sourceCampaignId]);
 
-        // Ne pas ecraser une saisie en cours de frappe avec le live-snapshot
-        // (les compteurs impressions/clics, eux, doivent toujours se mettre
-        // a jour -- ils ne sont jamais edites a la main).
-        setData((previous) => ({
-          enabled: hasLoadedOnce.current ? previous.enabled : Boolean(raw?.enabled),
-          imageUrl: hasLoadedOnce.current ? previous.imageUrl : ((raw?.image_url as string) || ""),
-          destinationUrl: hasLoadedOnce.current
-            ? previous.destinationUrl
-            : ((raw?.destination_url as string) || ""),
-          startDate: hasLoadedOnce.current
-            ? previous.startDate
-            : formatInputDate(raw?.start_at as Timestamp | null | undefined),
-          endDate: hasLoadedOnce.current
-            ? previous.endDate
-            : formatInputDate(raw?.end_at as Timestamp | null | undefined),
-          frequencyCapHours: hasLoadedOnce.current
-            ? previous.frequencyCapHours
-            : raw?.frequency_cap_hours != null
-              ? String(raw.frequency_cap_hours)
-              : "",
-          impressions: typeof raw?.impressions === "number" ? raw.impressions : 0,
-          clicks: typeof raw?.clicks === "number" ? raw.clicks : 0,
-        }));
-        hasLoadedOnce.current = true;
-      },
-      () => {
-        setLoading(false);
-        setError("Impossible de charger cet emplacement publicitaire.");
-      },
-    );
+  const payload = () => ({ name: form.name, advertiser: form.advertiser, placement: form.placement, image_url: form.imageUrl, destination_url: form.destinationUrl, start_date: form.startDate, end_date: form.endDate, frequency_cap_hours: form.placement === "open" ? form.frequencyCapHours : null, source_campaign_id: form.sourceCampaignId });
 
-    return () => unsubscribe();
-  }, [placement]);
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  const upload = async (file?: File) => {
     if (!file) return;
-
-    setUploading(true);
-    setError(null);
-    setFeedback(null);
+    if (!(["image/jpeg", "image/png", "image/webp"] as string[]).includes(file.type)) { setError("Choisissez une image JPG, PNG ou WebP."); return; }
+    setUploading(true); setError(null);
     try {
-      const url = await uploadAdImage(placement, file);
-      setData((previous) => ({ ...previous, imageUrl: url }));
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : "Upload de l image impossible.");
-    } finally {
-      setUploading(false);
-    }
+      setImageDimensions(await readImageDimensions(file));
+      const data = new FormData();
+      data.append("file", file);
+      data.append("path", `ads/${form.placement}/${Date.now()}.${file.name.split(".").pop()?.toLowerCase() || "jpg"}`);
+      const response = await request("/api/admin/upload", { method: "POST", body: data });
+      const result = await response.json().catch(() => null) as { url?: string; error?: string } | null;
+      if (!response.ok || !result?.url) throw new Error(result?.error || "Impossible d’envoyer l’image.");
+      change({ ...form, imageUrl: result.url });
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Envoi impossible."); } finally { setUploading(false); }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    setFeedback(null);
+  const save = async (publish: boolean) => {
+    setBusy(true); setError(null);
     try {
-      const validationError = validateAdCampaign({
-        enabled: data.enabled,
-        imageUrl: data.imageUrl,
-        destinationUrl: data.destinationUrl,
-        startDate: data.startDate,
-        endDate: data.endDate,
-        frequencyCapHours: data.frequencyCapHours,
-        requiresFrequencyCap: showFrequencyCap,
-      });
-      if (validationError) throw new Error(validationError);
-
-      const startAt = parseDateInput(data.startDate);
-      const endAt = parseDateInput(data.endDate);
-      const frequencyCapHours = showFrequencyCap && data.frequencyCapHours.trim()
-        ? Number(data.frequencyCapHours)
-        : null;
-
-      await setDoc(
-        doc(db, "ads", placement),
-        {
-          enabled: data.enabled,
-          image_url: data.imageUrl.trim(),
-          destination_url: data.destinationUrl.trim(),
-          start_at: startAt,
-          end_at: endAt,
-          ...(showFrequencyCap ? { frequency_cap_hours: frequencyCapHours } : {}),
-        },
-        { merge: true },
-      );
-      setFeedback("Enregistre.");
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : "Enregistrement impossible.");
-    } finally {
-      setSaving(false);
-    }
+      let id = form.id;
+      if (!id) {
+        const response = await request("/api/admin/ad-campaigns", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
+        if (!response.ok) throw new Error(await responseError(response, "Création impossible."));
+        id = (await response.json() as { id: string }).id;
+      } else {
+        const response = await request(`/api/admin/ad-campaigns/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
+        if (!response.ok) throw new Error(await responseError(response, "Modification impossible."));
+      }
+      if (publish) {
+        const response = await request(`/api/admin/ad-campaigns/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload(), action: "publish" }) });
+        if (!response.ok) throw new Error(await responseError(response, "Publication impossible."));
+      }
+      await saved(); close();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Enregistrement impossible."); } finally { setBusy(false); }
   };
 
-  return (
-    <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-[16px] font-medium text-[#1a1a1a]">{title}</h2>
-          <p className="mt-1 text-[13px] text-[#666]">{description}</p>
-        </div>
-        <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] text-[#1a1a1a]">
-          <input
-            type="checkbox"
-            checked={data.enabled}
-            onChange={(event) => setData((previous) => ({ ...previous, enabled: event.target.checked }))}
-            className="h-4 w-4"
-          />
-          Activee
-        </label>
-      </div>
-
-      {loading ? (
-        <div className="mt-6 text-[13px] text-[#999]">Chargement...</div>
-      ) : (
-        <div className="mt-5 grid gap-4">
-          <div>
-            <label className="text-[12px] font-medium text-[#666]">Image</label>
-            <div className="mt-2 flex items-center gap-4">
-              {data.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={data.imageUrl}
-                  alt=""
-                  className="h-16 w-28 rounded-[8px] border border-[#E8E8E4] object-cover"
-                />
-              ) : (
-                <div className="flex h-16 w-28 items-center justify-center rounded-[8px] border border-dashed border-[#E0E0DA] text-[11px] text-[#999]">
-                  Aucune
-                </div>
-              )}
-              <button
-                type="button"
-                disabled={uploading}
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-[7px] border border-[#E8E8E4] bg-white px-3 py-1.5 text-[12px] font-medium text-[#1a1a1a] transition hover:bg-[#F7F7F5] disabled:opacity-50"
-              >
-                {uploading ? "Envoi..." : "Changer l image"}
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(event) => void handleFileChange(event)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[12px] font-medium text-[#666]">Destination au clic (URL)</label>
-            <input
-              type="url"
-              value={data.destinationUrl}
-              onChange={(event) => setData((previous) => ({ ...previous, destinationUrl: event.target.value }))}
-              placeholder="https://..."
-              className="mt-1 w-full rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px]"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-[12px] font-medium text-[#666]">Debut</label>
-              <input
-                type="date"
-                value={data.startDate}
-                onChange={(event) => setData((previous) => ({ ...previous, startDate: event.target.value }))}
-                className="mt-1 w-full rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px]"
-              />
-            </div>
-            <div>
-              <label className="text-[12px] font-medium text-[#666]">Fin</label>
-              <input
-                type="date"
-                value={data.endDate}
-                onChange={(event) => setData((previous) => ({ ...previous, endDate: event.target.value }))}
-                className="mt-1 w-full rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px]"
-              />
-            </div>
-          </div>
-
-          {showFrequencyCap && (
-            <div>
-              <label className="text-[12px] font-medium text-[#666]">
-                Frequence (heures entre deux affichages par appareil)
-              </label>
-              <input
-                type="number"
-                min={1}
-                value={data.frequencyCapHours}
-                onChange={(event) =>
-                  setData((previous) => ({ ...previous, frequencyCapHours: event.target.value }))
-                }
-                placeholder="ex. 24"
-                className="mt-1 w-40 rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px]"
-              />
-            </div>
-          )}
-
-          <div className="grid grid-cols-3 gap-4 rounded-[8px] bg-[#F7F7F5] px-4 py-3">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.06em] text-[#999]">Impressions</div>
-              <div className="mt-1 text-[16px] font-medium text-[#1a1a1a]">{data.impressions}</div>
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.06em] text-[#999]">Clics</div>
-              <div className="mt-1 text-[16px] font-medium text-[#1a1a1a]">{data.clicks}</div>
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.06em] text-[#999]">CTR</div>
-              <div className="mt-1 text-[16px] font-medium text-[#1a1a1a]">
-                {formatCtr(data.impressions, data.clicks)}
-              </div>
-            </div>
-          </div>
-
-          {error && <p className="feedback error">{error}</p>}
-          {feedback && !error && <p className="text-[13px] text-[#3B6D11]">{feedback}</p>}
-
-          <div>
-            <button
-              type="button"
-              disabled={saving || uploading}
-              onClick={() => void handleSave()}
-              className="rounded-[8px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white transition hover:bg-[#558020] disabled:opacity-50"
-            >
-              {saving ? "Enregistrement..." : "Enregistrer"}
-            </button>
-          </div>
-        </div>
-      )}
+  return <section className="rounded-xl border border-[#dfe4d8] bg-white p-6">
+    <div className="flex justify-between gap-3"><div><h2 className="text-lg font-semibold">{form.id ? "Modifier la campagne" : "Nouvelle publicité"}</h2><p className="mt-1 text-sm text-[#666]">Un brouillon ne s’affiche jamais dans l’application. La publication est explicite.</p></div><button onClick={close} className="text-sm">Fermer</button></div>
+    <div className="mt-5 grid gap-4 md:grid-cols-2">
+      <label className="grid gap-1 text-sm">Nom de campagne<input value={form.name} onChange={(event) => change({ ...form, name: event.target.value })} className="rounded border px-3 py-2" /></label>
+      <label className="grid gap-1 text-sm">Annonceur<input value={form.advertiser} onChange={(event) => change({ ...form, advertiser: event.target.value })} className="rounded border px-3 py-2" /></label>
+      <label className="grid gap-1 text-sm">Emplacement<select value={form.placement} onChange={(event) => change({ ...form, placement: event.target.value as AdPlacement, frequencyCapHours: event.target.value === "open" ? form.frequencyCapHours : "" })} className="rounded border px-3 py-2"><option value="home_banner">Bandeau Home</option><option value="home_banner_referral">Bandeau Home — sous parrainage commerçant</option><option value="open">Publicité d’ouverture</option></select><ImageFormatHelp placement={form.placement} /></label>
+      <label className="grid gap-1 text-sm">Destination au clic (URL)<input type="url" value={form.destinationUrl} onChange={(event) => change({ ...form, destinationUrl: event.target.value })} className="rounded border px-3 py-2" /></label>
+      <label className="grid gap-1 text-sm">Début<input type="date" value={form.startDate} onChange={(event) => change({ ...form, startDate: event.target.value })} className="rounded border px-3 py-2" /></label>
+      <label className="grid gap-1 text-sm">Fin<input type="date" value={form.endDate} onChange={(event) => change({ ...form, endDate: event.target.value })} className="rounded border px-3 py-2" /></label>
+      {form.placement === "open" && <label className="grid gap-1 text-sm">Fréquence (heures)<input type="number" min="0" value={form.frequencyCapHours} onChange={(event) => change({ ...form, frequencyCapHours: event.target.value })} className="rounded border px-3 py-2" /><span className="text-xs text-[#666]">0 = à chaque ouverture de l&apos;application</span></label>}
     </div>
-  );
+    <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,280px)_1fr] sm:items-center">
+      <div className="flex w-full items-center justify-center overflow-hidden rounded border bg-[#f7f7f5] text-xs text-[#777]" style={{ aspectRatio: format.cssAspectRatio }}>{form.imageUrl ? <img src={form.imageUrl} alt="Aperçu de la publicité" className="h-full w-full object-cover" /> : "Aucune image"}</div>
+      <div className="grid gap-2"><ImageFormatHelp placement={form.placement} /><button type="button" disabled={uploading} onClick={() => input.current?.click()} className="w-fit rounded border px-3 py-2 text-sm">{uploading ? "Envoi…" : "Importer une image"}</button><input ref={input} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void upload(file); }} />
+        {imageDimensions && <p className={`text-sm ${compatible ? "text-[#3b6d11]" : "text-amber-800"}`}>Image : {imageDimensions.width} × {imageDimensions.height} px — {compatible ? "format conforme" : `ratio non recommandé pour ${form.placement === "open" ? "une publicité d’ouverture" : "le bandeau Home"}`}</p>}
+        {compatible === false && <p className="text-sm text-amber-800">L’image est conservée, mais elle pourra être recadrée ou afficher des bandes dans l’application.</p>}
+      </div>
+    </div>
+    {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+    <div className="mt-5 flex gap-3"><button disabled={busy || uploading} onClick={() => void save(false)} className="rounded bg-[#e8ece4] px-4 py-2 text-sm">Enregistrer le brouillon</button><button disabled={busy || uploading} onClick={() => void save(true)} className="rounded bg-[#639922] px-4 py-2 text-sm text-white">{busy ? "Traitement…" : "Publier"}</button></div>
+  </section>;
 }
 
 export default function AdminPublicitePage() {
-  return (
-    <section className="min-h-full bg-[#F7F7F5]">
-      <div className="mx-auto grid max-w-[900px] gap-6">
-        <div>
-          <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Publicite</h1>
-          <p className="mt-1 text-[14px] text-[#666]">
-            Publicites vendues en direct par ProxiPlay (pas d AdMob). Tant qu un emplacement n est pas active avec
-            une image, rien ne s affiche dans l application -- le systeme est fail-closed sur l activation, et
-            fail-open en cas de probleme reseau ou de chargement au moment de l affichage.
-          </p>
-        </div>
-
-        <AdPlacementCard
-          placement="open"
-          title="Publicite d ouverture (pleine page)"
-          description="Affichee en plein ecran au lancement de l application, au plus une fois par fenetre de frequence et par appareil. N empeche jamais l acces a ProxiPlay en cas d echec de chargement."
-          showFrequencyCap
-        />
-
-        <AdPlacementCard
-          placement="home_banner"
-          title="Bandeau Home"
-          description="Affiche dans la Home joueur, juste apres le carrousel 'Jeux a la une', sur les 3 variantes de Home (standard, mineur, valeur de lot filtree)."
-          showFrequencyCap={false}
-        />
-      </div>
-    </section>
-  );
+  const [campaigns, setCampaigns] = useState<AdCampaignRecord[]>([]);
+  const [form, setForm] = useState<Form | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try { const response = await request("/api/admin/ad-campaigns"); if (!response.ok) throw new Error(await responseError(response, "Impossible de charger les campagnes.")); setCampaigns((await response.json() as { campaigns: AdCampaignRecord[] }).campaigns); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Chargement impossible."); } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  const deactivate = async (campaign: AdCampaignRecord) => {
+    setBusy(campaign.id);
+    try { const response = await request(`/api/admin/ad-campaigns/${campaign.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deactivate" }) }); if (!response.ok) throw new Error(await responseError(response, "Désactivation impossible.")); await load(); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Action impossible."); } finally { setBusy(null); }
+  };
+  const remove = async (campaign: AdCampaignRecord) => {
+    if (!window.confirm("Supprimer définitivement cette campagne publicitaire ? Son historique et ses statistiques seront perdus. Cette action est irréversible.")) return;
+    setBusy(campaign.id);
+    try { const response = await request(`/api/admin/ad-campaigns/${campaign.id}`, { method: "DELETE" }); if (!response.ok) throw new Error(await responseError(response, "Suppression impossible.")); await load(); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Suppression impossible."); } finally { setBusy(null); }
+  };
+  return <section className="min-h-full bg-[#F7F7F5]"><div className="mx-auto grid max-w-[1100px] gap-6">
+    <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-[22px] font-medium">Publicités</h1><p className="mt-1 text-sm text-[#666]">Historique complet des campagnes. L’application conserve ses documents actifs <code>ads/open</code>, <code>ads/home_banner</code> et <code>ads/home_banner_referral</code>.</p></div><button onClick={() => setForm(EMPTY)} className="rounded bg-[#639922] px-4 py-2 text-sm text-white">Nouvelle publicité</button></div>
+    {form && <Editor form={form} change={setForm} close={() => setForm(null)} saved={load} />}{error && <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    {loading ? <p className="text-sm text-[#666]">Chargement des campagnes…</p> : campaigns.length === 0 ? <div className="rounded-xl border border-dashed bg-white p-8 text-sm text-[#666]">Aucune campagne enregistrée.</div> : <div className="grid gap-3">{campaigns.map((campaign) => { const status = getAdCampaignStatus(campaign); return <article key={campaign.id} className="grid gap-4 rounded-xl border border-[#e4e7df] bg-white p-4 md:grid-cols-[112px_1fr_auto]"><div className="flex h-20 w-28 items-center justify-center overflow-hidden rounded bg-[#f7f7f5] text-xs text-[#777]">{campaign.imageUrl ? <img src={campaign.imageUrl} alt="" className="h-full w-full object-cover" /> : "Aucune image"}</div><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-medium">{campaign.name}</h2><span className="rounded-full bg-[#edf1e8] px-2 py-0.5 text-xs">{LABEL[status]}</span><span className="text-xs text-[#666]">{PLACEMENT_LABEL[campaign.placement]}</span></div><p className="mt-1 text-sm text-[#555]">{campaign.advertiser} · {date(campaign.startDate)} — {date(campaign.endDate)}</p><div className="mt-2 flex gap-4 text-xs text-[#666]"><span>{campaign.impressions} impressions</span><span>{campaign.clicks} clics</span><span>CTR {ctr(campaign.impressions, campaign.clicks)}</span></div></div><div className="flex flex-wrap content-start gap-2 md:max-w-[240px]"><button onClick={() => setForm({ ...clone(campaign), id: campaign.id, name: campaign.name, sourceCampaignId: campaign.sourceCampaignId, startDate: campaign.startDate, endDate: campaign.endDate })} className="rounded border px-2 py-1 text-xs">Voir / Modifier</button><button onClick={() => setForm(clone(campaign))} className="rounded border px-2 py-1 text-xs">Dupliquer</button><button onClick={() => setForm(clone(campaign, true))} className="rounded border px-2 py-1 text-xs">Relancer</button>{status !== "disabled" && <button disabled={busy === campaign.id} onClick={() => void deactivate(campaign)} className="rounded border border-red-200 px-2 py-1 text-xs text-red-700">Désactiver</button>}{status === "disabled" && <button disabled={busy === campaign.id} onClick={() => void remove(campaign)} className="rounded border border-red-300 px-2 py-1 text-xs text-red-700">Supprimer</button>}</div></article>; })}</div>}
+  </div></section>;
 }
