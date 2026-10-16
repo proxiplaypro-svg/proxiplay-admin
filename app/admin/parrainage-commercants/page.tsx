@@ -57,7 +57,7 @@ export default function AdminParrainageCommercantsPage() {
   }, []);
 
   const handleApprove = async (item: AdminMerchantReferralItem) => {
-    if (!window.confirm(`Approuver la prime de 100 € pour ${item.inviterLabel} (commerçant ${item.merchantLabel}) ?`)) {
+    if (!window.confirm(`Approuver la prime de 50 € pour ${item.inviterLabel} (commerçant ${item.merchantLabel}) ?`)) {
       return;
     }
     setBusyMerchantUserId(item.merchantUserId);
@@ -113,8 +113,8 @@ export default function AdminParrainageCommercantsPage() {
         <div>
           <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Parrainage commerçants</h1>
           <p className="mt-1 text-[14px] text-[#666]">
-            Prime de 100 € pour un joueur ayant parrainé un commerçant devenu client payant. La prime n&apos;est
-            jamais acquise avant confirmation serveur du premier paiement Stripe ; le paiement des 100 € reste
+            Prime de 50 € pour un joueur ayant parrainé un commerçant devenu client payant. La prime n&apos;est
+            jamais acquise avant confirmation serveur du premier paiement Stripe ; le paiement des 50 € reste
             manuel (V1) et trace ici.
           </p>
         </div>
@@ -262,7 +262,7 @@ export default function AdminParrainageCommercantsPage() {
       {payTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="w-full max-w-sm rounded-[12px] border border-[#E8E8E4] bg-white p-6 shadow-lg">
-            <h3 className="text-[16px] font-medium text-[#1a1a1a]">Marquer les 100 € comme payés ?</h3>
+            <h3 className="text-[16px] font-medium text-[#1a1a1a]">Marquer les 50 € comme payés ?</h3>
             <p className="mt-2 text-[13px] text-[#666]">
               {payTarget.inviterLabel} · {payTarget.merchantLabel}. Le paiement reste manuel (V1) : indiquez une
               reference fiable (virement, transaction...).

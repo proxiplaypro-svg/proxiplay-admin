@@ -72,6 +72,7 @@ type FirestoreGameDocument = {
   secondary_prizes?: FirestoreSecondaryPrizeDocument[] | null;
   prohibited_for_minors?: boolean;
   restrictedToAdults?: boolean;
+  qr_consumes_participation?: boolean;
   // Marqueurs de finalisation : ecrits ensemble, une seule fois, par le
   // resultat reel d'un tirage (main_prize_draw.js cote app mobile).
   // Jamais ecrits par l'admin a la creation/duplication (toujours false/
@@ -135,6 +136,7 @@ export type UpdateGameInput = {
   secondaryPrizes: GameSecondaryPrize[];
   secondaryPrizeImageFiles?: Array<File | null>;
   restrictedToAdults: boolean;
+  qrConsumesParticipation?: boolean;
   relaunchWorkflow?: boolean;
   instantWinnersReady?: boolean;
 };
@@ -496,6 +498,9 @@ export function mapGameDocument(
       game.prohibited_for_minors ?? game.restrictedToAdults,
       false,
     ),
+    // Missing is deliberately true for backwards compatibility with QR games
+    // created before this setting existed.
+    qrConsumesParticipation: game.qr_consumes_participation !== false,
     isRelaunchWorkflow: game.relaunch_workflow === true,
     instantWinnersReady: game.instant_winners_ready === true,
     ...finalization,
@@ -679,6 +684,9 @@ function buildGamePatch(
     secondary_prizes: secondaryPrizes,
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
+    ...(input.qrConsumesParticipation === undefined
+      ? {}
+      : { qr_consumes_participation: input.qrConsumesParticipation }),
     ...(input.relaunchWorkflow === undefined
       ? {}
       : { relaunch_workflow: input.relaunchWorkflow }),
@@ -865,6 +873,7 @@ export type CreateGameSecondaryPrizeInput = {
 
 export type CreateGameInput = {
   accessMode: CreateGameAccessMode;
+  qrConsumesParticipation: boolean;
   collectionName: GameCollectionName;
   merchantCollectionName: MerchantCollectionName;
   merchantId: string;
@@ -997,6 +1006,9 @@ export async function createGame(
     game_type: "scratcher",
     type: "standard",
     access_mode: input.accessMode,
+    ...(input.accessMode === "qr_only"
+      ? { qr_consumes_participation: input.qrConsumesParticipation }
+      : {}),
     created_time: Timestamp.fromDate(now),
     hasWinner: false,
     imageUrl: imageUrl ?? "",
@@ -1051,6 +1063,8 @@ export async function createGame(
       })),
       accessMode: input.accessMode,
       restrictedToAdults: input.restrictedToAdults,
+      qrConsumesParticipation:
+        input.accessMode === "qr_only" ? input.qrConsumesParticipation : true,
       isRelaunchWorkflow: false,
       instantWinnersReady: false,
       isFinalized: false,
@@ -1112,6 +1126,7 @@ export async function duplicateGameDocument(
     // A relaunch starts with a new calendar: dates and prize-use deadline
     // are intentionally not inherited from the preceding edition.
     game_type: "scratcher",
+    access_mode: original.accessMode,
     created_time: Timestamp.fromDate(now),
     hasWinner: false,
     imageUrl: original.imageUrl,
@@ -1136,7 +1151,9 @@ export async function duplicateGameDocument(
     })),
     prohibited_for_minors: original.restrictedToAdults,
     restrictedToAdults: original.restrictedToAdults,
-    access_mode: original.accessMode,
+    ...(original.accessMode === "qr_only"
+      ? { qr_consumes_participation: original.qrConsumesParticipation }
+      : {}),
     ...buildStatusPatch("brouillon"),
     relaunch_workflow: true,
     instant_winners_ready: false,
@@ -1168,8 +1185,9 @@ export async function duplicateGameDocument(
       mainPrizeValue: original.mainPrizeValue,
       mainPrizeImage: original.mainPrizeImage,
       secondaryPrizes: original.secondaryPrizes.map((prize) => ({ ...prize })),
-      accessMode: original.accessMode,
       restrictedToAdults: original.restrictedToAdults,
+      accessMode: original.accessMode,
+      qrConsumesParticipation: original.qrConsumesParticipation,
       isRelaunchWorkflow: true,
       instantWinnersReady: false,
       isFinalized: false,

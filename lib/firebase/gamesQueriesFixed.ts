@@ -210,6 +210,9 @@ export async function updateGame(input: UpdateGameInput) {
     secondary_prizes: mapSecondaryPrizesForWrite(finalSecondaryPrizes),
     prohibited_for_minors: input.restrictedToAdults,
     restrictedToAdults: input.restrictedToAdults,
+    ...(input.qrConsumesParticipation === undefined
+      ? {}
+      : { qr_consumes_participation: input.qrConsumesParticipation }),
     updated_at: Timestamp.now(),
     ...buildStatusPatch(input.status),
   };
@@ -298,6 +301,9 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
     game_type: "scratcher",
     type: "standard",
     access_mode: input.accessMode,
+    ...(input.accessMode === "qr_only"
+      ? { qr_consumes_participation: input.qrConsumesParticipation }
+      : {}),
     created_time: Timestamp.fromDate(now),
     hasWinner: false,
     imageUrl: imageUrl ?? "",
@@ -352,6 +358,8 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
       })),
       accessMode: input.accessMode,
       restrictedToAdults: input.restrictedToAdults,
+      qrConsumesParticipation:
+        input.accessMode === "qr_only" ? input.qrConsumesParticipation : true,
       isFinalized: false,
       isRelaunchWorkflow: false,
       instantWinnersReady: false,
@@ -438,6 +446,9 @@ export async function duplicateGameDocument(
     game_type: readString(source.game_type, "scratcher"),
     type: readString(source.type, "standard"),
     access_mode: readString(source.access_mode, "public"),
+    ...(readString(source.access_mode) === "qr_only"
+      ? { qr_consumes_participation: source.qr_consumes_participation !== false }
+      : {}),
     created_time: now,
     hasWinner: false,
     imageUrl: readString(source.imageUrl) || readString(source.photo) || readString(source.coverUrl),
@@ -528,6 +539,7 @@ export async function duplicateGameDocument(
       source.restrictedToAdults,
       readBoolean(source.prohibited_for_minors, false),
     ),
+    qrConsumesParticipation: source.qr_consumes_participation !== false,
     isFinalized: false,
     isRelaunchWorkflow: true,
     instantWinnersReady: false,
