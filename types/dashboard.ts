@@ -139,6 +139,10 @@ export interface Game {
   mainPrizeImage: string | null;
   secondaryPrizes: GameSecondaryPrize[];
   restrictedToAdults: boolean;
+  /** QR-only games can opt out of consuming a player's daily participation. */
+  accessMode: "public" | "qr_only";
+  /** Effective value: historical QR games without the field consume a chance. */
+  qrConsumesParticipation: boolean;
   /** A duplicated game follows the controlled relaunch workflow. */
   isRelaunchWorkflow: boolean;
   /** Set only after the saved configuration has its instant-winner calendar. */

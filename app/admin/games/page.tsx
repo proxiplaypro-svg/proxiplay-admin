@@ -88,6 +88,8 @@ type FirestoreGameDocument = {
     image?: string;
   }> | null;
   restrictedToAdults?: boolean;
+  access_mode?: "public" | "qr_only";
+  qr_consumes_participation?: boolean;
   // Marqueurs de finalisation : voir isGameFinalized() dans
   // firestore.rules (le vrai point d'application) et la meme note dans
   // lib/firebase/gamesQueries.ts.
@@ -448,6 +450,8 @@ function mapGameDocument(
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
     restrictedToAdults: game.restrictedToAdults === true,
+    accessMode: game.access_mode === "qr_only" ? "qr_only" : "public",
+    qrConsumesParticipation: game.qr_consumes_participation !== false,
     isRelaunchWorkflow: game.relaunch_workflow === true,
     instantWinnersReady: game.instant_winners_ready === true,
     ...deriveGameFinalization(game),
@@ -774,6 +778,7 @@ function AdminGamesPageInner() {
     mainPrizeImageFile: File | null;
     secondaryPrizes: GameSecondaryPrize[];
     restrictedToAdults: boolean;
+    qrConsumesParticipation?: boolean;
   }) => {
     if (!selectedGame) {
       return;
@@ -831,6 +836,8 @@ function AdminGamesPageInner() {
         mainPrizeImage: result.mainPrizeImage,
         secondaryPrizes: result.secondaryPrizes,
         restrictedToAdults: payload.restrictedToAdults,
+        qrConsumesParticipation:
+          payload.qrConsumesParticipation ?? selectedGame.qrConsumesParticipation,
         isRelaunchWorkflow: isRelaunch,
         instantWinnersReady: isRelaunch
           ? selectedGame.instantWinnersReady && payload.status === "actif"

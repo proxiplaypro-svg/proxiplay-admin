@@ -33,6 +33,7 @@ type FormState = {
   startDate: string;
   endDate: string;
   restrictedToAdults: boolean;
+  qrConsumesParticipation: boolean;
   prizeUsageDeadlineEnabled: boolean;
   prizeUsageDeadline: string;
 };
@@ -46,6 +47,7 @@ const emptyForm: FormState = {
   startDate: "",
   endDate: "",
   restrictedToAdults: false,
+  qrConsumesParticipation: false,
   prizeUsageDeadlineEnabled: false,
   prizeUsageDeadline: "",
 };
@@ -186,6 +188,7 @@ export default function NewGameForm({
 
       const result = await createGame({
         accessMode,
+        qrConsumesParticipation: form.qrConsumesParticipation,
         collectionName: gameCollection,
         merchantCollectionName: merchantCollection,
         merchantId: merchant.id,
@@ -314,6 +317,18 @@ export default function NewGameForm({
                 </label>
               ) : null}
             </div>
+
+            {accessMode === "qr_only" ? (
+              <div className="sm:col-span-2 rounded-[10px] border border-[#E8E8E4] bg-[#FAFAF8] p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[13px] font-medium text-[#1A1A1A]">Décompter une chance lors du scan</p>
+                    <p className="mt-1 text-[12px] text-[#777]">Si cette option est désactivée, les joueurs peuvent participer à ce jeu QR code sans utiliser leurs 3 chances quotidiennes.</p>
+                  </div>
+                  <input type="checkbox" checked={form.qrConsumesParticipation} onChange={(event) => setForm((prev) => ({ ...prev, qrConsumesParticipation: event.target.checked }))} className="h-4 w-4 rounded border-[#D7D7D2]" />
+                </div>
+              </div>
+            ) : null}
 
             <div className="sm:col-span-2 rounded-[10px] border border-[#E8E8E4] bg-[#FAFAF8] p-4">
               <label className="flex items-center gap-2 text-[13px] font-medium text-[#1A1A1A]">
