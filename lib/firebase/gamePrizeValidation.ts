@@ -18,6 +18,25 @@ export function resolveHasMainPrize(hasMainPrize: unknown, prizeValue: unknown) 
     : prizeValue !== undefined && prizeValue !== null;
 }
 
+export function resolveMainPrizeFields(game: {
+  main_prize_title?: unknown;
+  main_prize_description?: unknown;
+  title?: unknown;
+  name?: unknown;
+  description?: unknown;
+  conditions?: unknown;
+}) {
+  const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
+  const hasDedicatedFields = Object.prototype.hasOwnProperty.call(game, "main_prize_title") ||
+    Object.prototype.hasOwnProperty.call(game, "main_prize_description");
+  return hasDedicatedFields
+    ? { mainPrizeTitle: text(game.main_prize_title), mainPrizeDescription: text(game.main_prize_description) }
+    : {
+        mainPrizeTitle: text(game.title) || text(game.name),
+        mainPrizeDescription: text(game.description) || text(game.conditions),
+      };
+}
+
 export function buildMainPrizeWriteFields<T extends Record<string, unknown>>(
   hasMainPrize: boolean,
   fields: T,
@@ -32,6 +51,17 @@ export function buildMainPrizeRemovalFields(remove: unknown) {
     main_prize_description: remove,
     main_prize_image: remove,
   };
+}
+
+export function buildMainPrizeEditFields<T>(
+  hasMainPrize: boolean,
+  title: string,
+  description: string,
+  remove: T,
+) {
+  return hasMainPrize
+    ? { main_prize_title: title.trim(), main_prize_description: description.trim() }
+    : { main_prize_title: remove, main_prize_description: remove, main_prize_image: remove };
 }
 
 export function validateGamePrizes(input: {

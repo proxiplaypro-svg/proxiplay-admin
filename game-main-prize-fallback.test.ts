@@ -5,20 +5,9 @@ import { readFileSync } from "node:fs";
 import { mapGameDocument } from "./lib/firebase/gamesQueries";
 import { validateGamePrizes } from "./lib/firebase/gamePrizeValidation";
 
-// Regression: the mobile app (createGamesRecordData in games_record.dart)
-// never writes main_prize_title/main_prize_description -- it has no such
-// parameters, only name/description/prizeValue/hasMainPrize. A merchant
-// game with a main prize created from the app therefore always has these
-// two fields absent in Firestore. mapGameDocument used to read them with
-// no fallback, so Game.mainPrizeTitle/mainPrizeDescription came back
-// empty for such a game -- which made validateGamePrizes() refuse to
-// relaunch it ("Le lot principal est obligatoire...") even though
-// hasMainPrize/prize_value were both correct. Real case: "Une paire de
-// bas" / Fonteyne Lingerie, duplicated from the admin.
-//
-// Fixed by falling back to the game's own title/name and
-// description/conditions -- exactly what the mobile app already uses as
-// the de facto prize text.
+// Historical mobile-created games may lack both dedicated prize fields.
+// Relaunching them must still use the legacy name/description; explicit
+// dedicated fields, including empty or null values, take precedence.
 
 function fakeSnapshot(id: string, data: Record<string, unknown>): QueryDocumentSnapshot<DocumentData> {
   return {
@@ -164,22 +153,27 @@ test("le repli est une normalisation de lecture pure : la source Firestore n'est
   assert.deepEqual(snapshot.data(), source);
 });
 
-test("les mappings de app/admin/games/page.tsx et de gamesQueriesFixed.ts " +
-  "contiennent le meme repli", () => {
-  // mapGameDocument de page.tsx n'est pas exportable depuis un composant
-  // "use client" dans un test Node simple -- verifie structurellement,
-  // meme convention que game-relaunch-current-flow.test.ts.
+test("les autres parcours utilisent la meme resolution des champs", () => {
   const pageSource = readFileSync("app/admin/games/page.tsx", "utf8");
-  assert.match(
-    pageSource,
-    /mainPrizeTitle: readText\(game\.main_prize_title, game\.title, game\.name\)/,
-  );
-  assert.match(
-    pageSource,
-    /mainPrizeDescription: readText\(\s*game\.main_prize_description,\s*game\.description,\s*game\.conditions,?\s*\)/,
-  );
+  assert.match(pageSource, /\.\.\.resolveMainPrizeFields\(game\)/);
 
   const fixedSource = readFileSync("lib/firebase/gamesQueriesFixed.ts", "utf8");
-  assert.match(fixedSource, /readString\(source\.main_prize_title\) \|\|\s*\n\s*readString\(source\.title\) \|\|\s*\n\s*readString\(source\.name\)/);
-  assert.match(fixedSource, /readString\(source\.main_prize_description\) \|\|\s*\n\s*readString\(source\.description\) \|\|\s*\n\s*readString\(source\.conditions\)/);
+  assert.match(fixedSource, /main_prize_title: resolveMainPrizeFields\(source\)\.mainPrizeTitle/);
+  assert.match(fixedSource, /main_prize_description: resolveMainPrizeFields\(source\)\.mainPrizeDescription/);
+});
+
+test("duplication conserve les champs dédiés vides ou nuls sans repli", () => {
+  for (const fields of [
+    { main_prize_title: "", main_prize_description: "Un lot" },
+    { main_prize_title: "Un lot", main_prize_description: "" },
+    { main_prize_title: null, main_prize_description: null },
+    { main_prize_title: "Lot seul" },
+  ] as Array<{ main_prize_title?: string | null; main_prize_description?: string | null }>) {
+    const original = mapGameDocument(fakeSnapshot("modern", {
+      name: "Jeu", description: "Description générale", hasMainPrize: true,
+      prize_value: 25, ...fields,
+    }), "games", merchants);
+    assert.equal(original.mainPrizeTitle, fields.main_prize_title ?? "");
+    assert.equal(original.mainPrizeDescription, fields.main_prize_description ?? "");
+  }
 });

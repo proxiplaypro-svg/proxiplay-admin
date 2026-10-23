@@ -4,8 +4,12 @@ import {
   adCampaignsOverlap,
   formatAdDateInput,
   getAdCampaignStatus,
+  isAdCommunicationType,
   isAdPlacement,
+  normalizeAdCommunicationType,
   parseAdDateInput,
+  DEFAULT_AD_COMMUNICATION_TYPE,
+  type AdCommunicationType,
   type AdCampaignRecord,
   type AdPlacement,
 } from "@/lib/admin/adCampaign";
@@ -29,6 +33,8 @@ type CampaignData = {
   source_campaign_id: string | null;
   impressions: number;
   clicks: number;
+  adults_only: boolean;
+  communication_type: AdCommunicationType;
 };
 
 function readText(value: unknown) {
@@ -66,6 +72,8 @@ function asRecord(id: string, raw: Record<string, unknown>): AdCampaignRecord {
     sourceCampaignId: readText(raw.source_campaign_id) || null,
     impressions: typeof raw.impressions === "number" ? raw.impressions : 0,
     clicks: typeof raw.clicks === "number" ? raw.clicks : 0,
+    adultsOnly: raw.adults_only === true,
+    communicationType: normalizeAdCommunicationType(raw.communication_type),
     createdAt: readTimestamp(raw.created_at)?.toDate().toISOString() ?? null,
     updatedAt: readTimestamp(raw.updated_at)?.toDate().toISOString() ?? null,
   };
@@ -86,6 +94,11 @@ function parseCampaign(body: Record<string, unknown>, existing?: CampaignData): 
     : body.frequency_cap_hours === null || body.frequency_cap_hours === ""
       ? null
       : Number(body.frequency_cap_hours);
+
+  const communicationType = body.communication_type === undefined
+    ? existing?.communication_type ?? DEFAULT_AD_COMMUNICATION_TYPE
+    : body.communication_type;
+  if (!isAdCommunicationType(communicationType)) return null;
 
   if (!name || !advertiser || !startAt || !endAt || startAt.toMillis() >= endAt.toMillis()) return null;
   if (placement === "open" && (!Number.isInteger(frequency) || (frequency ?? -1) < 0)) return null;
@@ -115,6 +128,8 @@ function parseCampaign(body: Record<string, unknown>, existing?: CampaignData): 
       : readText(body.source_campaign_id) || null,
     impressions: existing?.impressions ?? 0,
     clicks: existing?.clicks ?? 0,
+    adults_only: body.adults_only === undefined ? existing?.adults_only ?? false : body.adults_only === true,
+    communication_type: communicationType,
   };
 }
 

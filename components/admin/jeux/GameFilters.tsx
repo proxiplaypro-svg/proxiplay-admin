@@ -63,6 +63,7 @@ export function GameFilters({
             <option value="expire">Expire</option>
             <option value="brouillon">Brouillon</option>
             <option value="prive">Prive</option>
+            <option value="desactive">Désactivé</option>
           </select>
         </label>
 

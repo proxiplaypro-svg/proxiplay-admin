@@ -28,9 +28,8 @@ export async function createGameThenPreparePostCreation(
 ) {
   const game = await input.createGame();
 
-  if (input.accessMode !== "qr_only") {
-    return { game, qrIssueFailed: false as const };
-  }
+  // Every game gets its shop QR capability: a verified scan never consumes a
+  // daily chance, for public and QR-only games alike.
 
   try {
     await input.issueGameQr(game.id);

@@ -16,7 +16,7 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "@/lib/firebase/client-app";
-import { validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
+import { buildMainPrizeEditFields, resolveMainPrizeFields, validateGamePrizes } from "@/lib/firebase/gamePrizeValidation";
 import { deriveGameFinalization } from "@/lib/firebase/gamesQueries";
 
 type GameEditPageProps = {
@@ -27,7 +27,11 @@ type GameEditPageProps = {
 
 type FirestoreGameEditDocument = {
   name?: string;
+  title?: string;
   description?: string;
+  conditions?: string;
+  main_prize_title?: string | null;
+  main_prize_description?: string | null;
   prize_value?: number;
   photo?: string;
   start_date?: Timestamp;
@@ -53,6 +57,8 @@ type GameFormState = {
   endDate: string;
   status: "actif" | "termine" | "brouillon";
   mainPrizeValue: string;
+  mainPrizeTitle: string;
+  mainPrizeDescription: string;
   hasMainPrize: boolean;
   scratchImage: string;
 };
@@ -103,6 +109,12 @@ function deriveStatus(game: FirestoreGameEditDocument, now = new Date()) {
 }
 
 function buildInitialForm(game: FirestoreGameEditDocument): GameFormState {
+  const hasMainPrize = typeof game.hasMainPrize === "boolean"
+    ? game.hasMainPrize
+    : typeof game.prize_value === "number" && Number.isFinite(game.prize_value);
+  const mainPrize = hasMainPrize
+    ? resolveMainPrizeFields(game)
+    : { mainPrizeTitle: "", mainPrizeDescription: "" };
   return {
     name: game.name?.trim() ?? "",
     description: game.description?.trim() ?? "",
@@ -113,10 +125,8 @@ function buildInitialForm(game: FirestoreGameEditDocument): GameFormState {
       typeof game.prize_value === "number" && Number.isFinite(game.prize_value)
         ? String(game.prize_value)
         : "",
-    hasMainPrize:
-      typeof game.hasMainPrize === "boolean"
-        ? game.hasMainPrize
-        : typeof game.prize_value === "number" && Number.isFinite(game.prize_value),
+    hasMainPrize,
+    ...mainPrize,
     scratchImage: game.photo?.trim() ?? "",
   };
 }
@@ -444,7 +454,7 @@ export default function EditGamePage({ params }: GameEditPageProps) {
       }
       const prizeValidationError = validateGamePrizes({
         hasMainPrize: form.hasMainPrize,
-        mainPrizeDescription: form.description,
+        mainPrizeDescription: form.mainPrizeTitle.trim() || form.mainPrizeDescription,
         secondaryPrizes: game.secondaryPrizes,
       });
       if (prizeValidationError) {
@@ -461,13 +471,9 @@ export default function EditGamePage({ params }: GameEditPageProps) {
         visible_public: form.status !== "brouillon",
         prize_value: form.hasMainPrize && prizeValue !== null ? prizeValue : deleteField(),
         hasMainPrize: form.hasMainPrize,
-        ...(form.hasMainPrize
-          ? {}
-          : {
-              main_prize_title: deleteField(),
-              main_prize_description: deleteField(),
-              main_prize_image: deleteField(),
-            }),
+        ...buildMainPrizeEditFields(
+          form.hasMainPrize, form.mainPrizeTitle, form.mainPrizeDescription, deleteField(),
+        ),
         photo: form.scratchImage.trim(),
       });
 
@@ -630,6 +636,28 @@ export default function EditGamePage({ params }: GameEditPageProps) {
                 disabled={isSubmitting}
               />
             </label>
+
+            {form.hasMainPrize ? <label className="game-edit-field game-edit-field-wide">
+              <span className="search-label">Titre du lot principal</span>
+              <input
+                className="search-input"
+                type="text"
+                value={form.mainPrizeTitle}
+                onChange={(event) => handleChange("mainPrizeTitle", event.target.value)}
+                disabled={isSubmitting}
+              />
+            </label> : null}
+
+            {form.hasMainPrize ? <label className="game-edit-field game-edit-field-wide">
+              <span className="search-label">Description du lot principal</span>
+              <textarea
+                className="game-edit-textarea"
+                value={form.mainPrizeDescription}
+                onChange={(event) => handleChange("mainPrizeDescription", event.target.value)}
+                disabled={isSubmitting}
+                rows={3}
+              />
+            </label> : null}
 
             {form.hasMainPrize ? <label className="game-edit-field">
               <span className="search-label">Valeur du lot principal</span>

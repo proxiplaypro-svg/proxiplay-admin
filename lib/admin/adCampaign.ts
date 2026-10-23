@@ -30,6 +30,11 @@ export type AdCampaignRecord = AdPlacementForm & {
   sourceCampaignId: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  // Never shown to a minor or to an account whose age is unknown (enforced
+  // by the server). Not a legal validation of the ad content (e.g. alcohol).
+  adultsOnly?: boolean;
+  // Label above the Home banners; absent on older campaigns (advertisement).
+  communicationType?: AdCommunicationType;
 };
 
 export type AdPlacementForm = {
@@ -239,4 +244,28 @@ export function validateAdCampaign(input: AdCampaignInput): string | null {
   }
 
   return null;
+}
+
+// Nature of a campaign, shown as the label above the Home banners.
+// Campaigns created before this field are advertisements.
+export const AD_COMMUNICATION_TYPES = ["advertisement", "discovery", "proxiplay_info"] as const;
+export type AdCommunicationType = (typeof AD_COMMUNICATION_TYPES)[number];
+export const DEFAULT_AD_COMMUNICATION_TYPE: AdCommunicationType = "advertisement";
+export const AD_COMMUNICATION_LABEL: Record<AdCommunicationType, string> = {
+  advertisement: "Publicité",
+  discovery: "À découvrir",
+  proxiplay_info: "Info ProxiPlay",
+};
+export const AD_COMMUNICATION_DESCRIPTION: Record<AdCommunicationType, string> = {
+  advertisement: "Communication commerciale payante.",
+  discovery: "Mise en avant gratuite d’un événement culturel, associatif ou local.",
+  proxiplay_info: "Communication officielle de ProxiPlay.",
+};
+
+export function isAdCommunicationType(value: unknown): value is AdCommunicationType {
+  return typeof value === "string" && (AD_COMMUNICATION_TYPES as readonly string[]).includes(value);
+}
+
+export function normalizeAdCommunicationType(value: unknown): AdCommunicationType {
+  return isAdCommunicationType(value) ? value : DEFAULT_AD_COMMUNICATION_TYPE;
 }

@@ -61,16 +61,29 @@ test("echec QR : le jeu est conserve et le retry n entraine pas une seconde crea
   assert.equal(issueCount, 2);
 });
 
-test("creation non QR : aucune emission QR automatique", async () => {
-  let issued = false;
+test("creation publique : le QR boutique a jeton est aussi emis (scan gratuit)", async () => {
+  const issued: string[] = [];
   const result = await createGameThenPreparePostCreation({
     accessMode: "public",
     createGame: async () => ({ id: "public-1", merchantId: "shop-4" }),
-    issueGameQr: async () => { issued = true; },
+    issueGameQr: async (gameId) => { issued.push(gameId); },
   });
 
   assert.equal(result.qrIssueFailed, false);
-  assert.equal(issued, false);
+  assert.deepEqual(issued, ["public-1"]);
+});
+
+test("creation publique : un echec d emission reste recuperable sans recreer le jeu", async () => {
+  let created = 0;
+  const result = await createGameThenPreparePostCreation({
+    accessMode: "public",
+    createGame: async () => { created++; return { id: "public-2", merchantId: "shop-5" }; },
+    issueGameQr: async () => { throw new Error("service QR indisponible"); },
+  });
+
+  assert.equal(created, 1);
+  assert.equal(result.qrIssueFailed, true);
+  assert.equal(result.game.id, "public-2");
 });
 
 test("le bloc QR de modification est reserve aux jeux qr_only et expose l action d emission", () => {

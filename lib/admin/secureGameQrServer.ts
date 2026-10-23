@@ -8,7 +8,8 @@ export async function readSecureGameQr(gameId: string) {
     const gameRef = db.doc(`games/${gameId}`);
     const game = (await tx.get(gameRef)).data();
     if (!game) return { state: "not-found" as const };
-    if (game.access_mode !== "qr_only") return { state: "public" as const };
+    // Public games also carry a shop QR token: scanning it in the shop makes
+    // the play free. They stay playable without it.
     if (!game.end_date?.toMillis || game.end_date.toMillis() <= Date.now() || ["ended", "cancelled", "canceled", "disabled"].includes(game.status)) {
       return { state: "ended" as const };
     }

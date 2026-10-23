@@ -89,6 +89,13 @@ function getBadge(game: Game) {
     };
   }
 
+  if (game.status === "desactive") {
+    return {
+      label: "désactivé",
+      className: "bg-[#FCEBEB] text-[#A32D2D]",
+    };
+  }
+
   if (game.status === "prive") {
     return {
       label: "prive",
@@ -180,7 +187,18 @@ export function GameCard({
           <span className={`rounded-full px-2 py-1 text-[10.5px] font-medium leading-none ${badge.className}`}>
             {badge.label}
           </span>
+          {game.publicationAlert && (
+            <span
+              className="rounded-full bg-[#FAEEDA] px-2 py-1 text-[10.5px] font-medium leading-none text-[#8A4B08]"
+              title={game.publicationAlert}
+            >
+              ⚠ incohérence
+            </span>
+          )}
         </div>
+        {game.publicationAlert && (
+          <p role="alert" className="mt-1 text-[11px] text-[#8A4B08]">{game.publicationAlert}</p>
+        )}
 
         {/* Ligne meta : marchand · dates — sans parties (affichées séparément sur mobile) */}
         <p className="mt-1 truncate text-[11px] text-[#666666]">
@@ -308,7 +326,7 @@ export function GameCard({
           </button>
           <div className="absolute right-full mr-2 top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-[6px] bg-[#1A1A1A] px-2 py-1 text-[11px] text-white pointer-events-none z-10 group-hover:block">
             {game.status === "actif" || game.status === "prive"
-              ? "Désactiver (passer en brouillon)"
+              ? "Désactiver (plus jouable)"
               : "Activer (rendre visible)"}
           </div>
         </div>

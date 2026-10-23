@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import { NextResponse } from "next/server";
 import QRCode from "qrcode";
+import { buildPosterGameLink } from "@/lib/admin/gameLinks";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 import { readSecureGameQr } from "@/lib/admin/secureGameQrServer";
@@ -35,6 +36,7 @@ type FirestoreGameDocument = {
   end_date?: TimestampLike | null;
   merchantId?: string | null;
   qrCodeUrl?: string | null;
+  qr_link?: string | null;
   prizeImageUrl?: string | null;
   prize_value?: number | null;
   mainPrizeTitle?: string | null;
@@ -489,12 +491,19 @@ export async function POST(request: Request) {
     console.log("1. Firestore fetch OK");
 
     const merchantId = readText(game.merchantId) || null;
-    let qrCodeUrl = readText(game.qrCodeUrl);
+    let qrCodeUrl = buildPosterGameLink(gameId, readText(game.qrCodeUrl, game.qr_link));
     if (game.access_mode === "qr_only") {
       await assertIsAdminRequest(request);
       const qr = await readSecureGameQr(gameId);
       if (qr.state !== "ready" || !qr.url) return NextResponse.json({ error: QR_REGENERATION_MESSAGE }, { status: 409 });
       qrCodeUrl = qr.url;
+    } else {
+      // Public game: an admin request prints the existing shop token (the
+      // scan is then free). Anyone else, or a missing token, keeps the plain
+      // link: the token must never leak through this route. Never mints.
+      const isAdmin = await assertIsAdminRequest(request).then(() => true, () => false);
+      const qr = isAdmin ? await readSecureGameQr(gameId).catch(() => null) : null;
+      if (qr?.state === "ready" && qr.url) qrCodeUrl = qr.url;
     }
     console.log("1a. Route payload", {
       gameId,

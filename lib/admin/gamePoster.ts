@@ -1,6 +1,7 @@
 "use client";
 
 import { resolveGameQrLink } from "./gameQrClient";
+import { buildPublicGameLink } from "./gameLinks";
 import { auth } from "@/lib/firebase/auth";
 import QRCode from "qrcode";
 
@@ -72,8 +73,7 @@ export function buildGamePosterDeepLink(game: {
     params.set("merchant_id", game.merchantId);
   }
 
-  const queryString = params.toString();
-  return `https://proxiplay.fr/j/${game.id}${queryString ? `?${queryString}` : ""}`;
+  return buildPublicGameLink(game.id, params);
 }
 
 export async function downloadGamePosterPdf(gameId: string) {

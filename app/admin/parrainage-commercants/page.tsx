@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { MerchantReferralProgramToggle } from "@/components/admin/MerchantReferralProgramToggle";
 import {
   approveMerchantReferral,
   getMerchantReferralsOverview,
@@ -10,10 +11,10 @@ import {
 } from "@/lib/firebase/merchantBillingQueries";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  linked: { label: "Lié (en attente de paiement)", className: "bg-[#F0F0EC] text-[#999]" },
+  linked: { label: "Lié (en attente du paiement commerçant)", className: "bg-[#F0F0EC] text-[#999]" },
   eligible: { label: "Eligible", className: "bg-[#FDF3D9] text-[#8A6D1A]" },
   approved: { label: "Approuve", className: "bg-[#DCE9FB] text-[#1D4E89]" },
-  paid: { label: "Payé", className: "bg-[#EAF3DE] text-[#3B6D11]" },
+  paid: { label: "Remise enregistrée", className: "bg-[#EAF3DE] text-[#3B6D11]" },
   rejected: { label: "Rejete", className: "bg-[#FCEBEB] text-[#A32D2D]" },
   cancelled: { label: "Annulé", className: "bg-[#FCEBEB] text-[#A32D2D]" },
 };
@@ -37,7 +38,6 @@ export default function AdminParrainageCommercantsPage() {
   const [payTarget, setPayTarget] = useState<AdminMerchantReferralItem | null>(null);
   const [payReference, setPayReference] = useState("");
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
-
   const load = async () => {
     setLoading(true);
     setError(null);
@@ -57,7 +57,7 @@ export default function AdminParrainageCommercantsPage() {
   }, []);
 
   const handleApprove = async (item: AdminMerchantReferralItem) => {
-    if (!window.confirm(`Approuver la prime de 50 € pour ${item.inviterLabel} (commerçant ${item.merchantLabel}) ?`)) {
+    if (!window.confirm(`Approuver le bon cadeau pour le joueur ${item.inviterLabel} (commerçant ${item.merchantLabel}) ?`)) {
       return;
     }
     setBusyMerchantUserId(item.merchantUserId);
@@ -101,7 +101,7 @@ export default function AdminParrainageCommercantsPage() {
       await load();
     } catch (err) {
       console.error(err);
-      setActionFeedback("Marquage payé impossible pour le moment.");
+      setActionFeedback("Enregistrement de la remise impossible pour le moment.");
     } finally {
       setBusyMerchantUserId(null);
     }
@@ -113,11 +113,13 @@ export default function AdminParrainageCommercantsPage() {
         <div>
           <h1 className="text-[22px] font-medium tracking-[-0.02em] text-[#1a1a1a]">Parrainage commerçants</h1>
           <p className="mt-1 text-[14px] text-[#666]">
-            Prime de 50 € pour un joueur ayant parrainé un commerçant devenu client payant. La prime n&apos;est
-            jamais acquise avant confirmation serveur du premier paiement Stripe ; le paiement des 50 € reste
-            manuel (V1) et trace ici.
+            Bon cadeau de 50 € pour un joueur ayant parrainé un commerçant qui souscrit un abonnement éligible.
+            Le premier paiement doit être confirmé et le parrainage validé. La création et la remise du bon
+            cadeau ne sont pas automatisées ; cette page permet seulement d&apos;enregistrer une référence après remise.
           </p>
         </div>
+
+        <MerchantReferralProgramToggle />
 
         {actionFeedback && <p className="feedback error">{actionFeedback}</p>}
         {loading && (
@@ -199,7 +201,7 @@ export default function AdminParrainageCommercantsPage() {
                               onClick={() => { setPayTarget(item); setPayReference(""); }}
                               className="rounded-[7px] border border-[#639922] bg-white px-3 py-1.5 text-[12px] font-medium text-[#639922] transition hover:bg-[#F0F7E8] disabled:opacity-50"
                             >
-                              Marquer payé
+                              Enregistrer la remise
                             </button>
                             <button
                               type="button"
@@ -262,14 +264,14 @@ export default function AdminParrainageCommercantsPage() {
       {payTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="w-full max-w-sm rounded-[12px] border border-[#E8E8E4] bg-white p-6 shadow-lg">
-            <h3 className="text-[16px] font-medium text-[#1a1a1a]">Marquer les 50 € comme payés ?</h3>
+            <h3 className="text-[16px] font-medium text-[#1a1a1a]">Enregistrer la remise du bon cadeau ?</h3>
             <p className="mt-2 text-[13px] text-[#666]">
-              {payTarget.inviterLabel} · {payTarget.merchantLabel}. Le paiement reste manuel (V1) : indiquez une
-              reference fiable (virement, transaction...).
+              {payTarget.inviterLabel} · {payTarget.merchantLabel}. Cette action enregistre la remise déjà
+              effectuée ; elle ne crée ni n&apos;envoie le bon cadeau. Indiquez une référence de suivi.
             </p>
             <input
               className="mt-3 w-full rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[13px]"
-              placeholder="Référence de paiement (obligatoire)"
+              placeholder="Référence de remise (obligatoire)"
               value={payReference}
               onChange={(e) => setPayReference(e.target.value)}
             />
@@ -287,7 +289,7 @@ export default function AdminParrainageCommercantsPage() {
                 onClick={() => void handleMarkPaid()}
                 className="flex-1 rounded-[8px] bg-[#639922] px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50"
               >
-                Confirmer le paiement
+                Confirmer la remise
               </button>
             </div>
           </div>

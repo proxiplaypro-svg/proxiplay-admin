@@ -25,7 +25,7 @@ import {
   type DuplicateGameResult,
   type UpdateGameInput,
 } from "./gamesQueries";
-import { resolveHasMainPrize, validateGamePrizes } from "./gamePrizeValidation";
+import { resolveHasMainPrize, resolveMainPrizeFields, validateGamePrizes } from "./gamePrizeValidation";
 
 export * from "./gamesQueries";
 
@@ -165,7 +165,7 @@ export async function updateGame(input: UpdateGameInput) {
 
   const prizeValidationError = validateGamePrizes({
     hasMainPrize: input.hasMainPrize,
-    mainPrizeDescription: input.mainPrizeTitle || input.mainPrizeDescription,
+    mainPrizeDescription: input.mainPrizeTitle.trim() || input.mainPrizeDescription,
     secondaryPrizes: input.secondaryPrizes,
   });
   if (prizeValidationError) throw new Error(prizeValidationError);
@@ -456,18 +456,8 @@ export async function duplicateGameDocument(
     hasMainPrize,
     ...(hasMainPrize
       ? {
-          // Voir la meme note dans gamesQueries.ts : le mobile n'ecrit
-          // jamais main_prize_title/main_prize_description, donc un jeu
-          // commercant avec lot principal retombe sur le nom/la
-          // description du jeu lui-meme.
-          main_prize_title:
-            readString(source.main_prize_title) ||
-            readString(source.title) ||
-            readString(source.name),
-          main_prize_description:
-            readString(source.main_prize_description) ||
-            readString(source.description) ||
-            readString(source.conditions),
+          main_prize_title: resolveMainPrizeFields(source).mainPrizeTitle,
+          main_prize_description: resolveMainPrizeFields(source).mainPrizeDescription,
           main_prize_image: readString(source.main_prize_image),
         }
       : {}),
@@ -523,14 +513,7 @@ export async function duplicateGameDocument(
     collectionName: input.collectionName,
     imageMissing: !imageUrl,
     hasMainPrize,
-    mainPrizeTitle:
-      readString(source.main_prize_title) ||
-      readString(source.title) ||
-      readString(source.name),
-    mainPrizeDescription:
-      readString(source.main_prize_description) ||
-      readString(source.description) ||
-      readString(source.conditions),
+    ...resolveMainPrizeFields(source),
     mainPrizeValue,
     mainPrizeImage: readString(source.main_prize_image) || null,
     secondaryPrizes: mappedSecondaryPrizes,

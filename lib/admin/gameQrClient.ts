@@ -31,7 +31,16 @@ export async function resolveGameQrLink(gameId: string, publicLink: string) {
     if (legacy.data()?.access_mode === "qr_only") throw new Error("Ce jeu QR-only historique doit être repris dans le mécanisme sécurisé avec autorisation. Aucun QR générique ne sera exporté.");
     return publicLink;
   }
-  if (game.data().access_mode !== "qr_only") return publicLink;
+  if (game.data().access_mode !== "qr_only") {
+    // A public game stays playable from its plain link; the token only makes
+    // the shop scan free, so any QR service failure falls back to the link.
+    try {
+      const qr = await readGameQr(gameId);
+      if (qr.state === "ready" && qr.url) return qr.url;
+      if (qr.state === "missing" || qr.state === "regeneration-required") return await issueGameQr(gameId);
+    } catch { /* Plain link below. */ }
+    return publicLink;
+  }
   const result = await readGameQr(gameId);
   if (result.state === "ready" && result.url) return result.url;
   throw new Error(result.state === "ended" ? "Ce jeu est terminé ou désactivé." : QR_REGENERATION_MESSAGE);

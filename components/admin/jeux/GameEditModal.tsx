@@ -898,17 +898,6 @@ export function GameEditModal({
                     />
                   </button>
                 </label>
-                {game.accessMode === "qr_only" ? (
-                  <label className="flex items-center justify-between gap-3 rounded-[8px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-3">
-                    <div>
-                      <span className="text-[13px] font-medium text-[#1A1A1A]">Décompter une chance lors du scan</span>
-                      <p className="mt-0.5 text-[11px] text-[#666666]">Si cette option est désactivée, les joueurs peuvent participer à ce jeu QR code sans utiliser leurs 3 chances quotidiennes.</p>
-                    </div>
-                    <button type="button" role="switch" aria-checked={generalForm.qrConsumesParticipation} className={`relative h-[24px] w-[42px] flex-shrink-0 rounded-full transition ${generalForm.qrConsumesParticipation ? "bg-[#639922]" : "bg-[#D7D7D1]"}`} onClick={() => updateGeneralForm("qrConsumesParticipation", !generalForm.qrConsumesParticipation)} disabled={saving}>
-                      <span className={`absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white shadow transition-all ${generalForm.qrConsumesParticipation ? "left-[21px]" : "left-[3px]"}`} />
-                    </button>
-                  </label>
-                ) : null}
               </div>
             </section>
 

@@ -26,6 +26,7 @@ let adminToken = "";
 const campaignA = "api-ad-campaign-delete-a";
 const campaignB = "api-ad-campaign-delete-b";
 const generatedCampaignIds: string[] = [];
+const futureDay = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 const context = (id: string) => ({ params: Promise.resolve({ id }) });
 
 function request(id: string, method = "DELETE", body?: unknown, token = adminToken) {
@@ -148,8 +149,8 @@ test("publie, bloque les chevauchements et désactive le bandeau sous parrainage
     placement: "home_banner_referral",
     image_url: "https://example.com/referral-banner.png",
     destination_url: "https://example.com/offre",
-    start_date: "2026-10-10",
-    end_date: "2026-10-20",
+    start_date: futureDay(30),
+    end_date: futureDay(40),
     frequency_cap_hours: null,
   };
   const createFirst = await POST(collectionRequest("POST", input));
@@ -194,4 +195,47 @@ test("interprète les dates civiles dans Europe/Paris à la création et à la m
   data = (await db.collection("ad_campaigns").doc(id).get()).data();
   assert.equal(data?.start_at?.toDate().toISOString(), "2026-01-14T23:00:00.000Z");
   assert.equal(data?.end_at?.toDate().toISOString(), "2026-01-15T23:00:00.000Z");
+});
+
+test("type de communication : enregistré, modifiable, transmis à l'app, « Publicité » par défaut", async () => {
+  const { GET } = await import("./app/api/admin/ad-campaigns/route");
+  const input = {
+    name: "Concert associatif",
+    advertiser: "Association locale",
+    placement: "home_banner",
+    image_url: "https://example.com/concert.png",
+    destination_url: "https://example.com/concert",
+    start_date: futureDay(30),
+    end_date: futureDay(40),
+    frequency_cap_hours: null,
+  };
+  // An unknown type is refused; no type means an advertisement.
+  assert.equal((await POST(collectionRequest("POST", { ...input, communication_type: "autre" }))).status, 400);
+  const plain = await POST(collectionRequest("POST", { ...input, name: "Sans type" }));
+  assert.equal(plain.status, 201);
+  const plainId = (await plain.json() as { id: string }).id;
+  generatedCampaignIds.push(plainId);
+  assert.equal((await db.collection("ad_campaigns").doc(plainId).get()).data()?.communication_type, "advertisement");
+  await db.collection("ad_campaigns").doc(plainId).delete();
+
+  const created = await POST(collectionRequest("POST", { ...input, communication_type: "discovery" }));
+  assert.equal(created.status, 201);
+  const id = (await created.json() as { id: string }).id;
+  generatedCampaignIds.push(id);
+  assert.equal((await PATCH(request(id, "PATCH", { action: "publish" }), context(id))).status, 200);
+  assert.equal((await db.collection("ads").doc("home_banner").get()).data()?.communication_type, "discovery");
+
+  // The category of an existing campaign can be changed; the app follows.
+  assert.equal((await PATCH(request(id, "PATCH", { communication_type: "proxiplay_info" }), context(id))).status, 200);
+  assert.equal((await db.collection("ad_campaigns").doc(id).get()).data()?.communication_type, "proxiplay_info");
+  assert.equal((await db.collection("ads").doc("home_banner").get()).data()?.communication_type, "proxiplay_info");
+  assert.equal((await PATCH(request(id, "PATCH", { communication_type: "autre" }), context(id))).status, 400);
+
+  // An older campaign without the field is listed as an advertisement.
+  await seedCampaign(campaignA);
+  await db.collection("ad_campaigns").doc(campaignA).update({ created_at: new Date("2026-09-01T00:00:00Z") });
+  const listing = await GET(new NextRequest("http://localhost/api/admin/ad-campaigns", { headers: { authorization: `Bearer ${adminToken}` } }));
+  const { campaigns } = await listing.json() as { campaigns: Array<{ id: string; communicationType?: string }> };
+  assert.equal(campaigns.find((campaign) => campaign.id === campaignA)?.communicationType, "advertisement");
+  assert.equal(campaigns.find((campaign) => campaign.id === id)?.communicationType, "proxiplay_info");
 });

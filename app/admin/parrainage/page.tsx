@@ -7,6 +7,7 @@ import {
   type AdminReferralInviterListItem,
   type AdminReferralOverview,
 } from "@/lib/firebase/adminQueries";
+import { MerchantReferralProgramToggle } from "@/components/admin/MerchantReferralProgramToggle";
 
 function normalizeString(value: string) {
   return value
@@ -179,6 +180,8 @@ export default function AdminReferralPage() {
           </Link>
         </div>
 
+        <MerchantReferralProgramToggle />
+
         {/* Loading / Error */}
         {loading && (
           <div className="rounded-[12px] border border-[#E8E8E4] bg-white px-5 py-8 text-center text-[#666]">
@@ -307,7 +310,7 @@ export default function AdminReferralPage() {
                         <div className="flex flex-col gap-1">
                           <BonusBadge inviter={inviter} />
                           <span className="text-[11px] text-[#999]">
-                            {inviter.bonusStatus === "aucun" ? "Aucune expiration" : inviter.bonusExpiresAtLabel}
+                            {inviter.bonusExpiresAtLabel}
                           </span>
                         </div>
                       </td>

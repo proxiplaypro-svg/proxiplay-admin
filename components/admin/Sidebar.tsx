@@ -98,6 +98,7 @@ function buildSections(counts: {
               : undefined,
         },
         { href: "/admin/campaigns", label: "Animations", icon: "◨" },
+        { href: "/admin/defi-du-mois", label: "Défi du mois", icon: "◇" },
         { href: "/admin/prospection", label: "Prospection", icon: "⌕" },
         {
           href: "/admin/commercants",
@@ -128,7 +129,8 @@ function buildSections(counts: {
         { href: "/admin/notifications/nouvelle", label: "Notifications", icon: "◯" },
         { href: "/admin/relances-commercants", label: "Relances commerçants", icon: "◈" },
         { href: "/admin/relances-auto", label: "Relances auto", icon: "◪" },
-        { href: "/admin/parrainage", label: "Parrainage", icon: "△" },
+        { href: "/admin/parrainage", label: "Parrainage joueurs", icon: "△" },
+        { href: "/admin/parrainage-commercants", label: "Parrainage commerçants", icon: "€" },
         { href: "/admin/publicite", label: "Publicité", icon: "▣" },
       ],
     },
@@ -137,7 +139,6 @@ function buildSections(counts: {
       label: "Paiement commerçants",
       items: [
         { href: "/admin/abonnements", label: "Abonnements", icon: "◆" },
-        { href: "/admin/parrainage-commercants", label: "Parrainage commerçants", icon: "€" },
       ],
     },
     {
@@ -234,7 +235,7 @@ export function Sidebar({ user }: SidebarProps) {
         </div>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-4 px-2 py-3" aria-label="Navigation admin">
+      <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3" aria-label="Navigation admin">
         {sections.map((section) => (
           <div key={section.id}>
             {section.label ? (
@@ -250,6 +251,7 @@ export function Sidebar({ user }: SidebarProps) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={isActive ? "page" : undefined}
                     className={`flex items-center gap-3 rounded-[7px] px-2 py-[7px] text-[12.5px] transition ${
                       isActive
                         ? "bg-[#EAF3DE] font-medium text-[#3B6D11]"

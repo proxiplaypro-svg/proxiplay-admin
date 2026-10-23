@@ -35,6 +35,18 @@ test("le payload reel de creation QR garde la description distincte du lot", () 
   });
 
   assert.equal(payload.description, "Retrouvez Primo Dunkerque au Salon de l’Habitat");
+  assert.equal(payload.main_prize_title, "Une bouteille de champagne");
   assert.equal(payload.main_prize_description, "Une bouteille de champagne");
   assert.notEqual(payload.description, payload.main_prize_description);
+});
+
+test("création sans lot principal ne crée pas les champs dédiés, y compris en QR", () => {
+  for (const accessMode of ["public", "qr_only"] as const) {
+    const payload = buildCreateGameDescriptionPayload({
+      accessMode, gameDescription: "Jeu", mainPrizeDescription: "",
+      hasMainPrize: false, prizeValue: null,
+    });
+    assert.equal("main_prize_title" in payload, false);
+    assert.equal("main_prize_description" in payload, false);
+  }
 });

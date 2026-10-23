@@ -28,7 +28,8 @@ import {
 import { GameEditModal } from "@/components/admin/jeux/GameEditModal";
 import { duplicateGame } from "@/lib/firebase/adminActions";
 import { db } from "@/lib/firebase/client-app";
-import { resolveHasMainPrize } from "@/lib/firebase/gamePrizeValidation";
+import { adminGameState } from "@/lib/admin/gamePublication";
+import { resolveHasMainPrize, resolveMainPrizeFields } from "@/lib/firebase/gamePrizeValidation";
 import {
   deriveGameFinalization,
   ensureGamesAuthenticated,
@@ -68,6 +69,9 @@ type FirestoreGameDocument = {
   photo?: string;
   coverUrl?: string;
   visible_public?: boolean;
+  visible_public_auto_published?: boolean;
+  unique_players_count?: number;
+  deleted?: boolean;
   relaunch_workflow?: boolean;
   instant_winners_ready?: boolean;
   isPrivate?: boolean;
@@ -240,65 +244,25 @@ function normalizeStatus(value: string | null | undefined) {
   }
 }
 
-function deriveStatus(game: FirestoreGameDocument, now = Date.now()) {
-  const explicitStatus = normalizeStatus(game.status);
-  const isPrivate = game.isPrivate === true || game.private === true;
-  const isPublic = game.visible_public !== false;
-  const endTimestamp = readTimestamp(game.end_date, game.endDate);
-  const endValue = endTimestamp?.toMillis() ?? null;
-  const startTimestamp = readTimestamp(game.start_date, game.startDate);
-  const startValue = startTimestamp?.toMillis() ?? null;
-  const hasLiveActivity =
-    readLargestNumber(
-      game.sessionCount,
-      game.partiesCount,
-      game.participations,
-      game.participations_count,
-    ) > 0;
-
-  if (explicitStatus === "expire") {
-    return "expire" as const;
-  }
-
-  if (explicitStatus === "prive") {
-    return "prive" as const;
-  }
-
-  if (isPrivate) {
-    return "prive" as const;
-  }
-
-  if (explicitStatus === "actif") {
-    return "actif" as const;
-  }
-
-  if (endValue !== null && endValue < now) {
-    return "expire" as const;
-  }
-
-  if (
-    !isPublic &&
-    (!hasLiveActivity || startValue === null || endValue === null || startValue > now || endValue < now)
-  ) {
-    return "brouillon" as const;
-  }
-
-  if (startValue !== null && startValue > now) {
-    return "brouillon" as const;
-  }
-
-  if (
-    explicitStatus === "brouillon" &&
-    startValue !== null &&
-    endValue !== null &&
-    startValue <= now &&
-    endValue >= now
-  ) {
-    return "actif" as const;
-  }
-
-  return "actif" as const;
+// Same rule as the app and participateInGameTransaction (gamePublication.ts):
+// a draft is no longer shown as active just because it has activity; a
+// launched game with stale draft flags is active with an alert instead.
+function derivePublication(game: FirestoreGameDocument, now = Date.now()) {
+  const explicitExpired = normalizeStatus(game.status) === "expire";
+  const participations = readLargestNumber(game.participations, game.participations_count);
+  return adminGameState({
+    status: game.status,
+    deleted: game.deleted,
+    visible_public: game.visible_public,
+    visible_public_auto_published: game.visible_public_auto_published,
+    unique_players_count: game.unique_players_count,
+    participations,
+    isPrivate: game.isPrivate === true || game.private === true,
+    endMs: explicitExpired ? 0 : readTimestamp(game.end_date, game.endDate)?.toMillis() ?? null,
+    startMs: readTimestamp(game.start_date, game.startDate)?.toMillis() ?? null,
+  }, now);
 }
+
 
 function mapMerchantOption(
   snapshot: QueryDocumentSnapshot<DocumentData>,
@@ -404,7 +368,8 @@ function mapGameDocument(
   const startTimestamp = readTimestamp(game.start_date, game.startDate);
   const endTimestamp = readTimestamp(game.end_date, game.endDate);
   const imageUrl = readNullableText(game.imageUrl, game.photo, game.coverUrl);
-  const status = deriveStatus(game);
+  const publication = derivePublication(game);
+  const status = publication.status;
   const mainPrizeValue = readOptionalNumber(game.prize_value);
   const secondaryPrizes = Array.isArray(game.secondary_prizes)
     ? game.secondary_prizes.map((prize, index) => mapSecondaryPrize(prize, index))
@@ -422,6 +387,7 @@ function mapGameDocument(
     startDateValue: startTimestamp?.toMillis() ?? null,
     endDateValue: endTimestamp?.toMillis() ?? null,
     status,
+    publicationAlert: publication.publicationAlert,
     imageUrl,
     isPrivate: status === "prive",
     sessionCount:
@@ -436,16 +402,7 @@ function mapGameDocument(
     collectionName,
     imageMissing: !imageUrl,
     hasMainPrize: resolveHasMainPrize(game.hasMainPrize, mainPrizeValue),
-    // Voir la meme note dans lib/firebase/gamesQueries.ts : le mobile
-    // n'ecrit jamais main_prize_title/main_prize_description, donc un jeu
-    // commercant avec lot principal retombe sur le nom/la description du
-    // jeu lui-meme.
-    mainPrizeTitle: readText(game.main_prize_title, game.title, game.name),
-    mainPrizeDescription: readText(
-      game.main_prize_description,
-      game.description,
-      game.conditions,
-    ),
+    ...resolveMainPrizeFields(game),
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
@@ -706,11 +663,16 @@ function AdminGamesPageInner() {
       return;
     }
     const previousStatus = game.status;
-    const nextStatus = game.status === "actif" || game.status === "prive" ? "brouillon" : "actif";
+    // Switching a published game off is an explicit deactivation, which the
+    // app and the backend always honour; "brouillon" would be ambiguous for a
+    // game that players already use (see gamePublication.ts).
+    const nextStatus = game.status === "actif" || game.status === "prive" ? "desactive" : "actif";
 
     setTogglePendingId(game.id);
     setGames((current) =>
-      current.map((item) => (item.id === game.id ? { ...item, status: nextStatus } : item)),
+      current.map((item) =>
+        item.id === game.id ? { ...item, status: nextStatus, publicationAlert: null } : item,
+      ),
     );
 
     try {

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   collection,
@@ -82,6 +82,7 @@ type FirestoreUserDocument = {
   bonusMode?: string;
   bonusSource?: string;
   bonusExpiresAt?: Timestamp;
+  referralBonusExpiresAt?: Timestamp;
   allGamesAccessUntil?: Timestamp;
   last_contact_at?: Timestamp | null;
   last_contact_channel?: string;
@@ -751,13 +752,24 @@ function readReferralRewardStatusLabel(value: string | undefined | null) {
   }
 }
 
-function readReferralBonusSummary(user: FirestoreUserDocument | null, now = Date.now()) {
-  const bonusExpiresAt = readOptionalTimestamp(user?.bonusExpiresAt, user?.allGamesAccessUntil);
+function readReferralBonusSummary(
+  user: FirestoreUserDocument | null,
+  referrals: Array<{ id: string; data: FirestoreReferralDocument }>,
+  now = Date.now(),
+) {
   const bonusSource = readOptionalText(user?.bonusSource);
-  const isReferralBonus = bonusSource === "referral";
+  // Ne pas attribuer au parrainage un acces provenant d'une autre source.
+  const bonusExpiresAt = readOptionalTimestamp(user?.referralBonusExpiresAt) ??
+    (bonusSource === "referral"
+      ? readOptionalTimestamp(user?.bonusExpiresAt)
+      : null);
+  const hasUnattributedReferral = !bonusExpiresAt && referrals.some(({ data }) =>
+    data.status === "accepted" && data.rewardStatus === "granted" &&
+    data.rewardType === "all_games_until_midnight",
+  );
   const bonusExpiresAtValue = bonusExpiresAt?.toMillis() ?? 0;
 
-  if (isReferralBonus && bonusExpiresAt && bonusExpiresAtValue > now) {
+  if (bonusExpiresAt && bonusExpiresAtValue > now) {
     return {
       status: "actif" as const,
       statusLabel: "Bonus actif",
@@ -766,7 +778,7 @@ function readReferralBonusSummary(user: FirestoreUserDocument | null, now = Date
     };
   }
 
-  if (isReferralBonus && bonusExpiresAt) {
+  if (bonusExpiresAt) {
     return {
       status: "expire" as const,
       statusLabel: "Bonus expire",
@@ -777,8 +789,8 @@ function readReferralBonusSummary(user: FirestoreUserDocument | null, now = Date
 
   return {
     status: "aucun" as const,
-    statusLabel: "Aucun bonus",
-    bonusExpiresAtLabel: "Aucune expiration",
+    statusLabel: hasUnattributedReferral ? "Statut inconnu" : "Aucun bonus",
+    bonusExpiresAtLabel: hasUnattributedReferral ? "Origine non confirm?e" : "Aucune expiration",
     bonusExpiresAtValue: 0,
   };
 }
@@ -817,7 +829,7 @@ function buildReferralInviterItem(
   const lastAcceptedAt = acceptedReferrals
     .map((referral) => referral.data.acceptedAt ?? null)
     .sort(compareReferralTimestamps)[0] ?? null;
-  const bonus = readReferralBonusSummary(user, now);
+  const bonus = readReferralBonusSummary(user, referrals, now);
 
   return {
     userId,

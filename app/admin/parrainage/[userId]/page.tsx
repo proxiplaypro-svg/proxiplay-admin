@@ -122,7 +122,7 @@ export default function ReferralDetailsPage({ params }: ReferralDetailsPageProps
               <StatCard
                 label="Statut bonus"
                 value={details.bonusStatusLabel}
-                sub={details.bonusStatus === "aucun" ? "Aucune expiration" : details.bonusExpiresAtLabel}
+                sub={details.bonusExpiresAtLabel}
                 color={details.bonusStatus === "actif" ? "#639922" : "#EF9F27"}
               />
               <StatCard

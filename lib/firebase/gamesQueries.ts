@@ -27,8 +27,9 @@ import type {
 } from "@/types/dashboard";
 import { auth } from "./auth";
 import { db, storage } from "./client-app";
-import { resolveHasMainPrize, validateGamePrizes } from "./gamePrizeValidation";
+import { resolveHasMainPrize, resolveMainPrizeFields, validateGamePrizes } from "./gamePrizeValidation";
 import { resolveCreateGameDescriptions } from "./gameDescriptions";
+import { adminGameState } from "@/lib/admin/gamePublication";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -329,65 +330,27 @@ function normalizeStatus(value: string | null | undefined) {
   }
 }
 
-function deriveStatus(game: FirestoreGameDocument, now = Date.now()): GameStatus {
-  const explicitStatus = normalizeStatus(game.status);
-  const isPrivate = game.isPrivate === true || game.private === true;
-  const isPublic = game.visible_public !== false;
-  const endTimestamp = readTimestamp(game.end_date, game.endDate);
-  const endValue = endTimestamp?.toMillis() ?? null;
-  const startTimestamp = readTimestamp(game.start_date, game.startDate);
-  const startValue = startTimestamp?.toMillis() ?? null;
-  const hasLiveActivity =
-    readNumber(
-      game.sessionCount,
-      game.partiesCount,
-      game.participations,
-      game.participations_count,
-    ) > 0;
-
-  if (explicitStatus === "expire") {
-    return "expire";
-  }
-
-  if (explicitStatus === "prive") {
-    return "prive";
-  }
-
-  if (isPrivate) {
-    return "prive";
-  }
-
-  if (explicitStatus === "actif") {
-    return "actif";
-  }
-
-  if (endValue !== null && endValue < now) {
-    return "expire";
-  }
-
-  if (
-    !isPublic &&
-    (!hasLiveActivity || startValue === null || endValue === null || startValue > now || endValue < now)
-  ) {
-    return "brouillon";
-  }
-
-  if (startValue !== null && startValue > now) {
-    return "brouillon";
-  }
-
-  if (
-    explicitStatus === "brouillon" &&
-    startValue !== null &&
-    endValue !== null &&
-    startValue <= now &&
-    endValue >= now
-  ) {
-    return "actif";
-  }
-
-  return "actif";
+// Same rule as the app and participateInGameTransaction (gamePublication.ts).
+function derivePublication(game: FirestoreGameDocument, now = Date.now()) {
+  const extra = game as FirestoreGameDocument & {
+    deleted?: unknown;
+    visible_public_auto_published?: unknown;
+    unique_players_count?: unknown;
+  };
+  const explicitExpired = normalizeStatus(game.status) === "expire";
+  return adminGameState({
+    status: game.status,
+    deleted: extra.deleted,
+    visible_public: game.visible_public,
+    visible_public_auto_published: extra.visible_public_auto_published,
+    unique_players_count: extra.unique_players_count,
+    participations: readNumber(game.participations, game.participations_count),
+    isPrivate: game.isPrivate === true || game.private === true,
+    endMs: explicitExpired ? 0 : readTimestamp(game.end_date, game.endDate)?.toMillis() ?? null,
+    startMs: readTimestamp(game.start_date, game.startDate)?.toMillis() ?? null,
+  }, now);
 }
+
 
 async function pickCollectionName<TName extends string>(
   names: readonly TName[],
@@ -445,7 +408,8 @@ export function mapGameDocument(
   const startTimestamp = readTimestamp(game.start_date, game.startDate);
   const endTimestamp = readTimestamp(game.end_date, game.endDate);
   const imageUrl = readNullableText(game.imageUrl, game.photo, game.coverUrl);
-  const status = deriveStatus(game);
+  const publication = derivePublication(game);
+  const status = publication.status;
   const mainPrizeValue = readOptionalNumber(game.prize_value);
   const hasMainPrize = resolveHasMainPrize(game.hasMainPrize, mainPrizeValue);
   const secondaryPrizes = Array.isArray(game.secondary_prizes)
@@ -465,6 +429,7 @@ export function mapGameDocument(
     startDateValue: startTimestamp?.toMillis() ?? null,
     endDateValue: endTimestamp?.toMillis() ?? null,
     status,
+    publicationAlert: publication.publicationAlert,
     imageUrl,
     isPrivate: status === "prive",
     sessionCount: readNumber(
@@ -476,20 +441,7 @@ export function mapGameDocument(
     collectionName,
     imageMissing: !imageUrl,
     hasMainPrize,
-    // Le mobile n'ecrit jamais main_prize_title/main_prize_description
-    // (createGamesRecordData n'a pas ces parametres -- voir
-    // games_record.dart) : pour un jeu commercant avec lot principal, le
-    // nom/la description du JEU lui-meme font deja office de texte du lot.
-    // Sans ce repli, un tel jeu duplique depuis l'Admin echouait a
-    // validateGamePrizes() avec "le lot principal est obligatoire" alors
-    // que prize_value/hasMainPrize etaient corrects (cas reel : "Une
-    // paire de bas" / Fonteyne Lingerie).
-    mainPrizeTitle: readText(game.main_prize_title, game.title, game.name),
-    mainPrizeDescription: readText(
-      game.main_prize_description,
-      game.description,
-      game.conditions,
-    ),
+    ...resolveMainPrizeFields(game),
     mainPrizeValue: mainPrizeValue === null ? "" : String(mainPrizeValue),
     mainPrizeImage: readNullableText(game.main_prize_image),
     secondaryPrizes,
@@ -637,7 +589,7 @@ function buildGamePatch(
 
   const prizeValidationError = validateGamePrizes({
     hasMainPrize,
-    mainPrizeDescription: input.mainPrizeTitle || input.mainPrizeDescription,
+    mainPrizeDescription: input.mainPrizeTitle.trim() || input.mainPrizeDescription,
     secondaryPrizes: input.secondaryPrizes,
   });
   if (prizeValidationError) throw new Error(prizeValidationError);

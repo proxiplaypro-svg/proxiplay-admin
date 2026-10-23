@@ -19,6 +19,7 @@ import { GameQrSection } from "@/components/admin/jeux/GameQrSection";
 import { db } from "@/lib/firebase/client-app";
 import { generateInstantWinnersForGame } from "@/lib/firebase/instantWinners";
 import { resolveHasMainPrize } from "@/lib/firebase/gamePrizeValidation";
+import { adminGameState } from "@/lib/admin/gamePublication";
 
 type GameDetailsPageProps = {
   params: Promise<{ gameId: string }>;
@@ -43,6 +44,10 @@ type FirestoreGameDetailsDocument = {
   hasWinner?: boolean;
   main_prize_winner?: DocumentReference | null;
   visible_public?: boolean;
+  visible_public_auto_published?: boolean;
+  unique_players_count?: number;
+  deleted?: boolean;
+  isPrivate?: boolean;
   status?: string;
   imageUrl?: string;
   photo?: string;
@@ -74,7 +79,8 @@ type AdminGameDetails = {
   merchantId: string | null;
   merchantName: string;
   animationId: string | null;
-  status: "actif" | "termine" | "brouillon" | "expire" | "prive";
+  status: "actif" | "termine" | "brouillon" | "expire" | "prive" | "desactive";
+  publicationAlert: string | null;
   startDateLabel: string;
   endDateLabel: string;
   startDateValue: number;
@@ -146,28 +152,19 @@ function getBackfillErrorMessage(error: unknown) {
   return "Une erreur inattendue a empeche le backfill.";
 }
 
-function deriveStatus(
-  game: FirestoreGameDetailsDocument,
-  participationsCount: number,
-): AdminGameDetails["status"] {
-  const now = Date.now();
-  const endMs = game.end_date?.toMillis() ?? null;
-  const startMs = game.start_date?.toMillis() ?? null;
-  const isPublic = game.visible_public !== false;
-  const hasLiveActivity = participationsCount > 0 || (typeof game.views === "number" && game.views > 0);
-  const normalizedStatus = game.status?.trim().toLowerCase();
-
-  if (normalizedStatus === "prive" || normalizedStatus === "private") return "prive";
-  if (endMs !== null && endMs < now) return "expire";
-  if (normalizedStatus === "active" || normalizedStatus === "actif" || normalizedStatus === "public") return "actif";
-  if (!isPublic && (!hasLiveActivity || startMs === null || endMs === null || startMs > now || endMs < now)) {
-    return "brouillon";
-  }
-  if (startMs !== null && startMs > now) return "brouillon";
-  if (normalizedStatus === "brouillon" && startMs !== null && endMs !== null && startMs <= now && endMs >= now) {
-    return "actif";
-  }
-  return "actif";
+// Same rule as the app and participateInGameTransaction (gamePublication.ts).
+function derivePublication(game: FirestoreGameDetailsDocument, participationsCount: number) {
+  return adminGameState({
+    status: game.status,
+    deleted: game.deleted,
+    visible_public: game.visible_public,
+    visible_public_auto_published: game.visible_public_auto_published,
+    unique_players_count: game.unique_players_count,
+    participations: participationsCount,
+    isPrivate: game.isPrivate,
+    endMs: game.end_date?.toMillis() ?? null,
+    startMs: game.start_date?.toMillis() ?? null,
+  });
 }
 
 function buildDetails(
@@ -188,6 +185,7 @@ function buildDetails(
         description: p.presentation?.trim() || p.description?.trim() || "",
       }))
     : [];
+  const publication = derivePublication(game, participationsCount);
 
   return {
     id: gameId,
@@ -196,7 +194,8 @@ function buildDetails(
     merchantId: game.enseigne_id?.id ?? game.merchantId ?? null,
     merchantName: (game.merchantName ?? game.enseigne_name ?? "").trim() || "Marchand inconnu",
     animationId: game.animation_id?.trim() || game.campaign_id?.trim() || null,
-    status: deriveStatus(game, participationsCount),
+    status: publication.status,
+    publicationAlert: publication.publicationAlert,
     startDateLabel: startDate ? formatDate(startDate) : "—",
     endDateLabel: endDate ? formatDate(endDate) : "—",
     startDateValue: startDate?.getTime() ?? 0,
@@ -224,6 +223,7 @@ const statusConfig: Record<AdminGameDetails["status"], { label: string; classNam
   termine: { label: "Terminé", className: "bg-[#F1EFE8] text-[#5F5E5A]" },
   expire: { label: "Expiré", className: "bg-[#F1EFE8] text-[#5F5E5A]" },
   prive: { label: "Privé", className: "bg-[#E6F1FB] text-[#185FA5]" },
+  desactive: { label: "Désactivé", className: "bg-[#FCEBEB] text-[#A32D2D]" },
 };
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -469,6 +469,11 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
               ) : null}
             </div>
             <p className="mt-1 text-[13px] text-[#666666]">{game.merchantName}</p>
+            {game.publicationAlert ? (
+              <p role="alert" className="mt-2 max-w-[560px] rounded-[8px] bg-[#FAEEDA] px-3 py-2 text-[12px] text-[#8A4B08]">
+                ⚠ Incohérence de publication : {game.publicationAlert} Les joueurs ne sont pas bloqués.
+              </p>
+            ) : null}
             {game.description ? (
               <p className="mt-1 text-[12px] text-[#999999] max-w-[480px]">{game.description}</p>
             ) : null}

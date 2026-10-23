@@ -22,6 +22,7 @@ import {
 import Link from "next/link";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
+import { buildPublicGameLink } from "@/lib/admin/gameLinks";
 import { GameQrSection } from "@/components/admin/jeux/GameQrSection";
 import type { PrintableGamePosterData } from "@/lib/admin/gamePoster";
 import { issueGameQr, resolveGameQrLink } from "@/lib/admin/gameQrClient";
@@ -507,8 +508,7 @@ function buildGameDeepLinkUrl(game: {
     params.set("merchant_id", game.merchantId);
   }
 
-  const queryString = params.toString();
-  return `https://proxiplay.fr/j/${game.id}${queryString ? `?${queryString}` : ""}`;
+  return buildPublicGameLink(game.id, params);
 }
 
 function buildAnimationGameStatus(status: CampaignStatus) {

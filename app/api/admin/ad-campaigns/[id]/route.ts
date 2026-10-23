@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { adCampaignsOverlap, formatAdDateInput, getAdCampaignStatus, isAdPlacement, parseAdDateInput, type AdCampaignRecord, type AdPlacement } from "@/lib/admin/adCampaign";
+import { adCampaignsOverlap, formatAdDateInput, getAdCampaignStatus, isAdCommunicationType, isAdPlacement, normalizeAdCommunicationType, parseAdDateInput, type AdCampaignRecord, type AdCommunicationType, type AdPlacement } from "@/lib/admin/adCampaign";
+import { buildAdProjection, isCreativeStoredFor } from "@/lib/admin/adProjection";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 
@@ -18,6 +19,8 @@ type CampaignData = {
   source_campaign_id: string | null;
   impressions: number;
   clicks: number;
+  adults_only: boolean;
+  communication_type: AdCommunicationType;
 };
 
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
@@ -42,6 +45,8 @@ function asCampaign(data: Record<string, unknown>): CampaignData | null {
     source_campaign_id: text(data.source_campaign_id) || null,
     impressions: typeof data.impressions === "number" ? data.impressions : 0,
     clicks: typeof data.clicks === "number" ? data.clicks : 0,
+    adults_only: data.adults_only === true,
+    communication_type: normalizeAdCommunicationType(data.communication_type),
   };
 }
 
@@ -52,6 +57,8 @@ function mergeCampaign(current: CampaignData, body: Record<string, unknown>): Ca
   const frequency = body.frequency_cap_hours === undefined ? current.frequency_cap_hours
     : body.frequency_cap_hours === "" || body.frequency_cap_hours === null ? null : Number(body.frequency_cap_hours);
   if (!isAdPlacement(placement) || !startAt || !endAt || startAt.toMillis() >= endAt.toMillis()) return null;
+  const communicationType = body.communication_type === undefined ? current.communication_type : body.communication_type;
+  if (!isAdCommunicationType(communicationType)) return null;
   const candidate = {
     ...current,
     name: body.name === undefined ? current.name : text(body.name),
@@ -59,6 +66,8 @@ function mergeCampaign(current: CampaignData, body: Record<string, unknown>): Ca
     placement, start_at: startAt, end_at: endAt, frequency_cap_hours: frequency,
     image_url: body.image_url === undefined ? current.image_url : text(body.image_url),
     destination_url: body.destination_url === undefined ? current.destination_url : text(body.destination_url),
+    adults_only: body.adults_only === undefined ? current.adults_only : body.adults_only === true,
+    communication_type: communicationType,
   };
   if (!candidate.name || !candidate.advertiser || !candidate.image_url ||
     (candidate.placement === "open" && (!Number.isInteger(frequency) || (frequency ?? -1) < 0))) return null;
@@ -91,12 +100,7 @@ function overlaps(left: CampaignData, right: CampaignData) {
 }
 
 function projection(id: string, campaign: CampaignData) {
-  return {
-    campaign_id: id, enabled: true, image_url: campaign.image_url,
-    destination_url: campaign.destination_url, start_at: campaign.start_at, end_at: campaign.end_at,
-    ...(campaign.placement === "open" ? { frequency_cap_hours: campaign.frequency_cap_hours } : {}),
-    impressions: campaign.impressions, clicks: campaign.clicks, updated_at: FieldValue.serverTimestamp(),
-  };
+  return buildAdProjection(id, campaign, { deleteField: FieldValue.delete(), now: FieldValue.serverTimestamp() });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -123,6 +127,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
       const candidate = mergeCampaign(current, body);
       if (!candidate) return { error: "Les informations de campagne sont invalides.", status: 400 };
+      if (!isCreativeStoredFor(candidate.image_url, candidate.adults_only)) {
+        return { error: "Image incompatible avec la restriction d’âge : importez-la à nouveau après avoir choisi l’option « Réservé aux majeurs ».", status: 400 };
+      }
       const wantsPublish = action === "publish" || candidate.published;
       const next = { ...candidate, published: wantsPublish, status: candidate.status };
       const samePlacement = await transaction.get(db.collection("ad_campaigns").where("placement", "==", candidate.placement));
@@ -142,7 +149,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           return otherCampaign?.published === true && statusOf(otherCampaign) === "active";
         });
         if (!hasOtherActive || nextStatus === "active") {
-          transaction.set(db.collection("ads").doc(candidate.placement), projection(id, next), { merge: true });
+          const { publicProjection, restricted } = projection(id, next);
+          transaction.set(db.collection("ads").doc(candidate.placement), publicProjection, { merge: true });
+          // An adults-only creative is only readable by the server; an
+          // ordinary campaign removes any previous restricted creative.
+          const restrictedRef = db.collection("ads_restricted").doc(candidate.placement);
+          if (restricted) transaction.set(restrictedRef, restricted);
+          else transaction.delete(restrictedRef);
         }
       }
       return { ok: true };

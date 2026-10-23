@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import OpenAppRedirect from "./OpenAppRedirect";
-import { buildSecureGameQrLink, buildSecureGameAppLinks } from "@/lib/admin/secureGameQr";
 
 type TimestampLike = {
   toMillis?: () => number;
@@ -40,7 +39,7 @@ type PublicGame = {
 
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.proxiplay.proxiplay";
 const APP_PACKAGE_NAME = "com.proxiplay.proxiplay";
-const WEB_BASE_URL = "https://proxiplay.fr";
+const WEB_BASE_URL = "https://play.proxiplay.fr";
 
 function readText(...values: Array<string | null | undefined>) {
   for (const value of values) {
@@ -97,40 +96,15 @@ function buildDateRange(startDateValue: number | null, endDateValue: number | nu
   return "Dates non renseignees";
 }
 
-function buildWebGameUrl(
-  gameId: string,
-  options?: {
-    animationId?: string | null;
-    merchantId?: string | null;
-  },
-) {
-  const params = new URLSearchParams();
-
-  if (options?.animationId) {
-    params.set("animationId", options.animationId);
-    params.set("animation_id", options.animationId);
-  }
-
-  if (options?.merchantId) {
-    params.set("merchantId", options.merchantId);
-    params.set("merchant_id", options.merchantId);
-  }
-
-  const queryString = params.toString();
-  return `${WEB_BASE_URL}/j/${encodeURIComponent(gameId)}${queryString ? `?${queryString}` : ""}`;
+function buildWebGameUrl(gameId: string, params: URLSearchParams) {
+  const query = params.toString();
+  return `${WEB_BASE_URL}/j/${encodeURIComponent(gameId)}${query ? `?${query}` : ""}`;
 }
 
-function buildAndroidIntentUrl(
-  gameId: string,
-  options?: {
-    animationId?: string | null;
-    merchantId?: string | null;
-  },
-) {
-  const webGameUrl = buildWebGameUrl(gameId, options);
+function buildAndroidIntentUrl(gameId: string, params: URLSearchParams) {
+  const query = params.toString();
   const fallbackUrl = encodeURIComponent(PLAY_STORE_URL);
-  const webPathWithQuery = webGameUrl.replace(`${WEB_BASE_URL}/`, "");
-  return `intent://${webPathWithQuery}#Intent;scheme=https;package=${APP_PACKAGE_NAME};S.browser_fallback_url=${fallbackUrl};end`;
+  return `intent://game/${encodeURIComponent(gameId)}${query ? `?${query}` : ""}#Intent;scheme=proxiplay;package=${APP_PACKAGE_NAME};S.browser_fallback_url=${fallbackUrl};end`;
 }
 
 async function getPublicGame(gameId: string): Promise<PublicGame | null> {
@@ -192,35 +166,27 @@ export default async function JoinGamePage({
   searchParams,
 }: {
   params: Promise<{ gameId: string }>;
-  searchParams: Promise<{
-    animationId?: string;
-    merchantId?: string;
-    animation_id?: string;
-    merchant_id?: string;
-    qr_token?: string | string[];
-  }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { gameId } = await params;
-  const { animationId, merchantId, animation_id, merchant_id, qr_token } = await searchParams;
+  const incoming = await searchParams;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(incoming)) {
+    for (const entry of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
+      query.append(key, entry);
+    }
+  }
   const game = await getPublicGame(gameId);
 
   if (!game) {
     notFound();
   }
 
-  const resolvedAnimationId = animationId?.trim() || animation_id?.trim() || null;
-  const resolvedMerchantId = merchantId?.trim() || merchant_id?.trim() || null;
-
-  const secureToken = game.qrOnly && typeof qr_token === "string" && /^[a-f0-9]{64}$/.test(qr_token) ? qr_token : null;
-  const secureLinks = secureToken ? buildSecureGameAppLinks(game.id, secureToken) : null;
-  const webUrl = secureToken ? buildSecureGameQrLink(game.id, secureToken) : buildWebGameUrl(game.id, {
-    animationId: resolvedAnimationId,
-    merchantId: resolvedMerchantId,
-  });
-  const androidIntentUrl = secureLinks?.androidIntentUrl ?? buildAndroidIntentUrl(game.id, {
-    animationId: resolvedAnimationId,
-    merchantId: resolvedMerchantId,
-  });
+  const token = incoming.qr_token;
+  const secureToken = game.qrOnly && typeof token === "string" && /^[a-f0-9]{64}$/.test(token);
+  const webUrl = buildWebGameUrl(game.id, query);
+  const androidIntentUrl = buildAndroidIntentUrl(game.id, query);
+  const appUrl = `proxiplay://game/${encodeURIComponent(game.id)}${query.size ? `?${query}` : ""}`;
   const dateRangeLabel = buildDateRange(game.startDateValue, game.endDateValue);
 
   return (
@@ -234,7 +200,7 @@ export default async function JoinGamePage({
           <p className="text-sm text-slate-600">{game.merchantName}</p>
         </div>
 
-        <OpenAppRedirect androidIntentUrl={androidIntentUrl} secureAppUrl={secureLinks?.appUrl} />
+        <OpenAppRedirect androidIntentUrl={androidIntentUrl} secureAppUrl={secureToken ? appUrl : undefined} />
 
         <section className="overflow-hidden rounded-[28px] bg-white shadow-lg ring-1 ring-slate-200">
           {game.imageUrl ? (
@@ -269,7 +235,7 @@ export default async function JoinGamePage({
             </div>
 
             <div className="flex flex-col gap-3">
-              {!secureLinks && <a
+              {!secureToken && <a
                 href={androidIntentUrl}
                 className="rounded-2xl bg-indigo-600 px-5 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500"
               >

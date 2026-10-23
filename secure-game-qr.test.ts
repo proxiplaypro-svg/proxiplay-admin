@@ -69,12 +69,19 @@ test("preuve expirée, mauvais jeu, changement de boutique ou propriétaire : au
     assert.deepEqual((await db.doc(`game_qr_access/${gameId}`).get()).data(), before);
   }
 });
-test("jeu terminé et jeu public : aucun accès émis", async () => {
+test("jeu terminé : aucun accès émis, même public", async () => {
   await db.doc(`games/${gameId}`).update({ status: "ended" });
   assert.deepEqual(await read(gameId), { state: "ended" });
   await db.doc(`games/${gameId}`).update({ access_mode: "public" });
-  assert.deepEqual(await read(gameId), { state: "public" });
+  assert.deepEqual(await read(gameId), { state: "ended" });
   assert.equal((await db.doc(`game_qr_access/${gameId}`).get()).exists, false);
+});
+test("jeu public en cours : son QR boutique à jeton est lu comme un jeu QR-only, sans émission", async () => {
+  await db.doc(`games/${gameId}`).update({ access_mode: "public" });
+  assert.deepEqual(await read(gameId), { state: "missing" });
+  assert.equal((await db.doc(`game_qr_access/${gameId}`).get()).exists, false, "la lecture n'émet jamais");
+  await seedProof();
+  assert.deepEqual(await read(gameId), { state: "ready", url: buildSecureGameQrLink(gameId, token) });
 });
 test("API admin protégée et réponse QR non mise en cache", async () => {
   const context = { params: Promise.resolve({ gameId }) };

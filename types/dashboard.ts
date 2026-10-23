@@ -104,7 +104,8 @@ export interface DashboardData {
   activePlayersExport: ActivePlayerExportRow[];
 }
 
-export type GameStatus = "actif" | "expire" | "brouillon" | "prive";
+// "desactive": explicitly switched off by an admin; never playable.
+export type GameStatus = "actif" | "expire" | "brouillon" | "prive" | "desactive";
 
 export interface GameSecondaryPrize {
   id: string;
@@ -127,6 +128,8 @@ export interface Game {
   startDateValue: number | null;
   endDateValue: number | null;
   status: GameStatus;
+  /** Set when the stored publication fields disagree with player activity. */
+  publicationAlert?: string | null;
   imageUrl: string | null;
   isPrivate: boolean;
   sessionCount: number;
