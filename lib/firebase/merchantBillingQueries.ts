@@ -45,6 +45,17 @@ export type AdminMerchantReferralItem = {
   rejectedReason: string | null;
   paidAtLabel: string | null;
   paidReference: string | null;
+  // "joueur" | "commercant" at link time (ambassadors are not restricted to players).
+  inviterKind: string | null;
+  // "merchant_signup" (code entered when creating the merchant account) or checkout.
+  source: string | null;
+  // First paid subscription: Stripe webhook, or manual confirmation by an admin.
+  paymentConfirmation: {
+    method: "manual" | "stripe";
+    reference: string | null;
+    paidAtLabel: string | null;
+    confirmedBy: string | null;
+  } | null;
 };
 
 function formatTimestamp(value: Timestamp | null | undefined): string | null {
@@ -140,6 +151,25 @@ export async function getMerchantReferralsOverview(): Promise<AdminMerchantRefer
 
   return docs.map(({ id, data }) => {
     const inviterId = pathToUid((data.inviter_user_id as { path?: string } | undefined)?.path);
+    const manual = data.payment_confirmation as
+      | { reference?: string; paid_at?: Timestamp; confirmed_by?: string }
+      | null
+      | undefined;
+    const paymentConfirmation: AdminMerchantReferralItem["paymentConfirmation"] = manual
+      ? {
+          method: "manual",
+          reference: manual.reference || null,
+          paidAtLabel: formatTimestamp(manual.paid_at),
+          confirmedBy: manual.confirmed_by || null,
+        }
+      : data.stripe_subscription_id
+        ? {
+            method: "stripe",
+            reference: (data.stripe_subscription_id as string) || null,
+            paidAtLabel: formatTimestamp(data.first_payment_confirmed_at as Timestamp | undefined),
+            confirmedBy: null,
+          }
+        : null;
     return {
       merchantUserId: id,
       merchantLabel: labelsById.get(id) || id,
@@ -152,8 +182,21 @@ export async function getMerchantReferralsOverview(): Promise<AdminMerchantRefer
       rejectedReason: (data.rejected_reason as string | undefined) || null,
       paidAtLabel: formatTimestamp(data.paid_at as Timestamp | undefined),
       paidReference: (data.paid_reference as string | undefined) || null,
+      inviterKind: (data.inviter_kind as string | undefined) || null,
+      source: (data.source as string | undefined) || null,
+      paymentConfirmation,
     };
   });
+}
+
+// Manual confirmation of the first paid subscription while Stripe is not live:
+// linked -> eligible, traced server-side (reference, payment date, admin).
+export async function confirmMerchantFirstPayment(merchantUserId: string, paymentReference: string, paidAt: string) {
+  const callable = httpsCallable<
+    { merchantUserId: string; paymentReference: string; paidAt: string },
+    { status: string }
+  >(canonicalFunctionsClient, "adminConfirmMerchantFirstPayment");
+  await callable({ merchantUserId, paymentReference, paidAt });
 }
 
 export async function approveMerchantReferral(merchantUserId: string) {

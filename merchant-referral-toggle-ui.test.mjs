@@ -40,7 +40,8 @@ test("the merchant referral switch is reachable from the Parrainage section", ()
   for (const source of [playerPage, merchantPage]) assert.match(source, /<MerchantReferralProgramToggle \/>/);
   // Shown at the top of the merchant page, above the referrals table.
   assert.ok(merchantPage.indexOf("<MerchantReferralProgramToggle />") < merchantPage.indexOf("<table"));
-  assert.match(merchantPage, /Bon cadeau de 50 €/);
+  assert.match(merchantPage, /50 € en bons cadeaux \(jamais en espèces\)/);
+  assert.match(merchantPage, /Confirmer le 1er abonnement payé/);
   assert.doesNotMatch(merchantPage, /100 €/);
   const sidebar = readFileSync("components/admin/Sidebar.tsx", "utf8");
   assert.match(sidebar, /href: "\/admin\/parrainage", label: "Parrainage joueurs"[\s\S]{0,120}href: "\/admin\/parrainage-commercants"/);
