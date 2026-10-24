@@ -35,6 +35,8 @@ export type AdCampaignRecord = AdPlacementForm & {
   adultsOnly?: boolean;
   // Label above the Home banners; absent on older campaigns (advertisement).
   communicationType?: AdCommunicationType;
+  // Label shown in the app, resolved (custom text or the type label).
+  displayLabel?: string;
 };
 
 export type AdPlacementForm = {
@@ -268,4 +270,25 @@ export function isAdCommunicationType(value: unknown): value is AdCommunicationT
 
 export function normalizeAdCommunicationType(value: unknown): AdCommunicationType {
   return isAdCommunicationType(value) ? value : DEFAULT_AD_COMMUNICATION_TYPE;
+}
+
+// Free label shown in the app above the Home banners and on the opening ad,
+// in place of the type label. Empty or absent (older campaigns): the type
+// label, "Publicité" by default. Short, so it never overflows in the app
+// (same limit in the app, which also cuts a longer value).
+export const AD_DISPLAY_LABEL_MAX_LENGTH = 24;
+
+export function cleanAdDisplayLabel(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+// Length in characters (an emoji counts as one), never a control character.
+export function isValidAdDisplayLabel(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value !== "string" || /[\u0000-\u001f\u007f]/.test(value)) return false;
+  return [...cleanAdDisplayLabel(value)].length <= AD_DISPLAY_LABEL_MAX_LENGTH;
+}
+
+export function resolveAdDisplayLabel(displayLabel: unknown, communicationType: unknown): string {
+  return cleanAdDisplayLabel(displayLabel) || AD_COMMUNICATION_LABEL[normalizeAdCommunicationType(communicationType)];
 }

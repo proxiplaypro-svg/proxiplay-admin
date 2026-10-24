@@ -4,8 +4,11 @@ import {
   adCampaignsOverlap,
   formatAdDateInput,
   getAdCampaignStatus,
+  cleanAdDisplayLabel,
   isAdCommunicationType,
   isAdPlacement,
+  isValidAdDisplayLabel,
+  resolveAdDisplayLabel,
   normalizeAdCommunicationType,
   parseAdDateInput,
   DEFAULT_AD_COMMUNICATION_TYPE,
@@ -35,6 +38,8 @@ type CampaignData = {
   clicks: number;
   adults_only: boolean;
   communication_type: AdCommunicationType;
+  // Custom label shown in the app; null = the type label.
+  display_label: string | null;
 };
 
 function readText(value: unknown) {
@@ -74,6 +79,7 @@ function asRecord(id: string, raw: Record<string, unknown>): AdCampaignRecord {
     clicks: typeof raw.clicks === "number" ? raw.clicks : 0,
     adultsOnly: raw.adults_only === true,
     communicationType: normalizeAdCommunicationType(raw.communication_type),
+    displayLabel: resolveAdDisplayLabel(raw.display_label, raw.communication_type),
     createdAt: readTimestamp(raw.created_at)?.toDate().toISOString() ?? null,
     updatedAt: readTimestamp(raw.updated_at)?.toDate().toISOString() ?? null,
   };
@@ -99,6 +105,8 @@ function parseCampaign(body: Record<string, unknown>, existing?: CampaignData): 
     ? existing?.communication_type ?? DEFAULT_AD_COMMUNICATION_TYPE
     : body.communication_type;
   if (!isAdCommunicationType(communicationType)) return null;
+  const displayLabel = body.display_label === undefined ? existing?.display_label ?? null : body.display_label;
+  if (!isValidAdDisplayLabel(displayLabel)) return null;
 
   if (!name || !advertiser || !startAt || !endAt || startAt.toMillis() >= endAt.toMillis()) return null;
   if (placement === "open" && (!Number.isInteger(frequency) || (frequency ?? -1) < 0)) return null;
@@ -130,6 +138,7 @@ function parseCampaign(body: Record<string, unknown>, existing?: CampaignData): 
     clicks: existing?.clicks ?? 0,
     adults_only: body.adults_only === undefined ? existing?.adults_only ?? false : body.adults_only === true,
     communication_type: communicationType,
+    display_label: cleanAdDisplayLabel(displayLabel) || null,
   };
 }
 

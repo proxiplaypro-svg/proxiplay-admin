@@ -3,7 +3,7 @@
 // there: the image and link go to `ads_restricted/{placement}`, unreadable by
 // clients, and the server hands them only to a signed-in adult.
 
-import { normalizeAdCommunicationType } from "./adCampaign";
+import { normalizeAdCommunicationType, resolveAdDisplayLabel } from "./adCampaign";
 
 export type ProjectableCampaign = {
   placement: string;
@@ -16,6 +16,7 @@ export type ProjectableCampaign = {
   clicks: number;
   adults_only?: boolean;
   communication_type?: string;
+  display_label?: string | null;
 };
 
 export function buildAdProjection<T>(
@@ -30,6 +31,8 @@ export function buildAdProjection<T>(
     adults_only: adultsOnly,
     // Label shown above the Home banners (absent before this field existed).
     communication_type: normalizeAdCommunicationType(campaign.communication_type),
+    // Label shown by the app (custom text, or the type label by default).
+    display_label: resolveAdDisplayLabel(campaign.display_label, campaign.communication_type),
     image_url: adultsOnly ? sentinels.deleteField : campaign.image_url,
     destination_url: adultsOnly ? sentinels.deleteField : campaign.destination_url,
     start_at: campaign.start_at,

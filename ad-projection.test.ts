@@ -69,3 +69,35 @@ test("la projection transmet le type à l’app, « Publicité » pour une campa
   assert.equal(projection.image_url, base.image_url);
   assert.equal(projection.enabled, true);
 });
+
+test("libellé affiché dans l’app : texte libre, sinon le libellé du type (« Publicité » par défaut)", () => {
+  const sentinels = { deleteField: DELETE, now: NOW };
+  const label = (campaign: Record<string, unknown>) =>
+    buildAdProjection("c", { ...base, ...campaign }, sentinels).publicProjection.display_label;
+  assert.equal(label({}), "Publicité", "ancienne campagne sans libellé ni type");
+  assert.equal(label({ display_label: null }), "Publicité");
+  assert.equal(label({ display_label: "  Partenaire   local " }), "Partenaire local");
+  assert.equal(label({ display_label: "", communication_type: "discovery" }), "À découvrir");
+  assert.equal(label({ display_label: "Offre du mois", communication_type: "proxiplay_info" }), "Offre du mois");
+  // Images, URL, dates and statistics are untouched by the label.
+  const projection = buildAdProjection("c", { ...base, display_label: "Offre du mois" }, sentinels).publicProjection;
+  assert.equal(projection.image_url, base.image_url);
+  assert.equal(projection.destination_url, base.destination_url);
+  assert.equal(projection.start_at, "S");
+  assert.equal(projection.end_at, "E");
+  assert.equal(projection.impressions, 3);
+  assert.equal(projection.clicks, 1);
+});
+
+test("libellé affiché dans l’app : 24 caractères au plus, jamais de caractère de contrôle", async () => {
+  const { AD_DISPLAY_LABEL_MAX_LENGTH, isValidAdDisplayLabel, cleanAdDisplayLabel } = await import("./lib/admin/adCampaign");
+  assert.equal(AD_DISPLAY_LABEL_MAX_LENGTH, 24);
+  assert.equal(isValidAdDisplayLabel(undefined), true);
+  assert.equal(isValidAdDisplayLabel(null), true);
+  assert.equal(isValidAdDisplayLabel("x".repeat(24)), true);
+  assert.equal(isValidAdDisplayLabel("x".repeat(25)), false);
+  assert.equal(isValidAdDisplayLabel(`${"x".repeat(23)}🎉`), true, "un emoji compte pour un caractère");
+  assert.equal(isValidAdDisplayLabel("Ligne\nsuivante"), false);
+  assert.equal(isValidAdDisplayLabel(42), false);
+  assert.equal(cleanAdDisplayLabel("  Offre   du  mois "), "Offre du mois");
+});

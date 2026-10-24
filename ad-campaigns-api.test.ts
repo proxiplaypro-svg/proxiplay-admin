@@ -197,6 +197,63 @@ test("interprète les dates civiles dans Europe/Paris à la création et à la m
   assert.equal(data?.end_at?.toDate().toISOString(), "2026-01-15T23:00:00.000Z");
 });
 
+test("libellé affiché dans l’app : création, modification, duplication, « Publicité » par défaut", async () => {
+  const { GET } = await import("./app/api/admin/ad-campaigns/route");
+  const input = {
+    name: "Libellé libre",
+    advertiser: "Annonceur",
+    placement: "home_banner_referral",
+    image_url: "https://example.com/label.png",
+    destination_url: "https://example.com/label",
+    start_date: futureDay(50),
+    end_date: futureDay(60),
+    frequency_cap_hours: null,
+  };
+  // Too long: refused, nothing created.
+  assert.equal((await POST(collectionRequest("POST", { ...input, display_label: "x".repeat(25) }))).status, 400);
+  // Without a label: the type label ("Publicité") is listed and published.
+  const plain = await POST(collectionRequest("POST", { ...input, name: "Sans libellé" }));
+  assert.equal(plain.status, 201);
+  const plainId = (await plain.json() as { id: string }).id;
+  generatedCampaignIds.push(plainId);
+  assert.equal((await db.collection("ad_campaigns").doc(plainId).get()).data()?.display_label, null);
+  await db.collection("ad_campaigns").doc(plainId).delete();
+
+  const created = await POST(collectionRequest("POST", { ...input, display_label: "  Partenaire  local " }));
+  assert.equal(created.status, 201);
+  const id = (await created.json() as { id: string }).id;
+  generatedCampaignIds.push(id);
+  assert.equal((await db.collection("ad_campaigns").doc(id).get()).data()?.display_label, "Partenaire local");
+  assert.equal((await PATCH(request(id, "PATCH", { action: "publish" }), context(id))).status, 200);
+  const published = (await db.collection("ads").doc("home_banner_referral").get()).data();
+  assert.equal(published?.display_label, "Partenaire local");
+  assert.equal(published?.image_url, input.image_url);
+  // Modified: the app follows; too long: refused, value kept.
+  assert.equal((await PATCH(request(id, "PATCH", { display_label: "Offre du mois" }), context(id))).status, 200);
+  assert.equal((await db.collection("ads").doc("home_banner_referral").get()).data()?.display_label, "Offre du mois");
+  assert.equal((await PATCH(request(id, "PATCH", { display_label: "y".repeat(25) }), context(id))).status, 400);
+  assert.equal((await db.collection("ad_campaigns").doc(id).get()).data()?.display_label, "Offre du mois");
+  // Emptied: back to the type label.
+  assert.equal((await PATCH(request(id, "PATCH", { display_label: "" }), context(id))).status, 200);
+  assert.equal((await db.collection("ads").doc("home_banner_referral").get()).data()?.display_label, "Publicité");
+  await PATCH(request(id, "PATCH", { display_label: "Offre du mois" }), context(id));
+  // Duplicated (the Admin sends the copied label with the source campaign).
+  const copy = await POST(collectionRequest("POST", { ...input, name: "Libellé libre — copie", source_campaign_id: id, display_label: "Offre du mois" }));
+  assert.equal(copy.status, 201);
+  const copyId = (await copy.json() as { id: string }).id;
+  generatedCampaignIds.push(copyId);
+  assert.equal((await db.collection("ad_campaigns").doc(copyId).get()).data()?.display_label, "Offre du mois");
+  // Listing: resolved label, "Publicité" for an older campaign without it.
+  await seedCampaign(campaignB);
+  await db.collection("ad_campaigns").doc(campaignB).update({ created_at: new Date("2026-09-01T00:00:00Z") });
+  const listing = await GET(new NextRequest("http://localhost/api/admin/ad-campaigns", { headers: { authorization: `Bearer ${adminToken}` } }));
+  const { campaigns } = await listing.json() as { campaigns: Array<{ id: string; displayLabel?: string }> };
+  assert.equal(campaigns.find((campaign) => campaign.id === id)?.displayLabel, "Offre du mois");
+  assert.equal(campaigns.find((campaign) => campaign.id === campaignB)?.displayLabel, "Publicité");
+  await db.collection("ad_campaigns").doc(copyId).delete();
+  await db.collection("ad_campaigns").doc(id).delete();
+});
+
 test("type de communication : enregistré, modifiable, transmis à l'app, « Publicité » par défaut", async () => {
   const { GET } = await import("./app/api/admin/ad-campaigns/route");
   const input = {

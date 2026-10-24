@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { adCampaignsOverlap, formatAdDateInput, getAdCampaignStatus, isAdCommunicationType, isAdPlacement, normalizeAdCommunicationType, parseAdDateInput, type AdCampaignRecord, type AdCommunicationType, type AdPlacement } from "@/lib/admin/adCampaign";
+import { adCampaignsOverlap, cleanAdDisplayLabel, formatAdDateInput, getAdCampaignStatus, isAdCommunicationType, isValidAdDisplayLabel, isAdPlacement, normalizeAdCommunicationType, parseAdDateInput, type AdCampaignRecord, type AdCommunicationType, type AdPlacement } from "@/lib/admin/adCampaign";
 import { buildAdProjection, isCreativeStoredFor } from "@/lib/admin/adProjection";
 import { getAdminDb } from "@/lib/firebase/admin-app";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
@@ -21,6 +21,8 @@ type CampaignData = {
   clicks: number;
   adults_only: boolean;
   communication_type: AdCommunicationType;
+  // Custom label shown in the app; null = the type label.
+  display_label: string | null;
 };
 
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
@@ -47,6 +49,7 @@ function asCampaign(data: Record<string, unknown>): CampaignData | null {
     clicks: typeof data.clicks === "number" ? data.clicks : 0,
     adults_only: data.adults_only === true,
     communication_type: normalizeAdCommunicationType(data.communication_type),
+    display_label: cleanAdDisplayLabel(data.display_label) || null,
   };
 }
 
@@ -59,6 +62,8 @@ function mergeCampaign(current: CampaignData, body: Record<string, unknown>): Ca
   if (!isAdPlacement(placement) || !startAt || !endAt || startAt.toMillis() >= endAt.toMillis()) return null;
   const communicationType = body.communication_type === undefined ? current.communication_type : body.communication_type;
   if (!isAdCommunicationType(communicationType)) return null;
+  const displayLabel = body.display_label === undefined ? current.display_label : body.display_label;
+  if (!isValidAdDisplayLabel(displayLabel)) return null;
   const candidate = {
     ...current,
     name: body.name === undefined ? current.name : text(body.name),
@@ -68,6 +73,7 @@ function mergeCampaign(current: CampaignData, body: Record<string, unknown>): Ca
     destination_url: body.destination_url === undefined ? current.destination_url : text(body.destination_url),
     adults_only: body.adults_only === undefined ? current.adults_only : body.adults_only === true,
     communication_type: communicationType,
+    display_label: cleanAdDisplayLabel(displayLabel) || null,
   };
   if (!candidate.name || !candidate.advertiser || !candidate.image_url ||
     (candidate.placement === "open" && (!Number.isInteger(frequency) || (frequency ?? -1) < 0))) return null;
