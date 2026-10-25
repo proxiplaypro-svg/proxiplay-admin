@@ -272,10 +272,15 @@ export function normalizeAdCommunicationType(value: unknown): AdCommunicationTyp
   return isAdCommunicationType(value) ? value : DEFAULT_AD_COMMUNICATION_TYPE;
 }
 
-// Free label shown in the app above the Home banners and on the opening ad,
-// in place of the type label. Empty or absent (older campaigns): the type
-// label, "Publicité" by default. Short, so it never overflows in the app
-// (same limit in the app, which also cuts a longer value).
+// "Libellé affiché dans l’application": free label, own to each campaign,
+// shown in the app above the Home banners and on the opening ad. Empty or
+// absent (older campaigns): "Publicité". The former communication type (no
+// longer in the form, absent from every production campaign) only remains
+// as a fallback for a campaign that would still carry one.
+export const AD_DEFAULT_DISPLAY_LABEL = AD_COMMUNICATION_LABEL.advertisement;
+
+// Short, so it never overflows in the app (same limit in the app, which also
+// cuts a longer value).
 export const AD_DISPLAY_LABEL_MAX_LENGTH = 24;
 
 export function cleanAdDisplayLabel(value: unknown): string {

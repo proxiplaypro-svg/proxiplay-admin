@@ -156,3 +156,18 @@ test("accepts flexible 9:16 opening dimensions and warns on a banner", () => {
   assert.equal(isAdImageRatioCompatible("open", 2160, 3840), true);
   assert.equal(isAdImageRatioCompatible("open", 1200, 400), false);
 });
+
+test("formulaire : un seul champ « Libellé affiché dans l’application », plus de type de communication", async () => {
+  const { readFileSync } = await import("node:fs");
+  const page = readFileSync("app/admin/publicite/page.tsx", "utf8");
+  assert.equal(page.includes("Type de communication"), false, "ni sélecteur ni filtre de type");
+  assert.equal(page.includes("communication_type"), false, "le formulaire n’envoie plus de type");
+  assert.match(page, /Libellé affiché dans l’application<input value=\{form\.displayLabel\} maxLength=\{AD_DISPLAY_LABEL_MAX_LENGTH\}/);
+  assert.match(page, /display_label: form\.displayLabel/);
+  // Default for a new campaign, and copied by "Dupliquer" / "Relancer".
+  assert.match(page, /displayLabel: AD_DEFAULT_DISPLAY_LABEL \}/);
+  assert.match(page, /displayLabel: campaign\.displayLabel \?\? resolveAdDisplayLabel\(null, campaign\.communicationType\)/);
+  const { AD_DEFAULT_DISPLAY_LABEL, resolveAdDisplayLabel } = await import("@/lib/admin/adCampaign");
+  assert.equal(AD_DEFAULT_DISPLAY_LABEL, "Publicité");
+  assert.equal(resolveAdDisplayLabel(undefined, undefined), "Publicité", "campagne existante sans libellé");
+});
