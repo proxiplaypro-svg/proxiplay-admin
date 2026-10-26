@@ -11,6 +11,8 @@ import {
   getCountFromServer,
   getDoc,
   getDocs,
+  query,
+  where,
   type DocumentReference,
   type Timestamp,
 } from "firebase/firestore";
@@ -267,10 +269,12 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
           return;
         }
 
-        const [participantsCount, participantsDocs, prizesSnap] = await Promise.all([
+        // Winners: an exact count of this game's prizes (game_id is the game
+        // reference) instead of reading the whole prizes collection.
+        const [participantsCount, participantsDocs, winnersCountSnap] = await Promise.all([
           getCountFromServer(collection(gameRef, "participants")),
           getDocs(collection(gameRef, "participants")),
-          getDocs(collection(db, "prizes")),
+          getCountFromServer(query(collection(db, "prizes"), where("game_id", "==", gameRef))),
         ]);
 
         if (cancelled) return;
@@ -281,9 +285,7 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
             .filter(Boolean),
         ).size;
 
-        const winnersCount = prizesSnap.docs.filter(
-          (d) => d.get("game_id")?.id === gameId,
-        ).length;
+        const winnersCount = winnersCountSnap.data().count;
 
         setGame(buildDetails(
           gameId,

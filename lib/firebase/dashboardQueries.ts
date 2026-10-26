@@ -119,6 +119,11 @@ type RawSnapshots = {
   gameSessions: Array<QueryDocumentSnapshot<DocumentData>>;
 };
 
+export type SidebarBadgeCounts = {
+  gamesToFix: number;
+  merchantsWithoutGame: number;
+};
+
 const MILLIS_IN_DAY = 24 * 60 * 60 * 1000;
 
 // TODO: creer collection analytics_daily avec champs { date: Timestamp, dau: number, mau: number }.
@@ -1083,4 +1088,67 @@ export async function subscribeDashboardData(
   ]);
 
   emit();
+}
+
+/**
+ * Small, purpose-built data set for the persistent admin navigation.
+ *
+ * The complete dashboard also calculates KPIs from users, participations,
+ * sessions and notifications. Loading that payload from every Sidebar mount
+ * was unnecessary: these badges only depend on draft games and merchants.
+ * The game window intentionally stays at 100 documents, matching the former
+ * sidebar calculation exactly; it is not presented as an exact global KPI.
+ */
+export async function getSidebarBadgeCounts(): Promise<SidebarBadgeCounts> {
+  const empty = [] as Array<QueryDocumentSnapshot<DocumentData>>;
+  const [draftGames, hiddenGames, recentGames, merchantsPrimary, merchantsFallback] = await Promise.all([
+    getDocs(query(collection(db, "games"), where("status", "in", ["draft", "brouillon"])))
+      .then((snapshot) => snapshot.docs)
+      .catch(() => empty),
+    getDocs(query(collection(db, "games"), where("visible_public", "==", false)))
+      .then((snapshot) => snapshot.docs)
+      .catch(() => empty),
+    getDocs(query(collection(db, "games"), orderBy("end_date", "desc"), limit(100)))
+      .then((snapshot) => snapshot.docs)
+      .catch(() => empty),
+    getDocs(collection(db, "merchants"))
+      .then((snapshot) => snapshot.docs)
+      .catch(() => empty),
+    getDocs(collection(db, "enseignes"))
+      .then((snapshot) => snapshot.docs)
+      .catch(() => empty),
+  ]);
+
+  const draftCandidates = new Map<string, QueryDocumentSnapshot<DocumentData>>();
+  [...draftGames, ...hiddenGames].forEach((snapshot) => {
+    draftCandidates.set(snapshot.ref.path, snapshot);
+  });
+  const gamesToFix = [...draftCandidates.values()].filter((snapshot) => {
+    const game = snapshot.data() as FirestoreGameDocument;
+    return isGameDraft(game) && !getGameImageUrl(game);
+  }).length;
+
+  const merchantDocs = new Map<string, QueryDocumentSnapshot<DocumentData>>();
+  [...merchantsPrimary, ...merchantsFallback].forEach((snapshot) => {
+    merchantDocs.set(snapshot.id, snapshot);
+  });
+  const gamesByMerchantId = new Map<string, Array<QueryDocumentSnapshot<DocumentData>>>();
+  recentGames.forEach((snapshot) => {
+    const game = snapshot.data() as FirestoreGameDocument;
+    const merchantId = getMerchantId(snapshot.id, game);
+    const entries = gamesByMerchantId.get(merchantId) ?? [];
+    entries.push(snapshot);
+    gamesByMerchantId.set(merchantId, entries);
+  });
+
+  const merchantsWithoutGame = [...merchantDocs.values()].filter((snapshot) => {
+    const merchantGames = gamesByMerchantId.get(snapshot.id) ?? [];
+    return !merchantGames.some((gameSnapshot) => {
+      const game = gameSnapshot.data() as FirestoreGameDocument;
+      const badge = getGameStatusBadge(game, getGameEndDate(game));
+      return badge === "actif" || badge === "expire_bientot" || badge === "prive";
+    });
+  }).length;
+
+  return { gamesToFix, merchantsWithoutGame };
 }

@@ -968,6 +968,33 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks;
 }
 
+// Exact participation count and latest activity of one game without reading
+// its participations: one aggregation plus two one-document queries. The
+// latest activity keeps the former rule (participation_date, else
+// created_time for legacy documents, which never carry both fields).
+async function getGameParticipationSummary(gameRef: DocumentReference) {
+  const participants = collection(gameRef, "participants");
+  const [countSnapshot, latestByDate, latestByCreatedTime] = await Promise.all([
+    getCountFromServer(participants),
+    getDocs(query(participants, orderBy("participation_date", "desc"), limit(1))),
+    getDocs(query(participants, orderBy("created_time", "desc"), limit(1))),
+  ]);
+
+  let lastActivity: Timestamp | null = null;
+  for (const snapshot of [latestByDate, latestByCreatedTime]) {
+    const participant = snapshot.docs[0]?.data() as FirestoreParticipantDocument | undefined;
+    const activityTimestamp = participant?.participation_date ?? participant?.created_time ?? null;
+    if (
+      activityTimestamp?.toMillis &&
+      (!lastActivity || activityTimestamp.toMillis() > lastActivity.toMillis())
+    ) {
+      lastActivity = activityTimestamp;
+    }
+  }
+
+  return { count: countSnapshot.data().count, lastActivity };
+}
+
 export async function getDashboardStats(): Promise<AdminDashboardStats> {
   const statsRef = doc(db, "admin_stats", "global");
   const statsSnapshot = await getDoc(statsRef);
@@ -1125,32 +1152,25 @@ export async function getMerchantsTechnicalList() {
       let lastActivityReal: Timestamp | null = null;
 
       for (const gameDoc of gamesSnapshot.docs) {
-        const participantsSnapshot = await getDocs(collection(gameDoc.ref, "participants"));
-        participantsRealCount += participantsSnapshot.size;
+        const summary = await getGameParticipationSummary(gameDoc.ref);
+        participantsRealCount += summary.count;
 
-        participantsSnapshot.docs.forEach((participantDoc) => {
-          const participant = participantDoc.data() as FirestoreParticipantDocument;
-          const activityTimestamp =
-            participant.participation_date ?? participant.created_time ?? null;
-
-          if (!activityTimestamp?.toMillis) {
-            return;
-          }
-
-          if (!lastActivityReal || activityTimestamp.toMillis() > lastActivityReal.toMillis()) {
-            lastActivityReal = activityTimestamp;
-          }
-        });
+        if (
+          summary.lastActivity &&
+          (!lastActivityReal || summary.lastActivity.toMillis() > lastActivityReal.toMillis())
+        ) {
+          lastActivityReal = summary.lastActivity;
+        }
       }
 
       let winnersRealCount = 0;
       const gameRefChunks = chunkArray(gameRefs, 30);
 
       for (const gameRefChunk of gameRefChunks) {
-        const prizesSnapshot = await getDocs(
+        const prizesCount = await getCountFromServer(
           query(collection(db, "prizes"), where("game_id", "in", gameRefChunk)),
         );
-        winnersRealCount += prizesSnapshot.size;
+        winnersRealCount += prizesCount.data().count;
       }
 
       const storedGamesCount = enseigne.games_count ?? 0;
@@ -1463,33 +1483,32 @@ export async function getMerchantDetails(merchantId: string) {
 }
 
 export async function getGamesList() {
-  const [gamesSnapshot, prizesSnapshot] = await Promise.all([
-    getDocs(query(collection(db, "games"), orderBy("start_date", "desc"))),
-    getDocs(collection(db, "prizes")),
-  ]);
+  const gamesSnapshot = await getDocs(query(collection(db, "games"), orderBy("start_date", "desc")));
 
-  const validGameIds = new Set(gamesSnapshot.docs.map((doc) => doc.id));
   const participantsCountByGameId = new Map();
 
-  const participantSnapshots = await Promise.all(
-    gamesSnapshot.docs.map((doc) =>
-      getCountFromServer(collection(doc.ref, "participants")),
+  // Exact per-game counts (game_id is the game reference) instead of reading
+  // the whole prizes collection.
+  const [participantSnapshots, winnersSnapshots] = await Promise.all([
+    Promise.all(
+      gamesSnapshot.docs.map((doc) =>
+        getCountFromServer(collection(doc.ref, "participants")),
+      ),
     ),
-  );
+    Promise.all(
+      gamesSnapshot.docs.map((doc) =>
+        getCountFromServer(query(collection(db, "prizes"), where("game_id", "==", doc.ref))),
+      ),
+    ),
+  ]);
 
   gamesSnapshot.docs.forEach((doc, index) => {
     participantsCountByGameId.set(doc.id, participantSnapshots[index].data().count);
   });
 
   const winnersByGameId = new Map<string, number>();
-  prizesSnapshot.docs.forEach((doc) => {
-    const prizeGameRef = doc.get("game_id");
-    const gameId = prizeGameRef?.id;
-    if (!gameId || !validGameIds.has(gameId)) {
-      return;
-    }
-
-    winnersByGameId.set(gameId, (winnersByGameId.get(gameId) ?? 0) + 1);
+  gamesSnapshot.docs.forEach((doc, index) => {
+    winnersByGameId.set(doc.id, winnersSnapshots[index].data().count);
   });
 
   const now = new Date();
@@ -1522,26 +1541,14 @@ export async function getGameViewsDiagnostics(): Promise<AdminGameViewsDiagnosti
   const items = await Promise.all(
     gamesSnapshot.docs.map(async (gameDoc) => {
       const game = gameDoc.data() as FirestoreGameDocument;
-      const participantsSnapshot = await getDocs(collection(gameDoc.ref, "participants"));
-
-      let lastParticipationReal: Timestamp | null = null;
-
-      participantsSnapshot.docs.forEach((participantDoc) => {
-        const participant = participantDoc.data() as FirestoreParticipantDocument;
-        const activityTimestamp = participant.participation_date ?? participant.created_time ?? null;
-
-        if (!activityTimestamp?.toMillis) {
-          return;
-        }
-
-        if (!lastParticipationReal || activityTimestamp.toMillis() > lastParticipationReal.toMillis()) {
-          lastParticipationReal = activityTimestamp;
-        }
-      });
+      // Exact count and latest participation, without reading every
+      // participation of every game (the whole collection group).
+      const participationSummary = await getGameParticipationSummary(gameDoc.ref);
+      const lastParticipationReal = participationSummary.lastActivity;
 
       const viewsCount = readInt(game.views);
       const participationsStoredCount = readInt(game.participations);
-      const participationsRealCount = participantsSnapshot.size;
+      const participationsRealCount = participationSummary.count;
       const gapCount = participationsRealCount - viewsCount;
       const technicalNotes: string[] = [];
 

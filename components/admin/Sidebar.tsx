@@ -3,12 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, type User } from "firebase/auth";
-import { collection, onSnapshot, type Unsubscribe } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { auth } from "@/lib/firebase/auth";
-import { db } from "@/lib/firebase/client-app";
-import { subscribeDashboardData } from "@/lib/firebase/dashboardQueries";
-import type { DashboardData } from "@/types/dashboard";
+import { getSidebarBadgeCounts } from "@/lib/firebase/dashboardQueries";
 
 type SidebarProps = {
   user: User;
@@ -32,16 +29,6 @@ type SidebarSection = {
   items: SidebarNavItem[];
 };
 
-const initialDashboardData: DashboardData = {
-  kpis: [],
-  bannerAlerts: [],
-  activeGames: [],
-  sideAlerts: [],
-  merchants: [],
-  notifications: [],
-  activePlayersExport: [],
-};
-
 function getInitials(user: User) {
   const source = user.displayName?.trim() || user.email?.trim() || "Proxiplay";
   const parts = source
@@ -53,21 +40,6 @@ function getInitials(user: User) {
   return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "PP";
 }
 
-function normalizePrizeStatus(value: unknown) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
-
-function isPrizeClaimed(data: Record<string, unknown>) {
-  return (
-    data.claimed === true ||
-    data.claimed_at !== undefined ||
-    data.redeemed_at !== undefined ||
-    ["retire", "retiree", "retire", "redeemed", "claimed", "remis"].includes(
-      normalizePrizeStatus(data.status),
-    )
-  );
-}
-
 function badgeClasses(tone: SidebarBadgeTone) {
   return tone === "red"
     ? "bg-[#FCEBEB] text-[#A32D2D]"
@@ -77,7 +49,6 @@ function badgeClasses(tone: SidebarBadgeTone) {
 function buildSections(counts: {
   gamesToFix: number;
   merchantsWithoutGame: number;
-  unclaimedPrizes: number;
 }): SidebarSection[] {
   return [
     {
@@ -110,15 +81,9 @@ function buildSections(counts: {
               : undefined,
         },
         { href: "/admin/joueurs", label: "Joueurs", icon: "◎" },
-        {
-          href: "/admin/winners",
-          label: "Gagnants",
-          icon: "◉",
-          badge:
-            counts.unclaimedPrizes > 0
-              ? { count: counts.unclaimedPrizes, tone: "green" }
-              : undefined,
-        },
+        // No unclaimed-prizes badge: the count is shown on demand on the
+        // winners page (a permanent counter read every prize).
+        { href: "/admin/winners", label: "Gagnants", icon: "◉" },
         { href: "/admin/activite", label: "Activite", icon: "◌" },
       ],
     },
@@ -154,57 +119,29 @@ function buildSections(counts: {
 
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
-  const [dashboardData, setDashboardData] = useState<DashboardData>(initialDashboardData);
-  const [unclaimedPrizes, setUnclaimedPrizes] = useState(0);
+  const [gamesToFix, setGamesToFix] = useState(0);
+  const [merchantsWithoutGame, setMerchantsWithoutGame] = useState(0);
 
   useEffect(() => {
     let active = true;
-    const unsubs: Unsubscribe[] = [];
 
-    void subscribeDashboardData((nextData) => {
+    void getSidebarBadgeCounts().then((counts) => {
       if (!active) return;
-      setDashboardData(nextData);
+      setGamesToFix(counts.gamesToFix);
+      setMerchantsWithoutGame(counts.merchantsWithoutGame);
     });
-
-    const prizesUnsubscribe = onSnapshot(
-      collection(db, "prizes"),
-      (snapshot) => {
-        const nextCount = snapshot.docs.reduce((total, prizeDoc) => {
-          const data = prizeDoc.data() as Record<string, unknown>;
-          return isPrizeClaimed(data) ? total : total + 1;
-        }, 0);
-
-        setUnclaimedPrizes(nextCount);
-      },
-      () => {
-        setUnclaimedPrizes(0);
-      },
-    );
-    unsubs.push(prizesUnsubscribe);
 
     return () => {
       active = false;
-      unsubs.forEach((unsubscribe) => unsubscribe());
     };
   }, []);
 
   const counts = useMemo(() => {
-    const gamesToFix = dashboardData.bannerAlerts.filter((alert) =>
-      alert.href?.includes("/admin/games/") &&
-      alert.description.toLowerCase().includes("corriger"),
-    ).length;
-
-    const merchantsWithoutGame = dashboardData.sideAlerts.filter((alert) =>
-      alert.href?.includes("/admin/commercants/") &&
-      alert.description.toLowerCase().includes("sans jeu actif"),
-    ).length;
-
     return {
       gamesToFix,
       merchantsWithoutGame,
-      unclaimedPrizes,
     };
-  }, [dashboardData.bannerAlerts, dashboardData.sideAlerts, unclaimedPrizes]);
+  }, [gamesToFix, merchantsWithoutGame]);
 
   const sections = useMemo(() => buildSections(counts), [counts]);
   const initials = useMemo(() => getInitials(user), [user]);

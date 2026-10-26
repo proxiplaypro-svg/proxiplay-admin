@@ -8,10 +8,12 @@ import {
   collection,
   deleteField,
   doc,
-  getDocs,
+  getCountFromServer,
   getDoc,
+  query,
   Timestamp,
   updateDoc,
+  where,
   type DocumentReference,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
@@ -228,16 +230,17 @@ export default function EditGamePage({ params }: GameEditPageProps) {
           return;
         }
 
-        const prizesSnapshot = await getDocs(collection(db, "prizes"));
+        // Exact count of this game's prizes (game_id is the game reference),
+        // without reading the whole prizes collection.
+        const winnersCountSnapshot = await getCountFromServer(
+          query(collection(db, "prizes"), where("game_id", "==", gameRef)),
+        );
 
         if (isCancelled) {
           return;
         }
 
-        const winnersCount = prizesSnapshot.docs.reduce((total, prizeDoc) => {
-          const prizeGameRef = prizeDoc.get("game_id");
-          return prizeGameRef?.id === resolvedParams.gameId ? total + 1 : total;
-        }, 0);
+        const winnersCount = winnersCountSnapshot.data().count;
 
         const data = gameSnapshot.data() as FirestoreGameEditDocument;
         const nextForm = buildInitialForm(data);
