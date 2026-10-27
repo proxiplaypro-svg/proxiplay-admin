@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { NextRequest } from "next/server";
+import { Timestamp } from "firebase-admin/firestore";
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
   throw new Error("Les tests referral-games exigent Firestore et Auth Emulator.");
 }
@@ -83,10 +84,11 @@ test("suppression admin autorisee uniquement pour un draft vide", async () => {
   assert.equal((await db.collection("referral_games").doc(gameA).get()).exists, false);
 });
 
-test("suppression admin refuse jeu actif, tire ou draft avec participant", async () => {
+test("suppression admin refuse jeu actif sans titre, tire ou draft avec participant", async () => {
   await seedGame(gameA, { status: "active" });
   let response = await DELETE(request(`http://localhost/api/admin/referral-games/${gameA}`, "DELETE"), context(gameA));
-  assert.equal(response.status, 409);
+  assert.equal(response.status, 400);
+  assert.equal((await db.collection("referral_games").doc(gameA).get()).exists, true);
   await db.collection("referral_games").doc(gameA).set({ status: "draft", winner_uid: "winner" }, { merge: true });
   response = await DELETE(request(`http://localhost/api/admin/referral-games/${gameA}`, "DELETE"), context(gameA));
   assert.equal(response.status, 409);
@@ -102,4 +104,78 @@ test("suppression admin refuse jeu actif, tire ou draft avec participant", async
   assert.equal(response.status, 409);
   assert.equal((await db.collection("referral_games").doc(gameA).get()).exists, true);
   assert.equal((await db.collection("referral_games").doc(gameA).collection("entries").doc("referral-1").get()).exists, true);
+});
+
+// Suspension (27/10/2026): "active" -> "draft" came back within 15 minutes
+// (autoManageReferralGames starts due drafts); "suspended" never does.
+const hour = 3600 * 1000;
+const validDates = () => ({
+  start_date: Timestamp.fromMillis(Date.now() - hour),
+  end_date: Timestamp.fromMillis(Date.now() + hour),
+});
+const patchStatus = (id: string, status: string) =>
+  PATCH(request(`http://localhost/api/admin/referral-games/${id}`, "PATCH", { status }), context(id));
+const statusOf = async (id: string) => (await db.collection("referral_games").doc(id).get()).data()?.status;
+
+test("suspendre puis reactiver un jeu encore valide ; cloturer un jeu suspendu", async () => {
+  await seedGame(gameA, { status: "active", ...validDates() });
+  assert.equal((await patchStatus(gameA, "suspended")).status, 200);
+  assert.equal(await statusOf(gameA), "suspended");
+  assert.equal((await patchStatus(gameA, "active")).status, 200);
+  assert.equal(await statusOf(gameA), "active");
+  assert.equal((await patchStatus(gameA, "suspended")).status, 200);
+  assert.equal((await patchStatus(gameA, "ended")).status, 200);
+  assert.equal(await statusOf(gameA), "ended");
+});
+
+test("reactivation refusee si le jeu n est plus valide ou si un autre jeu est actif", async () => {
+  for (const [label, data, message] of [
+    ["date de fin passee", { end_date: Timestamp.fromMillis(Date.now() - 1000) }, /date de fin/i],
+    ["pas encore commence", { start_date: Timestamp.fromMillis(Date.now() + hour), end_date: Timestamp.fromMillis(Date.now() + 2 * hour) }, /date de debut/i],
+    ["deja tire", { winner_uid: "winner" }, /tire/i],
+  ] as const) {
+    await seedGame(gameA, { status: "suspended", ...validDates(), ...data });
+    const response = await patchStatus(gameA, "active");
+    assert.equal(response.status, 409, label);
+    assert.match((await response.json() as { error: string }).error, message, label);
+    assert.equal(await statusOf(gameA), "suspended", label);
+    await deleteGame(gameA);
+  }
+  await seedGame(gameA, { status: "suspended", ...validDates() });
+  await seedGame(gameB, { status: "active", ...validDates() });
+  const response = await patchStatus(gameA, "active");
+  assert.equal(response.status, 409);
+  assert.match((await response.json() as { error: string }).error, /autre jeu/i);
+  assert.equal(await statusOf(gameA), "suspended");
+});
+
+test("transitions interdites : actif -> brouillon, termine -> actif, brouillon -> suspendu", async () => {
+  for (const [from, to] of [["active", "draft"], ["ended", "active"], ["draft", "suspended"]]) {
+    await seedGame(gameA, { status: from, ...validDates() });
+    const response = await patchStatus(gameA, to);
+    assert.equal(response.status, 409, `${from} -> ${to}`);
+    assert.equal(await statusOf(gameA), from, `${from} -> ${to}`);
+    await deleteGame(gameA);
+  }
+  // Editing a game without changing its status stays possible.
+  await seedGame(gameA, { status: "suspended", ...validDates() });
+  const edit = await PATCH(request(`http://localhost/api/admin/referral-games/${gameA}`, "PATCH", { title: "Nouveau titre" }), context(gameA));
+  assert.equal(edit.status, 200);
+  assert.equal(await statusOf(gameA), "suspended");
+});
+
+test("suppression d un jeu actif ou suspendu : titre exact obligatoire, tickets toujours proteges", async () => {
+  for (const status of ["active", "suspended"]) {
+    await seedGame(gameA, { status, title: "Jeu de test" });
+    let response = await DELETE(request(`http://localhost/api/admin/referral-games/${gameA}`, "DELETE", { confirm_title: "Autre" }), context(gameA));
+    assert.equal(response.status, 400, status);
+    assert.equal((await db.collection("referral_games").doc(gameA).get()).exists, true, status);
+    await db.collection("referral_games").doc(gameA).collection("entries").doc("referral-1").set({ inviter_uid: "player" });
+    response = await DELETE(request(`http://localhost/api/admin/referral-games/${gameA}`, "DELETE", { confirm_title: "Jeu de test" }), context(gameA));
+    assert.equal(response.status, 409, `${status} avec ticket`);
+    await db.collection("referral_games").doc(gameA).collection("entries").doc("referral-1").delete();
+    response = await DELETE(request(`http://localhost/api/admin/referral-games/${gameA}`, "DELETE", { confirm_title: " Jeu de test " }), context(gameA));
+    assert.equal(response.status, 200, status);
+    assert.equal((await db.collection("referral_games").doc(gameA).get()).exists, false, status);
+  }
 });

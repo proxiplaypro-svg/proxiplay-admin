@@ -9,7 +9,7 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, firebaseApp, storage } from "@/lib/firebase/client-app";
 import { auth } from "@/lib/firebase/auth";
 
-type ReferralGameStatus = "draft" | "active" | "ended";
+type ReferralGameStatus = "draft" | "active" | "suspended" | "ended";
 const referralFunctions = getFunctions(firebaseApp, "us-central1");
 const drawReferralGame = httpsCallable<{ gameId: string }, { status: string }>(referralFunctions, "adminDrawReferralGameWinner");
 const repairReferralGameDraw = httpsCallable<{ gameId: string }, { status: string }>(referralFunctions, "adminRepairReferralGameDraw");
@@ -65,7 +65,7 @@ function mapReferralGame(id: string, data: Record<string, unknown>): ReferralGam
     prizeDescription: readText(data.prize_description),
     prizeValue: readNumber(data.prize_value),
     imageUrl: readText(data.image_url),
-    status: (["draft", "active", "ended"] as const).includes(data.status as ReferralGameStatus)
+    status: (["draft", "active", "suspended", "ended"] as const).includes(data.status as ReferralGameStatus)
       ? (data.status as ReferralGameStatus)
       : "draft",
     startDate: readTimestamp(data.start_date)?.toDate().toISOString() ?? null,
@@ -112,14 +112,28 @@ async function adminFetch(url: string, options: RequestInit = {}): Promise<Respo
 const statusLabels: Record<ReferralGameStatus, string> = {
   draft: "Brouillon",
   active: "Actif",
+  suspended: "Suspendu",
   ended: "Terminé",
 };
 
 const statusStyles: Record<ReferralGameStatus, string> = {
   draft: "bg-[#F0F0EC] text-[#999]",
   active: "bg-[#EAF3DE] text-[#3B6D11]",
+  suspended: "bg-[#FBF3DD] text-[#8A6A10]",
   ended: "bg-[#EFE7FB] text-[#7C5CBF]",
 };
+
+// Same rule as the API (app/api/admin/referral-games/[id]): a suspended game
+// comes back only while it can still run normally.
+function reactivationRefusal(game: ReferralGame, nowMs = Date.now()): string | null {
+  if (game.winnerUid) return "Ce jeu a déjà été tiré.";
+  const startMs = game.startDate ? new Date(game.startDate).getTime() : NaN;
+  const endMs = game.endDate ? new Date(game.endDate).getTime() : NaN;
+  if (Number.isNaN(startMs) || Number.isNaN(endMs)) return "Dates du jeu invalides.";
+  if (endMs <= nowMs) return "La date de fin est passée : clôturez le jeu.";
+  if (startMs > nowMs) return "La date de début n'est pas encore atteinte.";
+  return null;
+}
 
 const emptyForm = {
   title: "",
@@ -452,28 +466,60 @@ export default function AdminReferralGamePage() {
     }
   };
 
-  const handleDeactivate = async (game: ReferralGame) => {
-    const ticketsWarning =
-      game.ticketCount > 0
-        ? ` Ses ${game.ticketCount} ticket(s) déjà créé(s) resteront en base et compteront si le jeu est réactivé.`
-        : "";
-    if (!window.confirm(`Désactiver le jeu de parrainage "${game.title}" (repasse en brouillon) ?${ticketsWarning}`)) return;
+  const changeStatus = async (game: ReferralGame, status: ReferralGameStatus, fallbackError: string) => {
     setActionError(null);
     try {
       const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "draft" }),
+        body: JSON.stringify({ status }),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error?.trim() || "Impossible de désactiver ce jeu.");
+        throw new Error(payload?.error?.trim() || fallbackError);
       }
-    } catch (deactivateError) {
-      setActionError(
-        deactivateError instanceof Error ? deactivateError.message : "Impossible de désactiver ce jeu.",
-      );
+    } catch (statusError) {
+      setActionError(statusError instanceof Error ? statusError.message : fallbackError);
     }
+  };
+
+  const handleSuspend = async (game: ReferralGame) => {
+    const ticketsNote =
+      game.ticketCount > 0 ? ` Ses ${game.ticketCount} ticket(s) sont conservés.` : "";
+    if (
+      !window.confirm(
+        `Suspendre le jeu de parrainage "${game.title}" ?\n\n` +
+          "Il disparaît immédiatement de l'app et ne reçoit plus de ticket : les parrainages validés " +
+          "pendant la suspension donnent le bonus classique." +
+          ticketsNote +
+          " Il ne redémarre jamais tout seul.",
+      )
+    ) {
+      return;
+    }
+    await changeStatus(game, "suspended", "Impossible de suspendre ce jeu.");
+  };
+
+  const handleReactivate = async (game: ReferralGame) => {
+    const refusal = reactivationRefusal(game);
+    if (refusal) {
+      setActionError(refusal);
+      return;
+    }
+    if (!window.confirm(`Réactiver le jeu de parrainage "${game.title}" ?`)) return;
+    await changeStatus(game, "active", "Impossible de réactiver ce jeu.");
+  };
+
+  const handleClose = async (game: ReferralGame) => {
+    if (
+      !window.confirm(
+        `Clôturer le jeu de parrainage "${game.title}" ?\n\n` +
+          "Il ne pourra plus être réactivé. Le tirage au sort se fera automatiquement la nuit suivant sa date de fin.",
+      )
+    ) {
+      return;
+    }
+    await changeStatus(game, "ended", "Impossible de clôturer ce jeu.");
   };
 
   const handleEnd = async (game: ReferralGame) => {
@@ -552,15 +598,31 @@ export default function AdminReferralGamePage() {
   };
 
   const handleDelete = async (game: ReferralGame) => {
-    const warning =
-      game.status === "active"
-        ? ` Ce jeu est actuellement actif — le supprimer y met fin immédiatement.`
-        : "";
-    if (!window.confirm(`Supprimer le jeu de parrainage "${game.title}" ?${warning}`)) return;
+    // A game players may see (active) or may see again (suspended): its exact
+    // title must be typed, checked again by the API.
+    let confirmTitle: string | null = null;
+    if (game.status === "active" || game.status === "suspended") {
+      confirmTitle = window.prompt(
+        `Le jeu "${game.title}" est ${game.status === "active" ? "actif" : "suspendu"}. ` +
+          "La suppression est définitive (elle reste refusée s'il a des tickets ou un gain).\n\n" +
+          "Pour confirmer, saisissez son titre exact :",
+      );
+      if (confirmTitle === null) return;
+      if (confirmTitle.trim() !== game.title.trim()) {
+        setActionError("Titre incorrect : le jeu n'a pas été supprimé.");
+        return;
+      }
+    } else if (!window.confirm(`Supprimer le jeu de parrainage "${game.title}" ?`)) {
+      return;
+    }
     setActionError(null);
     try {
       const response = await adminFetch(`/api/admin/referral-games/${game.id}`, {
         method: "DELETE",
+        ...(confirmTitle !== null && {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm_title: confirmTitle.trim() }),
+        }),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -586,7 +648,8 @@ export default function AdminReferralGamePage() {
               &laquo;&nbsp;Activer maintenant&nbsp;&raquo;. Un ticket est créé
               automatiquement pour chaque parrainage validé (le filleul crée son compte) tant qu&apos;un
               jeu est actif — sans plafond. Le tirage au sort se fait automatiquement à la date de fin.
-              Un seul jeu actif à la fois.
+              Un seul jeu actif à la fois. Un jeu suspendu disparaît de l&apos;app, garde ses tickets et
+              ne redémarre jamais tout seul.
             </p>
           </div>
           <Link
@@ -896,10 +959,30 @@ export default function AdminReferralGamePage() {
                         {game.status === "active" ? (
                           <button
                             type="button"
-                            onClick={() => void handleDeactivate(game)}
+                            onClick={() => void handleSuspend(game)}
                             className="inline-flex items-center rounded-[7px] border border-[#E0E0DA] bg-white px-3 py-1.5 text-[12px] font-medium text-[#666] transition hover:bg-[#F7F7F5]"
                           >
-                            Désactiver
+                            Suspendre
+                          </button>
+                        ) : null}
+                        {game.status === "suspended" ? (
+                          <button
+                            type="button"
+                            disabled={reactivationRefusal(game) !== null}
+                            title={reactivationRefusal(game) ?? undefined}
+                            onClick={() => void handleReactivate(game)}
+                            className="inline-flex items-center rounded-[7px] border border-[#639922] bg-[#EAF3DE] px-3 py-1.5 text-[12px] font-medium text-[#3B6D11] transition hover:bg-[#D6ECC0] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Réactiver
+                          </button>
+                        ) : null}
+                        {game.status === "suspended" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleClose(game)}
+                            className="inline-flex items-center rounded-[7px] border border-[#E0C87A] bg-[#FBF3DD] px-3 py-1.5 text-[12px] font-medium text-[#8A6A10] transition hover:bg-[#F5E8C4]"
+                          >
+                            Clôturer
                           </button>
                         ) : null}
                         {game.status === "ended" ? (
