@@ -7,6 +7,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getCountFromServer,
   getDocs,
   limit,
   orderBy,
@@ -29,6 +30,7 @@ import { GameEditModal } from "@/components/admin/jeux/GameEditModal";
 import { duplicateGame } from "@/lib/firebase/adminActions";
 import { db } from "@/lib/firebase/client-app";
 import { adminGameState } from "@/lib/admin/gamePublication";
+import { createExactCountCache, loadExactCounts } from "@/lib/admin/exactCounts";
 import { resolveHasMainPrize, resolveMainPrizeFields } from "@/lib/firebase/gamePrizeValidation";
 import {
   deriveGameFinalization,
@@ -415,45 +417,34 @@ function mapGameDocument(
   };
 }
 
+// Games already counted are not recounted when the page is reopened, the
+// merchant filter changes or "Charger plus" runs, for a few minutes.
+const playedCountCache = createExactCountCache(5 * 60 * 1000);
+
+// "Parties jouées" is the exact number of participation documents, from a
+// count() aggregation (about one read per 1,000 participations) instead of
+// downloading them. The stored games.participations counter is not used: it
+// is never decremented and overstates some games.
 async function buildGamesWithRealParticipantCounts(
   snapshots: QueryDocumentSnapshot<DocumentData>[],
   collectionName: GameCollectionName,
   merchantsById: Map<string, GameMerchantOption>,
 ) {
-  const participantCounts = await Promise.all(
-    snapshots.map(async (snapshot) => {
-      const game = snapshot.data() as FirestoreGameDocument;
-      const storedCount = readLargestNumber(
-        game.sessionCount,
-        game.partiesCount,
-        game.participations,
-        game.participations_count,
-      );
-
-      try {
-        const [participantsSnapshot, participantDetailsSnapshot] = await Promise.all([
-          getDocs(collection(snapshot.ref, "participants")),
-          getDocs(collection(snapshot.ref, "participants_details")),
-        ]);
-
-        return Math.max(
-          storedCount,
-          participantsSnapshot.size,
-          participantDetailsSnapshot.size,
-        );
-      } catch (error) {
-        console.warn("Unable to load real participants count for game", {
-          gameId: snapshot.id,
-          error,
-        });
-        return storedCount;
-      }
-    }),
+  const refsByPath = new Map(snapshots.map((snapshot) => [snapshot.ref.path, snapshot.ref]));
+  const playedCounts = await loadExactCounts(
+    [...refsByPath.keys()],
+    async (path) =>
+      (await getCountFromServer(collection(refsByPath.get(path)!, "participants"))).data().count,
+    { cache: playedCountCache, concurrency: 6 },
   );
 
-  return snapshots.map((snapshot, index) =>
-    mapGameDocument(snapshot, collectionName, merchantsById, participantCounts[index] ?? 0),
-  );
+  return snapshots.map((snapshot) => {
+    const playedCount = playedCounts.get(snapshot.ref.path) ?? null;
+    return {
+      ...mapGameDocument(snapshot, collectionName, merchantsById, playedCount ?? 0),
+      sessionCountUnavailable: playedCount === null,
+    };
+  });
 }
 
 function formatCount(value: number) {
@@ -470,7 +461,7 @@ function buildCsv(games: Game[]) {
         game.status,
         game.startDate ?? "",
         game.endDate ?? "",
-        String(game.sessionCount),
+        game.sessionCountUnavailable ? "" : String(game.sessionCount),
       ].join(";"),
     ),
   ];
@@ -613,7 +604,9 @@ function AdminGamesPageInner() {
 
     return result.sort((left, right) => {
       if (sort === "sessions_desc") {
-        return right.sessionCount - left.sessionCount;
+        // An unavailable count sorts last, not as a played-0 game.
+        const sessions = (game: Game) => (game.sessionCountUnavailable ? -1 : game.sessionCount);
+        return sessions(right) - sessions(left);
       }
 
       if (sort === "created_desc") {

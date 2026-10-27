@@ -157,7 +157,9 @@ export function GameCard({
       ? "border border-[#B6D7F2] bg-[#EAF4FD] text-[#185FA5]"
       : "border border-[#F0D8A8] bg-[#FFF6E8] text-[#8C6115]";
 
-  const sessionCountFormatted = new Intl.NumberFormat("fr-FR").format(game.sessionCount);
+  const sessionCountFormatted = game.sessionCountUnavailable
+    ? "—"
+    : new Intl.NumberFormat("fr-FR").format(game.sessionCount);
 
   return (
     <article

@@ -10,7 +10,6 @@ import {
   doc,
   getCountFromServer,
   getDoc,
-  getDocs,
   query,
   where,
   type DocumentReference,
@@ -70,10 +69,6 @@ type FirestoreGameDetailsDocument = {
   main_prize_image?: string;
 };
 
-type FirestoreParticipantDocument = {
-  user_id?: DocumentReference | null;
-};
-
 type AdminGameDetails = {
   qrOnly: boolean;
   id: string;
@@ -88,7 +83,8 @@ type AdminGameDetails = {
   startDateValue: number;
   endDateValue: number;
   participationsCount: number;
-  uniquePlayersCount: number;
+  /** null when its count failed: shown as "—". */
+  uniquePlayersCount: number | null;
   winnersCount: number;
   viewsCount: number;
   conversionRate: number | null;
@@ -173,7 +169,7 @@ function buildDetails(
   gameId: string,
   game: FirestoreGameDetailsDocument,
   participationsCount: number,
-  uniquePlayersCount: number,
+  uniquePlayersCount: number | null,
   winnersCount: number,
 ): AdminGameDetails {
   const startDate = game.start_date?.toDate() ?? null;
@@ -271,19 +267,24 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
 
         // Winners: an exact count of this game's prizes (game_id is the game
         // reference) instead of reading the whole prizes collection.
-        const [participantsCount, participantsDocs, winnersCountSnap] = await Promise.all([
+        // Unique players: participateInGameTransaction writes exactly one
+        // participants_details/{uid} per player of the game, in the same
+        // transaction as the participation, so counting them equals counting
+        // the distinct user_id of the participations (checked on games from
+        // January to November 2026) without downloading the participations.
+        // That count alone may fail: it then shows "—", never 0.
+        const [participantsCount, uniquePlayersCount, winnersCountSnap] = await Promise.all([
           getCountFromServer(collection(gameRef, "participants")),
-          getDocs(collection(gameRef, "participants")),
+          getCountFromServer(collection(gameRef, "participants_details"))
+            .then((snapshot) => snapshot.data().count)
+            .catch((countError: unknown) => {
+              console.warn("Unique players count unavailable", { gameId, countError });
+              return null;
+            }),
           getCountFromServer(query(collection(db, "prizes"), where("game_id", "==", gameRef))),
         ]);
 
         if (cancelled) return;
-
-        const uniquePlayersCount = new Set(
-          participantsDocs.docs
-            .map((d) => (d.data() as FirestoreParticipantDocument).user_id?.id ?? null)
-            .filter(Boolean),
-        ).size;
 
         const winnersCount = winnersCountSnap.data().count;
 
@@ -595,7 +596,10 @@ export default function GameDetailsPage({ params }: GameDetailsPageProps) {
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <StatCard label="Vues" value={formatCount(game.viewsCount)} />
           <StatCard label="Parties" value={formatCount(game.participationsCount)} />
-          <StatCard label="Joueurs uniques" value={formatCount(game.uniquePlayersCount)} />
+          <StatCard
+            label="Joueurs uniques"
+            value={game.uniquePlayersCount === null ? "—" : formatCount(game.uniquePlayersCount)}
+          />
           <StatCard label="Gagnants" value={formatCount(game.winnersCount)} />
           <StatCard
             label="Taux conversion"

@@ -133,6 +133,8 @@ export interface Game {
   imageUrl: string | null;
   isPrivate: boolean;
   sessionCount: number;
+  /** The exact played count could not be computed: show "—", not 0. */
+  sessionCountUnavailable?: boolean;
   collectionName: "games" | "jeux";
   imageMissing: boolean;
   hasMainPrize: boolean;
