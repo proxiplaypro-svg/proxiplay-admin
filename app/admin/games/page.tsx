@@ -766,7 +766,7 @@ function AdminGamesPageInner() {
           : undefined,
       });
 
-      let effectiveStatus: Game["status"] =
+      const effectiveStatus: Game["status"] =
         isRelaunch && hasInstantWinners && !selectedGame.instantWinnersReady ? "brouillon" : payload.status;
 
       const updatedGame: Game = {
