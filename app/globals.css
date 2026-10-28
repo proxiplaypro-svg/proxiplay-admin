@@ -49,6 +49,40 @@ button {
   font: inherit;
 }
 
+/* Shared admin shell: preserve comfortable content width on tablet and desktop. */
+.admin-app-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-width: 0; }
+.admin-desktop-sidebar { position: sticky; top: 0; height: 100dvh; border-right: 1px solid #e8e8e4; }
+.admin-workspace, .admin-main-content, .admin-page-content { min-width: 0; }
+.admin-main-content { min-height: 100dvh; padding: 24px; overflow-x: hidden; }
+.admin-mobile-header, .admin-mobile-menu { display: none; }
+
+/* Keep wide data tables readable while containing horizontal scrolling locally. */
+.admin-page-content :is(div, section, article):has(> table) { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 1023px) {
+  .admin-app-shell { display: block; }
+  .admin-desktop-sidebar { display: none; }
+  .admin-mobile-header { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; gap: 12px; height: 60px; padding: 8px 16px; border-bottom: 1px solid #e8e8e4; background: rgba(255,255,255,.96); backdrop-filter: blur(12px); }
+  .admin-menu-button { display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: #f7f7f5; color: #1a1a1a; cursor: pointer; }
+  .admin-menu-icon, .admin-menu-icon::before, .admin-menu-icon::after { display: block; width: 20px; height: 2px; border-radius: 2px; background: currentColor; content: ""; }
+  .admin-menu-icon { position: relative; }
+  .admin-menu-icon::before, .admin-menu-icon::after { position: absolute; left: 0; }
+  .admin-menu-icon::before { top: -6px; }
+  .admin-menu-icon::after { top: 6px; }
+  .admin-mobile-menu { position: fixed; z-index: 50; inset: 0; display: block; }
+  .admin-mobile-menu-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(26,26,26,.42); cursor: pointer; }
+  .admin-mobile-menu-panel { position: relative; height: 100%; width: 280px; max-width: 86vw; box-shadow: 12px 0 32px rgba(26,26,26,.18); animation: admin-menu-enter 180ms ease-out; }
+  .admin-main-content { min-height: calc(100dvh - 60px); padding: 20px; }
+}
+
+@media (max-width: 639px) {
+  .admin-main-content { padding: 16px 12px 24px; }
+  .admin-page-content table { min-width: 620px; }
+  .admin-page-content button, .admin-page-content input, .admin-page-content select, .admin-page-content textarea { min-height: 40px; }
+}
+
+@keyframes admin-menu-enter { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+
 .admin-shell {
   width: min(1200px, calc(100% - 32px));
   margin: 0 auto;

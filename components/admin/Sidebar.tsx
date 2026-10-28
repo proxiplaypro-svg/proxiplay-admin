@@ -9,6 +9,8 @@ import { getSidebarBadgeCounts } from "@/lib/firebase/dashboardQueries";
 
 type SidebarProps = {
   user: User;
+  onNavigate?: () => void;
+  onClose?: () => void;
 };
 
 type SidebarBadgeTone = "red" | "green";
@@ -117,7 +119,7 @@ function buildSections(counts: {
   ];
 }
 
-export function Sidebar({ user }: SidebarProps) {
+export function Sidebar({ user, onNavigate, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [gamesToFix, setGamesToFix] = useState(0);
   const [merchantsWithoutGame, setMerchantsWithoutGame] = useState(0);
@@ -147,7 +149,7 @@ export function Sidebar({ user }: SidebarProps) {
   const initials = useMemo(() => getInitials(user), [user]);
 
   return (
-    <aside className="flex h-screen w-[220px] shrink-0 flex-col border-r border-[#E8E8E4] bg-[#FFFFFF]">
+    <aside className="flex h-full min-h-0 w-[280px] max-w-[86vw] shrink-0 flex-col bg-[#FFFFFF]" aria-label="Menu principal">
       <div className="border-b border-[#E8E8E4] px-6 py-5">
         <div className="flex items-center gap-3">
           <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[#639922] text-[15px] text-white">
@@ -157,6 +159,9 @@ export function Sidebar({ user }: SidebarProps) {
             <div className="text-[14px] font-medium text-[#1A1A1A]">Proxiplay</div>
             <div className="text-[10px] text-[#999999]">Admin Console</div>
           </div>
+          {onClose ? (
+            <button type="button" onClick={onClose} className="ml-auto flex h-10 w-10 items-center justify-center rounded-[8px] text-xl text-[#666666] transition hover:bg-[#F7F7F5]" aria-label="Fermer le menu">×</button>
+          ) : null}
         </div>
 
         <div className="mt-5 rounded-[8px] bg-[#F7F7F5] p-2">
@@ -188,6 +193,7 @@ export function Sidebar({ user }: SidebarProps) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onNavigate}
                     aria-current={isActive ? "page" : undefined}
                     className={`flex items-center gap-3 rounded-[7px] px-2 py-[7px] text-[12.5px] transition ${
                       isActive

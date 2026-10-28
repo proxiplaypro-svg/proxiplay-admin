@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/admin/Sidebar";
@@ -14,12 +14,26 @@ export default function AdminLayout({
 }>) {
   const router = useRouter();
   const { loading, isAdmin, user } = useAdminAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
       router.replace("/login");
     }
   }, [loading, router, user]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = "";
+    };
+  }, [menuOpen]);
 
   if (loading) {
     return (
@@ -58,11 +72,19 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-[220px_minmax(0,1fr)] bg-[#F7F7F5] text-[#1A1A1A]">
-      <Sidebar user={user} />
-      <main className="h-screen overflow-y-auto bg-[#F7F7F5] p-6">
-        <section className="min-h-full">{children}</section>
-      </main>
+    <div className="admin-app-shell min-h-screen bg-[#F7F7F5] text-[#1A1A1A]">
+      <aside className="admin-desktop-sidebar"><Sidebar user={user} /></aside>
+      {menuOpen ? <div className="admin-mobile-menu" role="dialog" aria-modal="true" aria-label="Menu de navigation">
+        <button type="button" className="admin-mobile-menu-backdrop" onClick={() => setMenuOpen(false)} aria-label="Fermer le menu" />
+        <div className="admin-mobile-menu-panel"><Sidebar user={user} onNavigate={() => setMenuOpen(false)} onClose={() => setMenuOpen(false)} /></div>
+      </div> : null}
+      <div className="admin-workspace">
+        <header className="admin-mobile-header">
+          <button type="button" className="admin-menu-button" onClick={() => setMenuOpen(true)} aria-label="Ouvrir le menu" aria-expanded={menuOpen}><span className="admin-menu-icon" aria-hidden="true" /></button>
+          <div><div className="text-[14px] font-medium text-[#1A1A1A]">Proxiplay</div><div className="text-[10px] text-[#999999]">Admin Console</div></div>
+        </header>
+        <main className="admin-main-content bg-[#F7F7F5]"><section className="admin-page-content min-h-full">{children}</section></main>
+      </div>
     </div>
   );
 }
