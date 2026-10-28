@@ -6,6 +6,13 @@ const INTERVAL_MS = 30000;
 const LEASE_MS = 150000; // Longer than the callable's 120-second lifetime.
 const fail = (code, message) => { throw new HttpsError(code, message); };
 const validId = id => typeof id === "string" && /^[\w-]{1,100}$/.test(id);
+// Optional text confirmed by the admin for this batch. Absent: drafts come from the saved template.
+function parseBatchMessage(input) {
+  if (input.subject === undefined && input.body === undefined) return null;
+  const subject = typeof input.subject === "string" ? input.subject.trim() : ""; const body = typeof input.body === "string" ? input.body.trim() : "";
+  if (!subject || subject.length > 200 || /[\r\n]/.test(subject) || !body || body.length > 10000) fail("invalid-argument", "Objet (200 caractères, une ligne) et message (10 000 caractères) requis.");
+  return { subject, body };
+}
 
 // Browser requests bounded steps; the server owns recipients, progress, locks and cadence.
 // Closing the browser pauses the batch. Resuming never replaces a draft or replays an uncertain send.
@@ -28,10 +35,16 @@ function createBatchService({ db, generator, sender, sendEmail, clock = Date.now
       const id = (await currentRef.get()).data()?.id;
       return id ? view(batchRef(id), actor) : { batch: null };
     }
+    if (input.action === "batch_template") {
+      const settings = parseSettings((await db.doc("prospection_internal/commercial_settings").get()).data()?.values || {});
+      const { subject, body } = await generator.generate({}, settings);
+      return { subject, body };
+    }
     const ref = batchRef(input.batchId);
     if (input.action === "batch_prepare") {
       if (!Array.isArray(input.ids) || !input.ids.length || input.ids.length > 50 || input.ids.some(id => typeof id !== "string" || !/^[\w-]{1,200}$/.test(id))) fail("invalid-argument", "Sélectionnez de 1 à 50 prospects maximum.");
       const ids = [...new Set(input.ids)];
+      const message = parseBatchMessage(input);
       const identity = sender.identity(); // Public headers only; never return SMTP credentials.
       await db.runTransaction(async tx => {
         const existing = (await tx.get(ref)).data();
@@ -49,11 +62,17 @@ function createBatchService({ db, generator, sender, sendEmail, clock = Date.now
           let reason = !p || p.deleting ? "Prospect supprimé" : p.do_not_contact ? "Opposition au contact" : !to ? "Sans adresse email envoyable" : p.email_sending_id ? "Envoi en cours ou à vérifier" : logs[index]?.exists || (p.proposal && p.proposal.status !== "draft") ? "Proposition déjà envoyée ou déjà tentée" : "";
           if (!reason && p.proposal && p.proposal.to.toLowerCase() !== to) reason = "Le destinataire du brouillon diffère de l’adresse email retenue";
           if (reason) { items.push({ id, name: p?.name || id, to, state: "excluded", reason }); continue; }
-          let proposal = p.proposal;
+          let proposal = p.proposal; let changed = false;
           if (!proposal) {
             proposal = { ...await generator.generate({ name: p.name, city: p.city, category: p.category, subcategory: p.subcategory, website: p.website }, settings), to, id: randomUUID(), revision: 1, status: "draft" };
-            tx.update(snapshot.ref, { proposal, revision: (p.revision || 0) + 1, updated_at: new Date(clock()).toISOString() });
+            changed = true;
           }
+          // Only unsent drafts reach this point: sent or attempted proposals were excluded above.
+          if (message && (proposal.subject !== message.subject || proposal.body !== message.body)) {
+            proposal = { ...proposal, ...message, revision: changed ? proposal.revision : proposal.revision + 1 };
+            changed = true;
+          }
+          if (changed) tx.update(snapshot.ref, { proposal, revision: (p.revision || 0) + 1, updated_at: new Date(clock()).toISOString() });
           items.push({ id, name: p.name || id, to, subject: proposal.subject, draftId: proposal.id, revision: proposal.revision, state: "ready" });
         }
         tx.create(ref, { actor, items, confirmed: false, identity, created_at: new Date(clock()).toISOString() });

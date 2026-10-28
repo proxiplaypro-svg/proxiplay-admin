@@ -2,7 +2,7 @@ const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const { logger } = require("firebase-functions");
 const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const {
   defineInt,
@@ -187,6 +187,9 @@ function getMailerTransport(options = {}) {
 const { createProspectEmailService, createOvhEmailSender } = require("./src/prospect_email");
 exports.prospectEmail = onCall({ secrets: [OVH_SMTP_PASS], timeoutSeconds: 120 },
   createProspectEmailService({ db, assertAdmin: assertAuthenticatedAdmin, sender: createOvhEmailSender(getMailerTransport) }).handle);
+// Public endpoint behind the unsubscribe link of each prospect email (token-protected, see prospect_unsubscribe.js).
+exports.prospectUnsubscribe = onRequest({ invoker: "public", maxInstances: 2, timeoutSeconds: 30 },
+  require("./src/prospect_unsubscribe").createUnsubscribeHandler({ db }));
 
 function assertAuthenticatedAdmin(request) {
   const auth = request.auth;

@@ -17,7 +17,7 @@ test("liste réelle : états, filtres, actions, mobile et retour après envoi si
   ].map(p => ({ status: "new", category: "Commerce", city: "Dunkerque", created_at: "2026-09-21T10:00:00Z", source: "google", ...p }));
   const requests = [];
   const fixture = `import React,{useEffect,useState} from 'react'; import {createRoot} from 'react-dom/client';
-    import Page from './app/admin/prospection/page'; import {ProspectEmail} from './components/admin/prospection/ProspectEmail';
+    import Page from './app/admin/prospection/avance/page'; import {ProspectEmail} from './components/admin/prospection/ProspectEmail';
     import {notifyProspectsChanged} from './lib/prospection/list';
     window.fixtureCall=async input=>(await fetch('/mock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)})).json();
     function Fixture(){const [p,setP]=useState(null);const reload=async()=>{const d=await window.fixtureCall({action:'list'});setP(d.prospects.find(p=>p.id==='primary'));};useEffect(()=>{reload()},[]);

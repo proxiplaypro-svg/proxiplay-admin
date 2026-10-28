@@ -151,3 +151,47 @@ test("same generator for individual and bulk; regeneration alone replaces edited
   assert.ok(regenerated.body.startsWith("Base du lot")); assert.ok(regenerated.body.includes("01 23 45 67 89"));
   assert.equal(sent.length, 0);
 });
+
+test("texte confirmé : remplace les brouillons non envoyés, jamais un email déjà envoyé", async () => {
+  const { DEFAULT_SETTINGS } = require("../src/prospect_settings");
+  const template = await call("batch_template");
+  assert.equal(template.subject, DEFAULT_SETTINGS.initial_email_subject); assert.ok(template.body.startsWith(DEFAULT_SETTINGS.initial_email_body));
+  await seed("two"); await seed("sent");
+  const draft = (await call("generate", { id: "two" })).proposal;
+  await prepare(["sent"], "first"); await call("batch_confirm", { batchId: "first", confirmed: true }); await call("batch_step", { batchId: "first" });
+  const sentProposal = (await db.doc("prospects/sent").get()).data().proposal; assert.equal(sentProposal.status, "sent");
+  for (const invalid of [{ subject: "Objet\nInjecté", body: "Message" }, { subject: "Objet", body: "  " }, { subject: "Objet" }, { subject: "x".repeat(201), body: "Message" }])
+    await assert.rejects(call("batch_prepare", { ids: ["one"], batchId: "invalid", ...invalid }), { code: "invalid-argument" });
+  const b = (await call("batch_prepare", { ids: ["one", "two", "sent"], batchId: "batch", subject: " Objet confirmé ", body: "Message confirmé" })).batch;
+  assert.deepEqual(b.items.map(i => i.state), ["ready", "ready", "excluded"]);
+  for (const i of b.items.slice(0, 2)) { assert.equal(i.subject, "Objet confirmé"); assert.equal(i.body, "Message confirmé"); }
+  const two = (await db.doc("prospects/two").get()).data().proposal;
+  assert.equal(two.id, draft.id); assert.equal(two.revision, draft.revision + 1); assert.equal(two.status, "draft");
+  assert.deepEqual((await db.doc("prospects/sent").get()).data().proposal, sentProposal);
+  await call("batch_confirm", { batchId: "batch", confirmed: true }); await release(); await step();
+  assert.equal(sent.at(-1).subject, "Objet confirmé"); assert.ok(sent.at(-1).body.startsWith("Message confirmé\n\n—\n"));
+});
+
+test("désinscription : lien dans chaque email, GET sans effet, POST enregistre l’opposition et exclut les envois suivants", async () => {
+  const { createUnsubscribeHandler } = require("../src/prospect_unsubscribe");
+  const handler = createUnsubscribeHandler({ db });
+  const request = async (method, t) => { const res = { headers: {}, status(code) { this.statusCode = code; return this; }, set(k, v) { this.headers[k] = v; return this; }, send(body) { this.body = body; return this; } }; await handler({ method, query: { t } }, res); return res; };
+  await prepare(); await call("batch_confirm", { batchId: "batch", confirmed: true }); await step();
+  const message = sent[0]; const url = new URL(message.unsubscribe_url); const token = url.searchParams.get("t");
+  assert.match(token, /^[\w-]{43}$/); assert.ok(message.body.endsWith(`Désinscription : ${message.unsubscribe_url}`));
+  const log = (await db.collection("prospects/one/emails").get()).docs[0].data(); assert.equal(log.body, message.body);
+  assert.equal((await db.doc("prospects/one").get()).data().unsubscribe_token, token);
+  assert.equal((await db.doc(`prospection_internal/unsubscribe/tokens/${token}`).get()).exists, false, "only the hash is a document id");
+  const form = await request("GET", token); assert.equal(form.statusCode, 200); assert.match(form.body, /method="post"/);
+  assert.equal((await db.doc("prospects/one").get()).data().do_not_contact, undefined, "GET never unsubscribes");
+  for (const bad of ["", "x".repeat(43), `${token}<script>`]) assert.equal((await request("POST", bad)).statusCode, 404);
+  assert.equal((await request("PUT", token)).statusCode, 405);
+  assert.equal((await request("POST", token)).statusCode, 200); assert.equal((await request("POST", token)).statusCode, 200);
+  const p = (await db.doc("prospects/one").get()).data(); assert.equal(p.do_not_contact, true); assert.ok(p.unsubscribed_at);
+  const history = (await db.collection("prospects/one/history").get()).docs.map(d => d.data().action);
+  assert.deepEqual(history.sort(), ["email_sent", "unsubscribed"]);
+  await release(); await db.doc("prospects/one").update({ proposal: null });
+  const after = (await prepare(["one"], "after")).batch; assert.equal(after.items[0].state, "excluded"); assert.equal(after.items[0].reason, "Opposition au contact");
+  await assert.rejects(call("send", { id: "one", draftId: "x", revision: 1, confirmed: true }), { code: "failed-precondition" });
+  assert.equal(sent.length, 1);
+});

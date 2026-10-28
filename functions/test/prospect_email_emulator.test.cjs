@@ -86,7 +86,7 @@ test("message édité sauvegardé ; une ancienne révision ne peut pas envoyer",
   const saved = (await call("save", { draftId: proposal.id, revision: 1, to: "autre@boutique.fr", subject: "Nouvel objet", body: "Message personnel" })).proposal;
   await assert.rejects(call("send", { draftId: proposal.id, revision: 1, confirmed: true }), { code: "failed-precondition" });
   await call("send", { draftId: saved.id, revision: saved.revision, confirmed: true });
-  assert.equal(sent[0].to, "autre@boutique.fr"); assert.equal(sent[0].body, "Message personnel");
+  assert.equal(sent[0].to, "autre@boutique.fr"); assert.equal(sent[0].body, `Message personnel\n\n—\nVous ne souhaitez plus recevoir nos emails ? Désinscription : ${sent[0].unsubscribe_url}`);
 });
 test("email manuel préservé, adresse principale et suppression des seules données enrichies", async () => {
   service = createProspectEmailService({ db, assertAdmin, crawler: async () => ({ emails: ["contact", "commercial"].map((local, i) => ({ email: `${local}@boutique.fr`, type: "general", source_url: "https://boutique.fr/contact", discovered_at: new Date().toISOString(), is_primary: i === 0 })), status: "found" }) });

@@ -106,6 +106,8 @@ test("adaptateur réutilise From/Reply-To OVH et refuse les faux succès", async
   let sent;
   const sender = createOvhEmailSender(() => ({ from: "Proxiplay <contact@proxiplay.fr>", replyTo: "pascal@proxiplay.fr", transport: { sendMail: async message => { sent = message; return { accepted: [message.to], messageId: "provider-id" }; } } }));
   assert.equal((await sender.send({ id: "id", to: "contact@boutique.fr", subject: "Objet", body: "Texte" })).provider_message_id, "provider-id");
-  assert.equal(sent.replyTo, "pascal@proxiplay.fr"); assert.ok(!sent.cc && !sent.bcc);
+  assert.equal(sent.replyTo, "pascal@proxiplay.fr"); assert.ok(!sent.cc && !sent.bcc); assert.equal(sent.headers, undefined);
+  await sender.send({ id: "id", to: "contact@boutique.fr", subject: "Objet", body: "Texte", unsubscribe_url: "https://example.org/u?t=abc" });
+  assert.deepEqual(sent.headers, { "List-Unsubscribe": "<https://example.org/u?t=abc>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
   await assert.rejects(createOvhEmailSender(() => ({ transport: { sendMail: async () => ({ accepted: [] }) } })).send({ to: "contact@boutique.fr" }));
 });

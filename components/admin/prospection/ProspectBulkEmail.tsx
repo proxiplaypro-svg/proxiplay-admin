@@ -9,7 +9,7 @@ type Item = { id: string; name: string; to: string; subject?: string; body?: str
 type Batch = { id: string; confirmed: boolean; identity: { from: string; replyTo: string }; items: Item[] };
 type Result = { batch: Batch | null; waitMs?: number };
 const labels: Record<string, string> = { ready: "Prêt", processing: "En cours", sent: "Envoyé", failed: "Échec", unknown: "À vérifier", excluded: "Exclu" };
-export function ProspectBulkEmail({ ids, emailCount, disabled }: { ids: string[]; emailCount: number; disabled: boolean }) {
+export function ProspectBulkEmail({ ids, emailCount, disabled, message }: { ids: string[]; emailCount: number; disabled: boolean; message?: { subject: string; body: string } }) {
   const [batch, setBatch] = useState<Batch | null>(null); const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false); const [active, setActive] = useState(false); const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState(""); const [retryId, setRetryId] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export function ProspectBulkEmail({ ids, emailCount, disabled }: { ids: string[]
     <div className={s.actions}>
       <button disabled={disabled || busy || !emailCount || ids.length > 50} onClick={() => void run(async () => {
         prepareId.current ||= crypto.randomUUID();
-        const r = await emailRequest<Result>({ action: "batch_prepare", batchId: prepareId.current, ids });
+        const r = await emailRequest<Result>({ action: "batch_prepare", batchId: prepareId.current, ids, ...message });
         prepareId.current = null; setBatch(r.batch); setOpen(true); setConfirm(false);
       })}>Préparer les {emailCount} emails</button>
       {batch && <button disabled={busy} onClick={() => void run(load)}>Voir le lot d’envoi</button>}

@@ -1,89 +1,134 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { prospectRequest } from "@/lib/prospection/client";
-import { RESULT_STATES, resultState, importableIndices, googleRatingLabel, type IgnoredPlace, SECTORS, STATUSES, type Prospect, type ProspectFields as Fields, type SearchResult, type SearchInput } from "@/lib/prospection/model";
-import { commercialCategory, EMPTY_FILTERS, matchesProspectFilters, prospectEmailSummary, PROSPECTS_CHANGED } from "@/lib/prospection/list";
+import { importableIndices, normalize, SECTORS, type Prospect, type SearchResult } from "@/lib/prospection/model";
+import { prospectEmailSummary, PROSPECTS_CHANGED } from "@/lib/prospection/list";
 import { isCampaignEmailEligible } from "@/lib/prospection/emailRecipient";
-import { ProspectList } from "@/components/admin/prospection/ProspectList";
-import { ProspectFields } from "@/components/admin/prospection/ProspectFields";
-import { ProspectBulkEmail } from "@/components/admin/prospection/ProspectBulkEmail";
-import { ProspectionSettings } from "@/components/admin/prospection/ProspectionSettings";
 import { emailRequest, type EnrichmentBatch } from "@/lib/prospection/emailClient";
+import { ProspectBulkEmail } from "@/components/admin/prospection/ProspectBulkEmail";
 import s from "./prospection.module.css";
 
-type View = "companies" | "emails" | "campaigns";
-type CompanyPanel = "list" | "add" | "search" | "ignored";
-type Filters = typeof EMPTY_FILTERS;
+// Server limits, unchanged: 50 recipients per send batch, 3 email searches per call.
+const MAX_RECIPIENTS = 50;
+const ENRICH_CHUNK = 3;
+// Never searched, or the website failed. "Aucun email public" was already searched and is not retried.
+const missingEmail = (p: Prospect) => ["not_started", "failed"].includes(prospectEmailSummary(p).state);
 
-function ProspectFilters({ filters, update, prospects, showStatus = false, showEmail = false }: { filters: Filters; update: (patch: Partial<Filters>) => void; prospects: Prospect[]; showStatus?: boolean; showEmail?: boolean }) {
-  return <div className={s.filters}>
-    <label>Recherche texte<input placeholder="Entreprise, contact, email…" value={filters.query} onChange={e => update({ query: e.target.value })} /></label>
-    {showStatus && <label>Statut<select value={filters.status} onChange={e => update({ status: e.target.value })}><option value="">Tous les statuts</option>{Object.entries(STATUSES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>}
-    {showEmail && <label>Email<select value={filters.email} onChange={e => update({ email: e.target.value })}><option value="">Tous</option><option value="found">Contactables par email</option><option value="missing">Non contactables par email</option></select></label>}
-    <label>Secteur<select value={filters.category} onChange={e => update({ category: e.target.value })}><option value="">Tous les secteurs</option>{[...new Set(prospects.map(p => p.category).filter(Boolean))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
-    <label>Ville<input value={filters.city} onChange={e => update({ city: e.target.value })} /></label>
-    <label>Source<select value={filters.source} onChange={e => update({ source: e.target.value })}><option value="">Toutes les sources</option>{[...new Set(prospects.map(p => p.source))].map(value => <option key={value}>{value}</option>)}</select></label>
-  </div>;
-}
-
-function IgnoredPlaces({ places, busy, onBack, onReload, onReactivate }: { places: IgnoredPlace[]; busy: boolean; onBack: () => void; onReload: () => void; onReactivate: (id: string) => void }) {
-  return <section className={s.panel}><div className={s.toolbar}><div><h2>Établissements ignorés</h2><p className={s.muted}>Exclus des imports jusqu’à leur réactivation.</p></div><div className={s.actions}><button onClick={onBack}>← Mes prospects</button><button disabled={busy} onClick={onReload}>Actualiser</button></div></div><div className={s.table}><table><thead><tr><th>Entreprise</th><th>Ville</th><th>Ignoré le</th><th>Action</th></tr></thead><tbody>{places.map(place => <tr key={place.google_place_id}><td>{place.name}{googleRatingLabel(place) && <p>{googleRatingLabel(place)}</p>}</td><td>{place.city}</td><td>{new Date(place.ignored_at).toLocaleDateString("fr-FR")}</td><td><button disabled={busy} onClick={() => onReactivate(place.google_place_id)}>Réactiver</button></td></tr>)}</tbody></table></div>{!places.length && <p>Aucun établissement ignoré.</p>}</section>;
+function emailCell(p: Prospect) {
+  const summary = prospectEmailSummary(p);
+  if (p.do_not_contact) return <span className={s.muted}>Ne pas contacter{p.unsubscribed_at ? " (désinscrit)" : ""}</span>;
+  if (p.proposal?.status === "sent" && p.proposal.sent_at) return <span className={s.emailFound}>{summary.email} · envoyé le {new Date(p.proposal.sent_at).toLocaleDateString("fr-FR")}</span>;
+  if (summary.email) return <span className={s.emailFound}>✓ {summary.email}</span>;
+  return <span className={summary.state === "failed" ? s.emailFailed : s.muted}>{summary.label}</span>;
 }
 
 export default function ProspectionPage() {
-  const [view, setView] = useState<View>("companies"); const [companyPanel, setCompanyPanel] = useState<CompanyPanel>("list");
-  const [emailSelection, setEmailSelection] = useState<Set<string>>(new Set()); const [campaignSelection, setCampaignSelection] = useState<Set<string>>(new Set()); const [progress, setProgress] = useState("");
-  const [prospects, setProspects] = useState<Prospect[]>([]); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [ignored, setIgnored] = useState<IgnoredPlace[]>([]);
-  const [resultFilter, setResultFilter] = useState(""); const [draft, setDraft] = useState<Partial<Fields>>({}); const [filters, setFilters] = useState(EMPTY_FILTERS); const [emailFilters, setEmailFilters] = useState<Filters>({ ...EMPTY_FILTERS, email: "not_started" }); const [campaignFilters, setCampaignFilters] = useState<Filters>({ ...EMPTY_FILTERS, email: "found" }); const [campaignStatus, setCampaignStatus] = useState("new");
-  const [search, setSearch] = useState<SearchInput>({ location: "Dunkerque", radius: 15, categories: ["restaurants"], limit: 50 }); const [lastSearch, setLastSearch] = useState<SearchInput | null>(null);
-  const [excludedCount, setExcludedCount] = useState(0); const [searchMetrics, setSearchMetrics] = useState<{ googleCalls: number; callBudget: number; budgetReached: boolean } | null>(null);
-  const [available, setAvailable] = useState(false); const [searched, setSearched] = useState(false); const [results, setResults] = useState<SearchResult[]>([]); const [selection, setSelection] = useState<Set<number>>(new Set());
+  const [prospects, setProspects] = useState<Prospect[]>([]); const [available, setAvailable] = useState(false);
+  const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(""); const [notice, setNotice] = useState("");
+  const [city, setCity] = useState("Dunkerque"); const [sector, setSector] = useState(SECTORS[0]);
+  const [results, setResults] = useState<SearchResult[] | null>(null); const [excludedCount, setExcludedCount] = useState(0);
+  const [enriching, setEnriching] = useState(false); const [progress, setProgress] = useState(""); const stop = useRef(false);
+  const [query, setQuery] = useState(""); const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [composer, setComposer] = useState<"closed" | "open" | "hidden">("closed");
+  const [subject, setSubject] = useState(""); const [body, setBody] = useState("");
   const reloadVersion = useRef(0);
-  const reload = useCallback(async () => { const version = ++reloadVersion.current; const data = await prospectRequest<{ prospects: Prospect[]; ignored: IgnoredPlace[]; searchAvailable: boolean }>(); if (version !== reloadVersion.current) return; setProspects(data.prospects); setIgnored(data.ignored); setAvailable(data.searchAvailable); }, []);
+  const reload = useCallback(async () => { const version = ++reloadVersion.current; const data = await prospectRequest<{ prospects: Prospect[]; searchAvailable: boolean }>(); if (version !== reloadVersion.current) return; setProspects(data.prospects); setAvailable(data.searchAvailable); }, []);
   useEffect(() => { reload().catch(error => setError(error.message)).finally(() => setLoading(false)); }, [reload]);
-  useEffect(() => { const refresh = () => { void reload().catch(error => setError(error.message)); }; const visible = () => { if (document.visibilityState === "visible") refresh(); }; const changed = (event: StorageEvent) => { if (event.key === PROSPECTS_CHANGED) refresh(); }; window.addEventListener("focus", refresh); window.addEventListener("pageshow", refresh); window.addEventListener(PROSPECTS_CHANGED, refresh); window.addEventListener("storage", changed); document.addEventListener("visibilitychange", visible); return () => { window.removeEventListener("focus", refresh); window.removeEventListener("pageshow", refresh); window.removeEventListener(PROSPECTS_CHANGED, refresh); window.removeEventListener("storage", changed); document.removeEventListener("visibilitychange", visible); }; }, [reload]);
+  useEffect(() => { const refresh = () => { void reload().catch(error => setError(error.message)); }; const changed = (event: StorageEvent) => { if (event.key === PROSPECTS_CHANGED) refresh(); }; window.addEventListener("focus", refresh); window.addEventListener(PROSPECTS_CHANGED, refresh); window.addEventListener("storage", changed); return () => { window.removeEventListener("focus", refresh); window.removeEventListener(PROSPECTS_CHANGED, refresh); window.removeEventListener("storage", changed); }; }, [reload]);
   async function run(work: () => Promise<void>) { setBusy(true); setError(""); setNotice(""); try { await work(); } catch (error) { setError(error instanceof Error ? error.message : "L’opération a échoué."); } finally { setBusy(false); } }
-  const updateFilters = (patch: Partial<Filters>) => setFilters({ ...filters, ...patch });
-  const updateEmailFilters = (patch: Partial<Filters>) => setEmailFilters({ ...emailFilters, ...patch });
-  const updateCampaignFilters = (patch: Partial<Filters>) => setCampaignFilters({ ...campaignFilters, ...patch });
-  const withoutEmailFilter = prospects.filter(p => matchesProspectFilters(p, { ...filters, email: "" })); const filtered = withoutEmailFilter.filter(p => !filters.email || prospectEmailSummary(p).state === filters.email);
-  const emailCandidates = prospects.filter(p => matchesProspectFilters(p, { ...emailFilters, email: "" }));
-  const emailWork = emailCandidates.filter(p => prospectEmailSummary(p).state === emailFilters.email);
-  const campaignProspects = prospects.filter(p => matchesProspectFilters(p, { ...campaignFilters, status: "", email: "" }) && (!campaignStatus || commercialCategory(p) === campaignStatus) && (!campaignFilters.email || campaignFilters.email === "found" && isCampaignEmailEligible(p) || campaignFilters.email === "missing" && !isCampaignEmailEligible(p)));
-  const selectable = importableIndices(results); const selected = selectable.filter(index => selection.has(index));
-  const emailCounts = {
-    found: emailCandidates.filter(p => prospectEmailSummary(p).state === "found").length,
-    notFound: emailCandidates.filter(p => prospectEmailSummary(p).state === "not_found").length,
-    failed: emailCandidates.filter(p => prospectEmailSummary(p).state === "failed").length,
-    notStarted: emailCandidates.filter(p => prospectEmailSummary(p).state === "not_started").length,
-    running: emailCandidates.filter(p => prospectEmailSummary(p).state === "running").length,
-  };
-  const selectProspects = (ids: string[]) => setEmailSelection(new Set(ids.slice(0, 50)));
-  async function enrichSelection() { const ids = [...emailSelection]; setProgress(`0 / ${ids.length} prospects analysés`); const totals = { found: 0, not_found: 0, failed: 0, emails: 0 }; for (let offset = 0; offset < ids.length; offset += 3) { const chunk = ids.slice(offset, offset + 3); try { const result = await emailRequest<EnrichmentBatch>({ action: "enrich_batch", ids: chunk }); for (const key of ["found", "not_found", "failed", "emails"] as const) totals[key] += result[key]; } catch { totals.failed += chunk.length; } setProgress(`${Math.min(offset + 3, ids.length)} / ${ids.length} prospects analysés — ${totals.found} prospects avec email, ${totals.not_found} sans email, ${totals.failed} échecs, ${totals.emails} adresses email présentes`); } await reload(); }
-  async function discover(input: SearchInput, onlyNew = false) { const data = await prospectRequest<{ results: SearchResult[]; excludedCount: number; searchMetrics?: { googleCalls: number; callBudget: number; budgetReached: boolean } }>("POST", { action: "search", ...input, onlyNew }); setSearchMetrics(data.searchMetrics || null); setResults(data.results); setSelection(new Set()); setResultFilter(""); setExcludedCount(data.excludedCount); setLastSearch(input); setSearched(true); await reload(); }
-  async function refreshResults() { const data = await prospectRequest<{ results: SearchResult[] }>("POST", { action: "annotate", selection: results }); setResults(data.results); setSelection(previous => new Set(importableIndices(data.results).filter(index => previous.has(index)))); await reload(); }
-  async function reactivate(placeId: string) { await prospectRequest("POST", { action: "reactivate", placeId }); await refreshResults(); setNotice("Établissement réactivé."); }
-  const retryEmail = (id: string) => void run(async () => { await emailRequest({ action: "enrich", id }); await reload(); });
+
+  const eligible = new Set(prospects.filter(isCampaignEmailEligible).map(p => p.id));
+  const missing = prospects.filter(missingEmail);
+  const visible = query ? prospects.filter(p => normalize([p.name, p.city, prospectEmailSummary(p).email].join(" ")).includes(normalize(query))) : prospects;
+  const selected = prospects.filter(p => selection.has(p.id) && eligible.has(p.id)); // A sent or unsubscribed prospect drops out on reload.
+  const fresh = results ? importableIndices(results).map(index => results[index]) : [];
+  const toggle = (id: string, checked: boolean) => setSelection(previous => { const next = new Set(previous); if (checked) next.add(id); else next.delete(id); return next; });
+
+  async function searchCompanies() {
+    const data = await prospectRequest<{ results: SearchResult[]; excludedCount: number }>("POST", { action: "search", location: city, radius: 15, categories: [sector], limit: 50, onlyNew: true });
+    setResults(data.results); setExcludedCount(data.excludedCount);
+  }
+  async function importCompanies() {
+    const imported = await prospectRequest<{ created: string[]; skipped: { name: string }[] }>("POST", { action: "import", selection: fresh });
+    setResults(null); await reload();
+    setNotice(`${imported.created.length} entreprise(s) ajoutée(s)${imported.skipped.length ? ` · ${imported.skipped.length} doublon(s) bloqué(s)` : ""}.`);
+  }
+  async function findMissingEmails() {
+    const ids = missing.map(p => p.id); const totals = { found: 0, not_found: 0, failed: 0 }; let done = 0;
+    stop.current = false; setEnriching(true); setError(""); setNotice("");
+    const report = (suffix = "") => setProgress(`${done} / ${ids.length} entreprises analysées · ${totals.found} avec email · ${totals.not_found} sans email · ${totals.failed} échec(s)${suffix}`);
+    report();
+    try {
+      for (let offset = 0; offset < ids.length && !stop.current; offset += ENRICH_CHUNK) {
+        const chunk = ids.slice(offset, offset + ENRICH_CHUNK);
+        try { const result = await emailRequest<EnrichmentBatch>({ action: "enrich_batch", ids: chunk }); totals.found += result.found; totals.not_found += result.not_found; totals.failed += result.failed; }
+        catch (error) { if (error instanceof Error && error.message.startsWith("Service email indisponible")) throw error; totals.failed += chunk.length; }
+        done += chunk.length; report();
+        if (done % 30 === 0) void reload().catch(() => {}); // Results are saved per prospect; refresh the list as we go.
+      }
+      report(stop.current ? " — arrêté. Les emails déjà trouvés sont conservés." : " — terminé.");
+    } catch (error) { setError(error instanceof Error ? error.message : "La recherche d’emails a échoué."); }
+    finally { setEnriching(false); await reload().catch(() => {}); }
+  }
+  async function openComposer() {
+    if (!subject && !body) { const template = await emailRequest<{ subject: string; body: string }>({ action: "batch_template" }); setSubject(template.subject); setBody(template.body); }
+    setComposer("open");
+  }
 
   return <div className={s.module}>
-    <ProspectionSettings />
-    <header className={s.pageHeader}><h1>Prospection</h1><p className={s.muted}>Trouvez, enrichissez et contactez vos futurs partenaires.</p></header>
-    <div className={s.tabs} role="tablist" aria-label="Étapes de prospection">{([ ["companies", "Entreprises"], ["emails", "Recherche d’emails"], ["campaigns", "Campagnes & suivi"] ] as const).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? s.tabActive : ""} onClick={() => setView(key)}>{label}</button>)}</div>
+    <header className={s.toolbar}><div className={s.pageHeader}><h1>Prospection</h1><p className={s.muted}>Trouvez des emails professionnels, puis envoyez votre message.</p></div><Link className={s.link} href="/admin/prospection/avance">Vue avancée</Link></header>
     {error && <p role="alert" className={s.error}>{error}</p>}{notice && <p role="status" className={s.notice}>{notice}</p>}
 
-    {view === "companies" && <>
-      <section className={s.sectionHeading}><div><h2>Entreprises</h2><p className={s.muted}>Trouvez et ajoutez les entreprises que vous souhaitez prospecter.</p></div><div className={s.actions}><button onClick={() => setCompanyPanel("ignored")}>Ignorés ({ignored.length})</button><button onClick={() => setCompanyPanel("search")}>Rechercher sur Google</button><button className={s.primary} onClick={() => setCompanyPanel("add")}>+ Ajouter un prospect</button></div></section>
-      {companyPanel === "add" && <form className={s.module} onSubmit={event => { event.preventDefault(); void run(async () => { await prospectRequest("POST", { action: "create", fields: draft }); setDraft({}); setCompanyPanel("list"); await reload(); setNotice("Prospect ajouté."); }); }}><div><button type="button" onClick={() => setCompanyPanel("list")}>← Mes prospects</button></div><ProspectFields value={draft} onChange={setDraft} /><section className={s.panel}><label>Notes<textarea maxLength={10000} value={draft.notes || ""} onChange={event => setDraft({ ...draft, notes: event.target.value })} /></label></section><div><button disabled={busy} className={s.primary}>Enregistrer le prospect</button></div></form>}
-      {companyPanel === "search" && <section className={s.panel}><div className={s.toolbar}><div><h2>Trouver de nouveaux prospects</h2><p className={s.muted}>Recherchez des entreprises sur Google Places puis importez celles qui vous intéressent.</p></div><button onClick={() => setCompanyPanel("list")}>← Mes prospects</button></div>{!available && <p className={s.notice}>La recherche Google Places n’est pas configurée. L’ajout manuel reste disponible.</p>}<form className={s.module} onSubmit={event => { event.preventDefault(); void run(() => discover(search)); }}><div className={s.filters}><label>Ville / zone<input required value={search.location} onChange={event => setSearch({ ...search, location: event.target.value })} /></label><label>Rayon (km)<input type="number" min={1} max={50} required value={search.radius} onChange={event => setSearch({ ...search, radius: Number(event.target.value) })} /></label><label>Nombre de résultats<select value={search.limit} onChange={event => setSearch({ ...search, limit: Number(event.target.value) })}>{[20, 50].map(limit => <option key={limit} value={limit}>Jusqu’à {limit}</option>)}</select></label></div><fieldset><legend>Secteurs</legend><div className={s.actions}>{SECTORS.map(category => <label key={category} className={s.check}><input type="checkbox" checked={search.categories.includes(category)} onChange={event => setSearch({ ...search, categories: event.target.checked ? [...search.categories, category] : search.categories.filter(value => value !== category) })} />{category}</label>)}</div></fieldset><div><button disabled={busy || !available || !search.categories.length} className={s.primary}>Rechercher sur Google</button></div></form>{searched && <><p className={s.muted}>{selectable.length} nouvelles entreprises trouvées · Source : Google Maps.{excludedCount > 0 && ` ${excludedCount} établissements connus écartés.`}</p>{searchMetrics?.budgetReached && <p role="status">Budget de recherche atteint : {searchMetrics.googleCalls} appels sur {searchMetrics.callBudget}.</p>}{lastSearch && <div className={s.actions}><button disabled={busy || !available} onClick={() => void run(() => discover({ ...lastSearch, limit: 50 }, true))}>Trouver 50 nouvelles entreprises</button><span className={s.muted}>{lastSearch.location} · {lastSearch.radius} km · {lastSearch.categories.join(", ")}</span></div>}<div className={s.actions}><button disabled={busy || !selectable.length} onClick={() => setSelection(new Set(selectable))}>Tout sélectionner</button><button disabled={busy || !selected.length} onClick={() => setSelection(new Set())}>Désélectionner</button><button className={s.primary} disabled={busy || !selected.length} onClick={() => void run(async () => { const imported = await prospectRequest<{ created: string[]; skipped: { name: string }[] }>("POST", { action: "import", selection: selected.map(index => results[index]) }); setSelection(new Set()); await refreshResults(); setNotice(`${imported.created.length} prospect(s) ajouté(s). ${imported.skipped.length} doublon(s) bloqué(s)${imported.skipped.length ? ` : ${imported.skipped.map(item => item.name).join(", ")}` : "."}`); })}>Ajouter la sélection ({selected.length})</button></div><label>Afficher<select value={resultFilter} onChange={event => setResultFilter(event.target.value)}><option value="">Tous</option>{Object.entries(RESULT_STATES).map(([key, label]) => <option key={key} value={key}>{key === "new" ? "Nouveaux uniquement" : label}</option>)}</select></label><div className={s.table}><table><thead><tr><th>Sélection</th><th>Entreprise / activité</th><th>Ville / adresse</th><th>Coordonnées</th><th>Vérification</th></tr></thead><tbody>{results.map((result, index) => (!resultFilter || resultState(result) === resultFilter) && <tr key={result.google_place_id || index}><td><input aria-label={`Sélectionner ${result.name}`} type="checkbox" disabled={busy || Boolean(result.duplicate)} checked={!result.duplicate && selection.has(index)} onChange={event => setSelection(previous => { const next = new Set(previous); if (event.target.checked) next.add(index); else next.delete(index); return next; })} /></td><td>{result.name}<p className={s.muted}>{result.category}</p>{googleRatingLabel(result) && <p>{googleRatingLabel(result)}</p>}</td><td>{result.city}<p className={s.muted}>{result.address}</p></td><td>{result.phone || "—"}{result.website && <p><a href={result.website} target="_blank" rel="noreferrer">Ouvrir le site ↗</a></p>}</td><td>{RESULT_STATES[resultState(result)]}{!result.duplicate && result.google_place_id && <p><button disabled={busy} onClick={() => void run(async () => { await prospectRequest("POST", { action: "ignore", fields: result }); await refreshResults(); setNotice("Établissement ignoré. Vous pouvez le réactiver depuis Ignorés."); })}>Ignorer</button></p>}{result.duplicate?.kind === "ignored" && <p><button disabled={busy} onClick={() => void run(() => reactivate(result.google_place_id))}>Réactiver</button></p>}</td></tr>)}</tbody></table></div></>}</section>}
-      {companyPanel === "ignored" && <IgnoredPlaces places={ignored} busy={busy} onBack={() => setCompanyPanel("list")} onReload={() => void run(reload)} onReactivate={id => void run(() => reactivate(id))} />}
-      {companyPanel === "list" && <section className={s.panel}><div className={s.toolbar}><div><h2>Mes prospects</h2><p className={s.muted}>{prospects.length} prospect(s) enregistré(s)</p></div><button disabled={busy} onClick={() => void run(reload)}>Actualiser</button></div><ProspectFilters filters={filters} update={updateFilters} prospects={prospects} showStatus /><div className={s.toolbar}><p className={s.muted}>{filtered.length} résultat(s)</p><button onClick={() => setFilters(EMPTY_FILTERS)}>Réinitialiser les filtres</button></div><ProspectList prospects={filtered} selection={emailSelection} busy={busy} selectable={false} showEmailActions={false} onSelect={() => {}} onRetry={() => {}} />{!loading && !filtered.length && <p>Aucun prospect à afficher. Ajoutez une entreprise ou adaptez les filtres.</p>}</section>}
-    </>}
+    <section className={s.panel} aria-label="Trouver">
+      <h2>1. Trouver des emails</h2>
+      <form className={s.filters} onSubmit={event => { event.preventDefault(); void run(searchCompanies); }}>
+        <label>Ville<input required maxLength={500} value={city} onChange={event => setCity(event.target.value)} /></label>
+        <label>Secteur<select value={sector} onChange={event => setSector(event.target.value)}>{SECTORS.map(value => <option key={value}>{value}</option>)}</select></label>
+        <div className={s.actions} style={{ alignSelf: "end" }}><button className={s.primary} disabled={busy || enriching || !available}>Rechercher des entreprises</button></div>
+      </form>
+      {!loading && !available && <p className={s.muted}>La recherche Google n’est pas configurée.</p>}
+      {results && <div className={s.module}>
+        <p>{fresh.length} nouvelle(s) entreprise(s) trouvée(s){excludedCount > 0 && ` · ${excludedCount} déjà connue(s) écartée(s)`}.</p>
+        {fresh.length > 0 && <ul className={s.muted}>{fresh.map(result => <li key={result.google_place_id || result.name}>{result.name} — {result.city}{result.website ? "" : " (pas de site web)"}</li>)}</ul>}
+        <div className={s.actions}><button className={s.primary} disabled={busy || !fresh.length} onClick={() => void run(importCompanies)}>Ajouter les {fresh.length} entreprise(s)</button><button disabled={busy} onClick={() => setResults(null)}>Fermer</button></div>
+      </div>}
+      <div className={s.actions}>
+        <button disabled={busy || enriching || !missing.length} onClick={() => void findMissingEmails()}>Trouver les emails manquants ({missing.length})</button>
+        {enriching && <button onClick={() => { stop.current = true; }}>Stop</button>}
+      </div>
+      {progress && <p role="status">{progress}</p>}
+    </section>
 
-    {view === "emails" && <><section className={s.sectionHeading}><div><h2>Recherche d’emails</h2><p className={s.muted}>Trouvez les coordonnées email des prospects avant de les contacter.</p></div><button onClick={() => setView("campaigns")}>Passer aux campagnes</button></section><div className={s.cards} aria-label="Résumé de recherche email">{([ ["found", "Avec email", emailCounts.found], ["not_found", "Sans email trouvé", emailCounts.notFound], ["failed", "Échecs", emailCounts.failed], ["not_started", "Jamais recherchés", emailCounts.notStarted], ["running", "En cours", emailCounts.running] ] as const).map(([state, label, count]) => <button key={state} type="button" className={emailFilters.email === state ? s.pipelineActive : ""} aria-pressed={emailFilters.email === state} onClick={() => updateEmailFilters({ email: state })}><span>{label}</span><strong>{count}</strong></button>)}</div><section className={s.panel}><ProspectFilters filters={emailFilters} update={updateEmailFilters} prospects={prospects} showStatus /><div className={s.toolbar}><p className={s.muted}>{emailWork.length} prospect(s) à enrichir</p><button onClick={() => setEmailFilters({ ...EMPTY_FILTERS, email: "not_started" })}>Réinitialiser les filtres</button></div><div className={s.actions}><button disabled={busy || !emailWork.length} onClick={() => selectProspects(emailWork.map(p => p.id))}>Sélectionner les prospects affichés (50 max.)</button><button disabled={busy} onClick={() => setEmailSelection(new Set())}>Désélectionner</button><button className={s.primary} disabled={busy || !emailSelection.size} onClick={() => void run(enrichSelection)}>Rechercher les emails ({emailSelection.size})</button></div>{progress && <p role="status">{progress}</p>}<ProspectList prospects={emailWork} selection={emailSelection} busy={busy} showEmailActions={false} onSelect={(id, checked) => setEmailSelection(previous => { const next = new Set(previous); if (checked) next.add(id); else next.delete(id); return next; })} onRetry={retryEmail} />{!loading && !emailWork.length && <p>Aucun prospect ne correspond aux filtres.</p>}</section></>}
-
-    {view === "campaigns" && <><section className={s.sectionHeading}><div><h2>Campagnes & suivi</h2><p className={s.muted}>Préparez vos emails, envoyez vos campagnes et suivez vos prospects.</p></div></section>{loading ? <p role="status">Chargement des prospects…</p> : <div className={s.cards}>{Object.entries(STATUSES).map(([key, label]) => <button key={key} type="button" className={campaignStatus === key ? s.pipelineActive : ""} aria-pressed={campaignStatus === key} onClick={() => setCampaignStatus(campaignStatus === key ? "" : key)}><span>{label}</span><strong>{prospects.filter(p => commercialCategory(p) === key).length}</strong></button>)}</div>}<section className={s.panel}><ProspectFilters filters={campaignFilters} update={updateCampaignFilters} prospects={prospects} showEmail /><div className={s.toolbar}><p className={s.muted}>{campaignProspects.length} prospect(s)</p><button onClick={() => { setCampaignFilters({ ...EMPTY_FILTERS, email: "found" }); setCampaignStatus("new"); setCampaignSelection(new Set()); }}>Réinitialiser les filtres</button></div>{campaignFilters.email === "found" && <><div className={s.actions}><button disabled={busy || !campaignProspects.length} onClick={() => setCampaignSelection(new Set(campaignProspects.map(p => p.id).slice(0, 50)))}>Sélectionner les prospects affichés (50 max.)</button><button disabled={busy || !campaignSelection.size} onClick={() => setCampaignSelection(new Set())}>Désélectionner</button><span className={s.muted}>{campaignSelection.size} prospect(s) sélectionné(s)</span></div><ProspectBulkEmail ids={[...campaignSelection]} emailCount={campaignSelection.size} disabled={busy} /></>}<ProspectList prospects={campaignProspects} selection={campaignSelection} busy={busy} selectable={campaignFilters.email === "found"} showEmailActions={false} campaignMode onSelect={(id, checked) => setCampaignSelection(previous => { const next = new Set(previous); if (checked) { if (next.size < 50) next.add(id); } else next.delete(id); return next; })} onRetry={() => {}} />{!loading && !campaignProspects.length && <p>Aucun prospect ne correspond aux filtres.</p>}</section></>}
-    {busy && <p role="status">Opération en cours…</p>}
+    <section className={s.panel} aria-label="Envoyer">
+      <h2>2. Envoyer des emails</h2>
+      <p><strong>{eligible.size}</strong> entreprise(s) avec email exploitable · <strong>{selected.length}</strong> cochée(s) (50 max.)</p>
+      <div className={s.actions}>
+        <button disabled={busy} onClick={() => setSelection(new Set(visible.filter(p => eligible.has(p.id)).slice(0, MAX_RECIPIENTS).map(p => p.id)))}>Cocher les entreprises avec email</button>
+        <button disabled={busy || !selection.size} onClick={() => setSelection(new Set())}>Décocher</button>
+        <button className={s.primary} disabled={busy || !selected.length || selected.length > MAX_RECIPIENTS} onClick={() => void run(openComposer)}>Envoyer un email</button>
+      </div>
+      {composer !== "closed" && <section className={s.panel} aria-label="Email" hidden={composer === "hidden"}>
+        <h2>Email</h2>
+        <label>Objet<input required maxLength={200} value={subject} onChange={event => setSubject(event.target.value.replace(/[\r\n]/g, " "))} /></label>
+        <label>Message<textarea required maxLength={10000} rows={14} value={body} onChange={event => setBody(event.target.value)} /></label>
+        <p className={s.muted}>Un lien de désinscription est ajouté automatiquement à la fin de chaque email. Chaque entreprise reçoit son propre email.</p>
+        <details><summary>Destinataires ({selected.length})</summary><ul>{selected.map(p => <li key={p.id}>{p.name} — {prospectEmailSummary(p).email}</li>)}</ul></details>
+        <ProspectBulkEmail ids={selected.map(p => p.id)} emailCount={selected.length} disabled={busy || !subject.trim() || !body.trim() || selected.length > MAX_RECIPIENTS} message={{ subject, body }} />
+        <div><button onClick={() => setComposer("hidden")}>Masquer l’éditeur</button></div>
+      </section>}
+      <label>Filtrer la liste<input placeholder="Entreprise, ville, email…" value={query} onChange={event => setQuery(event.target.value)} /></label>
+      <div className={s.table}><table><thead><tr><th><span className={s.srOnly}>Sélection</span></th><th>Entreprise</th><th>Ville</th><th>Email</th></tr></thead><tbody>
+        {visible.map(p => <tr key={p.id} data-prospect-id={p.id}>
+          <td><input type="checkbox" aria-label={`Sélectionner ${p.name}`} disabled={!eligible.has(p.id) || (!selection.has(p.id) && selected.length >= MAX_RECIPIENTS)} checked={selection.has(p.id) && eligible.has(p.id)} onChange={event => toggle(p.id, event.target.checked)} /></td>
+          <td><Link className={s.companyName} href={`/admin/prospection/${encodeURIComponent(p.id)}`}>{p.name}</Link></td>
+          <td>{p.city}</td>
+          <td>{emailCell(p)}</td>
+        </tr>)}
+      </tbody></table></div>
+      {loading ? <p role="status">Chargement des prospects…</p> : !visible.length && <p>Aucune entreprise à afficher.</p>}
+    </section>
   </div>;
 }

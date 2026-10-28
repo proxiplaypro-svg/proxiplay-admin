@@ -4,6 +4,7 @@ const { crawlWebsite, validEmail } = require("./prospect_crawler");
 const { prospectRecipient } = require("./prospect_recipient");
 
 const { parseSettings } = require("./prospect_settings");
+const { newUnsubscribeToken, tokenRef, unsubscribeLink, withUnsubscribeFooter, defaultUnsubscribeBase } = require("./prospect_unsubscribe");
 
 const fail = (code, message) => { throw new HttpsError(code, message); };
 const clean = (value, max) => typeof value === "string" && value.trim().length <= max ? value.trim() : "";
@@ -23,14 +24,15 @@ function createOvhEmailSender(getMailerTransport) {
     async send(message) {
       const { transport, from, replyTo } = getMailerTransport({ connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 30000, requireTLS: true });
       const info = await transport.sendMail({ from, replyTo, to: message.to, subject: message.subject, text: message.body,
-        messageId: `<prospect-${message.id}@proxiplay.fr>` });
+        messageId: `<prospect-${message.id}@proxiplay.fr>`,
+        ...(message.unsubscribe_url ? { headers: { "List-Unsubscribe": `<${message.unsubscribe_url}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}) });
       if (!info.accepted?.some((address) => String(address).toLowerCase() === message.to)) fail("internal", "Envoi refusé.");
       return { provider_message_id: info.messageId || null };
     },
   };
 }
 
-function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWebsite, generator = factualProposalGenerator }) {
+function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWebsite, generator = factualProposalGenerator, unsubscribeBase = defaultUnsubscribeBase }) {
   const refFor = (id) => { if (typeof id !== "string" || !/^[\w-]{1,200}$/.test(id)) fail("invalid-argument", "Identifiant invalide."); return db.collection("prospects").doc(id); };
   const current = async (tx, ref) => {
     const data = (await tx.get(ref)).data();
@@ -78,10 +80,15 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
         if (data.email_sending_id) fail("failed-precondition", "Un envoi est déjà en cours ou à vérifier.");
         if (data.proposal?.id !== input.draftId || data.proposal?.revision !== input.revision) fail("failed-precondition", "La proposition a changé. Rechargez-la.");
         if (batch && prospectRecipient(data) !== data.proposal.to.toLowerCase()) fail("failed-precondition", "L’adresse email retenue a changé.");
-        const message = validateMessage(data.proposal);
+        const draft = validateMessage(data.proposal);
+        // Every prospect email carries a working unsubscribe link; the log keeps the exact body sent.
+        const token = data.unsubscribe_token || newUnsubscribeToken();
+        if (!data.unsubscribe_token) tx.create(tokenRef(db, token), { prospect_id: input.id, created_at: now() });
+        const unsubscribe_url = unsubscribeLink(unsubscribeBase(), token);
+        const message = { ...draft, body: withUnsubscribeFooter(draft.body, unsubscribe_url) };
         tx.set(logRef, { ...(batch ? { batch_id: batch.id } : {}), ...message, status: "sending", created_at: now(), sent_at: null, provider_message_id: null, error_code: null, actor });
-        update(tx, ref, data, { email_sending_id: input.draftId, proposal: { ...data.proposal, status: "sending" } });
-        return { message: { ...message, id: input.draftId } };
+        update(tx, ref, data, { email_sending_id: input.draftId, proposal: { ...data.proposal, status: "sending" }, unsubscribe_token: token });
+        return { message: { ...message, unsubscribe_url, id: input.draftId } };
       });
       if (reservation.duplicate) return reservation;
       let delivered;
