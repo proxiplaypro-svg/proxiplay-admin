@@ -27,14 +27,14 @@ export function resolveMainPrizeFields(game: {
   conditions?: unknown;
 }) {
   const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
-  const hasDedicatedFields = Object.prototype.hasOwnProperty.call(game, "main_prize_title") ||
-    Object.prototype.hasOwnProperty.call(game, "main_prize_description");
-  return hasDedicatedFields
-    ? { mainPrizeTitle: text(game.main_prize_title), mainPrizeDescription: text(game.main_prize_description) }
-    : {
-        mainPrizeTitle: text(game.title) || text(game.name),
-        mainPrizeDescription: text(game.description) || text(game.conditions),
-      };
+  // Empty dedicated fields occur on legacy drafts. They must not mask the
+  // title and description that historically carried the main-prize text.
+  // A non-empty dedicated value always remains the authoritative value.
+  return {
+    mainPrizeTitle: text(game.main_prize_title) || text(game.title) || text(game.name),
+    mainPrizeDescription:
+      text(game.main_prize_description) || text(game.description) || text(game.conditions),
+  };
 }
 
 export function buildMainPrizeWriteFields<T extends Record<string, unknown>>(

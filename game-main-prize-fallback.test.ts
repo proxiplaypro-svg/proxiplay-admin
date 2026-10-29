@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 import { mapGameDocument } from "./lib/firebase/gamesQueries";
-import { validateGamePrizes } from "./lib/firebase/gamePrizeValidation";
+import { resolveMainPrizeFields, validateGamePrizes } from "./lib/firebase/gamePrizeValidation";
 
 // Historical mobile-created games may lack both dedicated prize fields.
 // Relaunching them must still use the legacy name/description; explicit
@@ -162,7 +162,7 @@ test("les autres parcours utilisent la meme resolution des champs", () => {
   assert.match(fixedSource, /main_prize_description: resolveMainPrizeFields\(source\)\.mainPrizeDescription/);
 });
 
-test("duplication conserve les champs dédiés vides ou nuls sans repli", () => {
+test("les champs dédiés vides ou nuls retombent sur les informations générales", () => {
   for (const fields of [
     { main_prize_title: "", main_prize_description: "Un lot" },
     { main_prize_title: "Un lot", main_prize_description: "" },
@@ -173,7 +173,62 @@ test("duplication conserve les champs dédiés vides ou nuls sans repli", () => 
       name: "Jeu", description: "Description générale", hasMainPrize: true,
       prize_value: 25, ...fields,
     }), "games", merchants);
-    assert.equal(original.mainPrizeTitle, fields.main_prize_title ?? "");
-    assert.equal(original.mainPrizeDescription, fields.main_prize_description ?? "");
+    assert.equal(original.mainPrizeTitle, fields.main_prize_title?.trim() || "Jeu");
+    assert.equal(original.mainPrizeDescription, fields.main_prize_description?.trim() || "Description générale");
   }
+});
+
+test("Crepe Touch : duplication et reouverture d'un brouillon aux champs dedies vides", () => {
+  const source = {
+    title: "un menu Midi semaine",
+    description: "Un menu midi semaine chez Crepe Touch Dunkerque",
+    hasMainPrize: true,
+    prize_value: 15.95,
+    main_prize_title: "   ",
+    main_prize_description: "",
+    secondary_prizes: [{ name: "une crepe sucree offerte", count: 10 }],
+    hasWinner: true,
+    sessionCount: 42,
+  };
+
+  // Same reader used when the duplicate is returned and when an old draft is
+  // opened again from the games list.
+  const reopenedDraft = mapGameDocument(fakeSnapshot("crepe-touch-draft", source), "games", merchants);
+  assert.equal(reopenedDraft.mainPrizeTitle, "un menu Midi semaine");
+  assert.equal(reopenedDraft.mainPrizeDescription, "Un menu midi semaine chez Crepe Touch Dunkerque");
+  assert.equal(reopenedDraft.mainPrizeValue, "15.95");
+  assert.equal(reopenedDraft.secondaryPrizes.length, 1);
+
+  const validationError = validateGamePrizes({
+    hasMainPrize: reopenedDraft.hasMainPrize,
+    mainPrizeDescription: reopenedDraft.mainPrizeTitle || reopenedDraft.mainPrizeDescription,
+    secondaryPrizes: reopenedDraft.secondaryPrizes,
+  });
+  assert.equal(validationError, null, "le brouillon recupere doit etre enregistrable");
+
+  // Reading the old draft must not mutate its source, winners or counters.
+  assert.equal(source.main_prize_title, "   ");
+  assert.equal(source.main_prize_description, "");
+  assert.equal(source.hasWinner, true);
+  assert.equal(source.sessionCount, 42);
+
+  const fixedSource = readFileSync("lib/firebase/gamesQueriesFixed.ts", "utf8");
+  assert.match(fixedSource, /main_prize_title: resolveMainPrizeFields\(source\)\.mainPrizeTitle/);
+  assert.match(fixedSource, /main_prize_description: resolveMainPrizeFields\(source\)\.mainPrizeDescription/);
+  assert.match(fixedSource, /main_prize_title: input\.mainPrizeTitle\.trim\(\)/);
+  assert.match(fixedSource, /main_prize_description: input\.mainPrizeDescription\.trim\(\)/);
+});
+
+test("un tirage final sans texte de lot ni informations generales reste refuse", () => {
+  const fields = resolveMainPrizeFields({
+    main_prize_title: " ",
+    main_prize_description: " ",
+  });
+  assert.equal(fields.mainPrizeTitle, "");
+  assert.equal(fields.mainPrizeDescription, "");
+  assert.equal(validateGamePrizes({
+    hasMainPrize: true,
+    mainPrizeDescription: fields.mainPrizeTitle || fields.mainPrizeDescription,
+    secondaryPrizes: [{ name: "une crepe sucree offerte", count: 10 }],
+  }), "Le lot principal est obligatoire lorsque le tirage final est active.");
 });
