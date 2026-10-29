@@ -65,3 +65,16 @@ export function mapReliableDashboard(
       })),
   };
 }
+
+export type ChartUnit = { one: string; many: string };
+
+/** "YYYY-MM-DD" is a Paris calendar day: formatted at noon UTC, never shifted. */
+export function formatChartDay(day: string) {
+  const text = new Date(`${day}T12:00:00Z`).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** French thousands separator; singular for 0 and 1, as in French. */
+export function formatChartValue(value: number, unit: ChartUnit) {
+  return `${value.toLocaleString("fr-FR")} ${value >= 2 ? unit.many : unit.one}`;
+}

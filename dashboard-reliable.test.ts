@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mapReliableDashboard } from "./lib/admin/reliableDashboard";
+import { formatChartDay, formatChartValue, mapReliableDashboard } from "./lib/admin/reliableDashboard";
 
 const current = {
   schema_version: 2, source_complete: true, reference_date: "2026-10-28",
@@ -41,4 +41,16 @@ test("daily series: Paris day ids only, chronological, at most 30 days", () => {
   assert.equal(value.daily.at(-1)!.day, "2026-10-28");
   assert.equal(value.daily.at(-1)!.participations, 34);
   assert.equal(value.daily.at(-1)!.uniquePlayers, null);
+});
+
+test("chart tooltip: full French date of the Paris day, exact value in French format", () => {
+  assert.equal(formatChartDay("2026-10-28"), "Mercredi 28 octobre 2026");
+  // A day id is never shifted by the time zone or a daylight-saving change.
+  assert.equal(formatChartDay("2026-10-25"), "Dimanche 25 octobre 2026");
+  assert.equal(formatChartDay("2026-01-01"), "Jeudi 1 janvier 2026");
+  const players = { one: "joueur unique", many: "joueurs uniques" };
+  assert.equal(formatChartValue(222, players), "222 joueurs uniques");
+  assert.equal(formatChartValue(1234, { one: "partie jouée", many: "parties jouées" }), "1 234 parties jouées");
+  assert.equal(formatChartValue(1, players), "1 joueur unique");
+  assert.equal(formatChartValue(0, players), "0 joueur unique");
 });
