@@ -63,3 +63,12 @@ test("a source over the read budget is reported incomplete, never as a partial n
   assert.equal(db.writes["dashboard_stats/current"].source_complete, false);
   assert.equal(db.writes["dashboard_stats/current"].registered_players, null);
 });
+
+test("participations have their own, larger read budget", async () => {
+  const now = Date.parse("2026-10-29T08:00:00Z");
+  const participants = Array.from({ length: 5 }, (_, i) => [`p${i}`, { user_id: "u1", participation_date: timestamp("2026-10-28T10:00:00Z") }]);
+  const db = fakeDb({ users: [["u1", { user_role: "joueur" }]], participants, games: [] });
+  const result = await consolidateFromFirestore({ db, now, maximum: 2, participantsMaximum: 10, pageSize: 2 });
+  assert.equal(result.complete, true, "5 participations fit the participations budget even above `maximum`");
+  assert.equal(db.writes["dashboard_stats/current"].participations_yesterday, 5);
+});

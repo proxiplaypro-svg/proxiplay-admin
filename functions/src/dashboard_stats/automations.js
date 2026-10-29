@@ -21,7 +21,7 @@ function createDashboardAutomations({ db, logger }) {
   const onDashboardGameWritten = onDocumentWritten("games/{gameId}", async () => {
     await db.doc("dashboard_stats/control").set({ games_dirty: true, games_dirty_at: new Date() }, { merge: true });
   });
-  const dashboardStatsConsolidation = onSchedule({ schedule: "0 3 * * *", timeZone: "Europe/Paris", region: "europe-west1" }, async () => {
+  const dashboardStatsConsolidation = onSchedule({ schedule: "0 3 * * *", timeZone: "Europe/Paris", region: "europe-west1", timeoutSeconds: 300, memory: "512MiB" }, async () => {
     try {
       const result = await consolidateFromFirestore({ db });
       await db.doc("dashboard_stats/current").set({ computed_at: new Date(), temporal_complete: result.complete }, { merge: true });

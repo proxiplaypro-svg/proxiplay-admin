@@ -22,12 +22,14 @@ async function readPaginated(query, maximum, pageSize = 500) {
 }
 
 // Deliberately simple, bounded server consolidation for current ProxiPlay volume.
-async function consolidateFromFirestore({ db, now = Date.now(), maximum = 10000, pageSize = 500 }) {
+// Participations get their own budget: about 22,000 over 30 days on 29/10/2026.
+// Beyond a budget the source is reported incomplete (null), never partially counted.
+async function consolidateFromFirestore({ db, now = Date.now(), maximum = 10000, participantsMaximum = 60000, pageSize = 500 }) {
   const reference = dailyReference(now);
   const cutoff = new Date(`${reference.start_date}T00:00:00Z`);
   const [users, participants, games] = await Promise.all([
     readPaginated(db.collection("users").orderBy("__name__"), maximum, pageSize),
-    readPaginated(db.collectionGroup("participants").where("participation_date", ">=", cutoff).orderBy("participation_date"), maximum, pageSize),
+    readPaginated(db.collectionGroup("participants").where("participation_date", ">=", cutoff).orderBy("participation_date"), participantsMaximum, pageSize),
     readPaginated(db.collection("games").orderBy("__name__"), maximum, pageSize),
   ]);
   const userById = new Map(users.docs.map((item) => [item.id, item.data()]));
