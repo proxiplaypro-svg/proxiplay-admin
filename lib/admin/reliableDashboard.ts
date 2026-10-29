@@ -3,6 +3,7 @@
 
 export type ReliableDashboardMetricKey =
   | "registeredPlayers"
+  | "newAccountsYesterday"
   | "playersYesterday"
   | "participationsYesterday"
   | "merchantsWithActiveGame"
@@ -49,6 +50,7 @@ export function mapReliableDashboard(
     referenceDate: typeof current?.reference_date === "string" ? current.reference_date : null,
     metrics: {
       registeredPlayers: count(current?.registered_players),
+      newAccountsYesterday: current?.new_accounts_complete === true ? count(current?.new_accounts_yesterday) : null,
       playersYesterday: count(current?.players_yesterday),
       participationsYesterday: count(current?.participations_yesterday),
       merchantsWithActiveGame: count(current?.merchants_with_active_game),

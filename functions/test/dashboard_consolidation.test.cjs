@@ -72,3 +72,26 @@ test("participations have their own, larger read budget", async () => {
   assert.equal(result.complete, true, "5 participations fit the participations budget even above `maximum`");
   assert.equal(db.writes["dashboard_stats/current"].participations_yesterday, 5);
 });
+
+test("Auth new accounts are reconciled independently from the five Firestore indicators", async () => {
+  const now = Date.parse("2026-10-29T08:00:00Z");
+  const db = fakeDb({ users: [], participants: [], games: [] });
+  const auth = { async listUsers() { return { users: [
+    { metadata: { creationTime: "2026-10-28T10:00:00Z" } },
+    { metadata: { creationTime: "2026-10-27T10:00:00Z" } },
+  ] }; } };
+  await consolidateFromFirestore({ db, auth, now });
+  assert.equal(db.writes["dashboard_stats/current"].new_accounts_yesterday, 1);
+  assert.equal(db.writes["dashboard_stats/current"].new_accounts_complete, true);
+  assert.equal(db.writes["analytics_daily/2026-10-28"].new_accounts_count, 1);
+  assert.equal(db.writes["analytics_daily/2026-10-27"].new_accounts_count, 1);
+});
+
+test("an incomplete Auth listing publishes unavailable without overwriting daily counts", async () => {
+  const db = fakeDb({ users: [], participants: [], games: [] });
+  const auth = { async listUsers() { return { users: [{ metadata: { creationTime: "2026-10-28T10:00:00Z" } }], pageToken: "more" }; } };
+  await consolidateFromFirestore({ db, auth, now: Date.parse("2026-10-29T08:00:00Z"), authMaximumUsers: 1 });
+  assert.equal(db.writes["dashboard_stats/current"].new_accounts_yesterday, null);
+  assert.equal(db.writes["dashboard_stats/current"].new_accounts_complete, false);
+  assert.equal(Object.hasOwn(db.writes["analytics_daily/2026-10-28"], "new_accounts_count"), false);
+});

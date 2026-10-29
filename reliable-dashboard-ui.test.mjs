@@ -14,7 +14,7 @@ const daily = Array.from({ length: 30 }, (_, i) => ({
   day: new Date(Date.UTC(2026, 8, 29 + i)).toISOString().slice(0, 10),
   participations: i === 29 ? 1234 : 600 + i, uniquePlayers: i === 0 ? 1 : 150 + i,
 }));
-const data = { ready: true, referenceDate: "2026-10-28", metrics: { registeredPlayers: 1694, playersYesterday: 222, participationsYesterday: 862, merchantsWithActiveGame: 12, activeGames: 12 }, daily };
+const data = { ready: true, referenceDate: "2026-10-28", metrics: { registeredPlayers: 1694, newAccountsYesterday: 8, playersYesterday: 222, participationsYesterday: 862, merchantsWithActiveGame: 12, activeGames: 12 }, daily };
 const NNBSP = "\u202f";
 
 async function serve() {
@@ -59,6 +59,8 @@ async function assertInsideChart(page, tip, width) {
 test("desktop: hover, click, keyboard; one tooltip, full date and exact French value", async () => {
   await withPage(async (page, base) => {
     await page.setViewport({ width: 1280, height: 1000 }); await page.goto(base); await page.waitForSelector("[data-chart-bars]");
+    const cards = await page.$$eval("article", items => items.map(item => item.textContent));
+    assert.equal(cards.length, 6); assert.ok(cards[1].includes("Nouveaux comptes hier")); assert.ok(cards[1].includes("Le 28/10/2026")); assert.ok(cards[1].includes("8"));
 
     // Accessible labels on every bar, one tab stop per chart, colours unchanged.
     const buttons = await page.$$eval("[data-chart-bars] > button", items => items.map(item => ({ label: item.getAttribute("aria-label"), tab: item.tabIndex })));

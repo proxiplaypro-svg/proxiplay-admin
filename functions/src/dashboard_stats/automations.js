@@ -4,7 +4,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { isEligibleRegisteredPlayer } = require("./gameContract");
 const { consolidateFromFirestore } = require("./consolidation");
 
-function createDashboardAutomations({ db, logger }) {
+function createDashboardAutomations({ db, logger, auth }) {
   const onDashboardUserWritten = onDocumentWritten("users/{userId}", async (event) => {
     const before = event.data?.before?.exists ? event.data.before.data() : null;
     const after = event.data?.after?.exists ? event.data.after.data() : null;
@@ -23,7 +23,7 @@ function createDashboardAutomations({ db, logger }) {
   });
   const dashboardStatsConsolidation = onSchedule({ schedule: "0 3 * * *", timeZone: "Europe/Paris", region: "europe-west1", timeoutSeconds: 300, memory: "512MiB" }, async () => {
     try {
-      const result = await consolidateFromFirestore({ db });
+      const result = await consolidateFromFirestore({ db, auth });
       await db.doc("dashboard_stats/current").set({ computed_at: new Date(), temporal_complete: result.complete }, { merge: true });
     } catch (error) { logger.error("Dashboard consolidation failed", { error: error instanceof Error ? error.message : String(error) }); throw error; }
   });

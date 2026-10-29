@@ -4,15 +4,21 @@ import { formatChartDay, formatChartValue, mapReliableDashboard } from "./lib/ad
 
 const current = {
   schema_version: 2, source_complete: true, reference_date: "2026-10-28",
+  new_accounts_yesterday: 8, new_accounts_complete: true,
   registered_players: 1200, players_yesterday: 140, participations_yesterday: 610,
   merchants_with_active_game: 9, active_games: 11,
 };
 
-test("a complete schema 2 consolidation is ready, with its five indicators", () => {
+test("a complete schema 2 consolidation is ready, with its six indicators", () => {
   const value = mapReliableDashboard(current, []);
   assert.equal(value.ready, true);
   assert.equal(value.referenceDate, "2026-10-28");
-  assert.deepEqual(value.metrics, { registeredPlayers: 1200, playersYesterday: 140, participationsYesterday: 610, merchantsWithActiveGame: 9, activeGames: 11 });
+  assert.deepEqual(value.metrics, { registeredPlayers: 1200, newAccountsYesterday: 8, playersYesterday: 140, participationsYesterday: 610, merchantsWithActiveGame: 9, activeGames: 11 });
+});
+
+test("new accounts distinguish a verified zero from an unavailable Auth scan", () => {
+  assert.equal(mapReliableDashboard({ ...current, new_accounts_yesterday: 0, new_accounts_complete: true }, []).metrics.newAccountsYesterday, 0);
+  assert.equal(mapReliableDashboard({ ...current, new_accounts_yesterday: 8, new_accounts_complete: false }, []).metrics.newAccountsYesterday, null);
 });
 
 test("missing, failed or old consolidations are never ready", () => {

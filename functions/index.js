@@ -485,7 +485,7 @@ exports.onInstantWinnerCreated = onDocumentCreated(
   },
 );
 
-const dashboardAutomations = createDashboardAutomations({ db, logger });
+const dashboardAutomations = createDashboardAutomations({ db, logger, auth: admin.auth() });
 exports.dashboardStatsConsolidation = dashboardAutomations.dashboardStatsConsolidation;
 
 const {
