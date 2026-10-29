@@ -162,8 +162,9 @@ export function Sidebar({ user, onNavigate, onClose }: SidebarProps) {
     onNavigate?.();
   };
 
+  // Fills its container: the 220px desktop column, or the 280px mobile drawer (globals.css).
   return (
-    <aside className="flex h-full min-h-0 w-[280px] max-w-[86vw] shrink-0 flex-col bg-[#FFFFFF]" aria-label="Menu principal">
+    <aside className="flex h-full min-h-0 w-full shrink-0 flex-col bg-[#FFFFFF]" aria-label="Menu principal">
       <div className="border-b border-[#E8E8E4] px-6 py-5">
         <div className="flex items-center gap-3">
           <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[#639922] text-[15px] text-white">●</div>
