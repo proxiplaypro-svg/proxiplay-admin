@@ -116,7 +116,7 @@ type RawSnapshots = {
   analytics: Array<QueryDocumentSnapshot<DocumentData>>;
   notificationsPrimary: Array<QueryDocumentSnapshot<DocumentData>>;
   notificationsFallback: Array<QueryDocumentSnapshot<DocumentData>>;
-  gameSessions: Array<QueryDocumentSnapshot<DocumentData>>;
+  registeredPlayersCount: number | null;
 };
 
 export type SidebarBadgeCounts = {
@@ -126,39 +126,11 @@ export type SidebarBadgeCounts = {
 
 const MILLIS_IN_DAY = 24 * 60 * 60 * 1000;
 
-// TODO: creer collection analytics_daily avec champs { date: Timestamp, dau: number, mau: number }.
-const MOCK_DAU_MAU_PERCENT = 34;
-
-// TODO: creer collection push_notifications avec champs { title: string, sentAt: Timestamp, recipients: number, openRate: number, segment: string }.
-const MOCK_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: "mock-weekend-friterie",
-    title: "Weekend Friterie - jeu special",
-    sentAtLabel: "Hier 18h - 596 destinataires",
-    recipientsLabel: "596 destinataires",
-    openRate: 68,
-    progressTone: "green",
-    segment: "Joueurs actifs",
-  },
-  {
-    id: "mock-kursaal",
-    title: "Nouveau jeu Kursaal - profitez-en !",
-    sentAtLabel: "Mardi - 590 destinataires",
-    recipientsLabel: "590 destinataires",
-    openRate: 52,
-    progressTone: "amber",
-    segment: "iOS inactifs J7",
-  },
-  {
-    id: "mock-gains",
-    title: "Rappel - gains non reclames",
-    sentAtLabel: "Lundi - 48 joueurs cibles",
-    recipientsLabel: "48 joueurs cibles",
-    openRate: 41,
-    progressTone: "amber",
-    segment: "Ambassadeurs",
-  },
-];
+// Most recent participations loaded for the 7/30-day indicators.
+const PARTICIPANTS_LIMIT = 5000;
+// Accounts loaded for the cohort indicators (export, iOS, J7): a sample beyond this.
+const USERS_SAMPLE_LIMIT = 1000;
+const NOT_MEASURED = "Non mesuré";
 
 function formatCount(value: number) {
   return new Intl.NumberFormat("fr-FR").format(value);
@@ -523,6 +495,18 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
 
   const mau = usersWithParticipation30d.size;
   const wau = usersWithParticipation7d.size;
+  // Only the PARTICIPANTS_LIMIT most recent participations are loaded. When the
+  // limit is reached, the oldest days are missing: the counts are minimums.
+  const participantsTruncated = raw.participants.length >= PARTICIPANTS_LIMIT;
+  const oldestLoaded =
+    (raw.participants[raw.participants.length - 1]?.data() as FirestoreParticipantDocument | undefined)
+      ?.participation_date?.toDate() ?? null;
+  const wauTruncated =
+    participantsTruncated && (!oldestLoaded || oldestLoaded.getTime() > Date.now() - 7 * MILLIS_IN_DAY);
+  const usersSampled = raw.users.length >= USERS_SAMPLE_LIMIT;
+  const registeredPlayers = raw.registeredPlayersCount ?? users.length;
+  const atLeast = (value: number, truncated: boolean) => `${formatCount(value)}${truncated ? "+" : ""}`;
+  const truncatedHelper = `Au moins : calcul limité aux ${formatCount(PARTICIPANTS_LIMIT)} dernières parties`;
   const activePlayers = users.filter((user) => usersWithParticipation30d.has(user.id));
   const activePlayersExport: ActivePlayerExportRow[] = activePlayers.map((user) => ({
     id: user.id,
@@ -574,7 +558,7 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
     ? (recentIosUsers.filter((user) => getUserSessionCount(user.data) > 1).length /
         recentIosUsers.length) *
       100
-    : 18;
+    : null;
 
   const analyticsDocs = raw.analytics.map((doc) => doc.data() as FirestoreAnalyticsDailyDocument);
   const latestAnalytics = [...analyticsDocs].sort((left, right) => {
@@ -585,7 +569,7 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
 
   const dau = latestAnalytics ? readNumber(latestAnalytics, ["dau", "active_users"]) : 0;
   const analyticsMau = latestAnalytics ? readNumber(latestAnalytics, ["mau", "monthly_active_users"]) : 0;
-  const dauMau = dau > 0 && analyticsMau > 0 ? (dau / analyticsMau) * 100 : MOCK_DAU_MAU_PERCENT;
+  const dauMau = dau > 0 && analyticsMau > 0 ? (dau / analyticsMau) * 100 : null;
   const newUsersThisWeek = users.filter((user) => {
     const createdAt = readDate(user.data, ["created_time", "created_at"]);
     return Boolean(createdAt && createdAt.getTime() >= Date.now() - 7 * MILLIS_IN_DAY);
@@ -622,7 +606,7 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
   const partiesToday = [...participationsToday.values()].reduce((a, b) => a + b, 0);
   const joueurActifsAujourdhui = participationsToday.size;
   const joueursTroisParties = [...participationsToday.values()].filter((n) => n >= 3).length;
-  const joueursSansPartie = Math.max(0, activePlayers.length - joueurActifsAujourdhui);
+  const joueursSansPartie = Math.max(0, mau - joueurActifsAujourdhui);
   const moyennePartiesParJoueur =
     joueurActifsAujourdhui > 0 ? Math.round((partiesToday / joueurActifsAujourdhui) * 10) / 10 : 0;
 
@@ -653,23 +637,31 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
     }
   });
 
-  const retention7d = retentionCohort.length > 0 ? (retainedUserIds.size / retentionCohort.length) * 100 : 24;
+  const retention7d = retentionCohort.length > 0 ? (retainedUserIds.size / retentionCohort.length) * 100 : null;
 
   const kpis: DashboardKpi[] = [
     {
       id: "mauReel",
       label: "Joueurs actifs — 30 jours",
-      value: formatCount(mau),
-      helper: `${Math.round((mau / Math.max(1, users.length)) * 100)}% des inscrits`,
+      value: atLeast(mau, participantsTruncated),
+      helper: participantsTruncated
+        ? truncatedHelper
+        : `${Math.round((mau / Math.max(1, registeredPlayers)) * 100)}% des inscrits`,
       tone: "success",
       accentBorder: true,
     },
     {
       id: "wauReel",
       label: "Joueurs actifs — 7 jours",
-      value: formatCount(wau),
-      helper: `${Math.round((wau / Math.max(1, mau)) * 100)}% des actifs 30j`,
-      tone: wau / Math.max(1, mau) >= 0.5 ? "success" : wau / Math.max(1, mau) >= 0.3 ? "warning" : "danger",
+      value: atLeast(wau, wauTruncated),
+      helper: wauTruncated
+        ? truncatedHelper
+        : participantsTruncated
+          ? "Exact sur 7 jours ; total 30 jours tronqué"
+          : `${Math.round((wau / Math.max(1, mau)) * 100)}% des actifs 30j`,
+      tone: participantsTruncated
+        ? "neutral"
+        : wau / Math.max(1, mau) >= 0.5 ? "success" : wau / Math.max(1, mau) >= 0.3 ? "warning" : "danger",
       accentBorder: false,
     },
     {
@@ -696,24 +688,27 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
     },
     {
       id: "iosRetention",
-      label: "Retention J1 iOS",
-      value: formatPercent(iosRetention),
-      helper: iosRetention < 25 ? "Critique - objectif 40%" : "Dans la cible",
-      tone: iosRetention < 25 ? "danger" : "success",
+      label: "Nouveaux joueurs iOS revenus",
+      value: iosRetention === null ? NOT_MEASURED : formatPercent(iosRetention),
+      helper:
+        iosRetention === null
+          ? "Plateforme non enregistrée sur les comptes"
+          : `${usersSampled ? "Échantillon de comptes · " : ""}${iosRetention < 25 ? "Sous l'objectif de 40%" : "Dans la cible"}`,
+      tone: iosRetention === null ? "neutral" : iosRetention < 25 ? "danger" : "success",
       accentBorder: true,
     },
     {
       id: "dauMau",
       label: "DAU / MAU",
-      value: formatPercent(dauMau),
-      helper: analyticsDocs.length > 0 ? "Engagement mesure" : "Engagement fort",
-      tone: dauMau >= 30 ? "success" : "warning",
+      value: dauMau === null ? NOT_MEASURED : formatPercent(dauMau),
+      helper: dauMau === null ? "Aucune mesure DAU/MAU enregistrée" : "Engagement mesuré",
+      tone: dauMau === null ? "neutral" : dauMau >= 30 ? "success" : "warning",
     },
     {
       id: "totalPlayers",
       label: "Joueurs inscrits",
-      value: formatCount(users.length),
-      helper: `+${formatCount(newUsersThisWeek)} cette semaine`,
+      value: formatCount(registeredPlayers),
+      helper: `+${formatCount(newUsersThisWeek)} cette semaine${usersSampled ? " (échantillon)" : ""}`,
       tone: "success",
       accentBorder: false,
     },
@@ -728,17 +723,20 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
     {
       id: "retention7d",
       label: "Retention J7",
-      value: formatPercent(retention7d),
-      helper: retention7d < 35 ? "⚠ Objectif 35%" : "Dans la cible",
-      tone: retention7d >= 35 ? "success" : retention7d >= 20 ? "warning" : "danger",
+      value: retention7d === null ? NOT_MEASURED : formatPercent(retention7d),
+      helper:
+        retention7d === null
+          ? "Aucun inscrit dans la cohorte J-14 à J-7"
+          : `${usersSampled ? "Échantillon de comptes · " : ""}${retention7d < 35 ? "⚠ Objectif 35%" : "Dans la cible"}`,
+      tone: retention7d === null ? "neutral" : retention7d >= 35 ? "success" : retention7d >= 20 ? "warning" : "danger",
       accentBorder: true,
     },
     {
       id: "creditsRatio",
       label: "Crédits utilisés vs gagnés",
-      value: "68%",
-      helper: "Des crédits gagnés rejoués (mock)",
-      tone: "warning",
+      value: NOT_MEASURED,
+      helper: "Indicateur non branché",
+      tone: "neutral",
       accentBorder: false,
     },
     {
@@ -752,12 +750,14 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
     {
       id: "joueursSansPartie",
       label: "Joueurs sans partie aujourd'hui",
-      value: formatCount(joueursSansPartie),
-      helper: `Sur ${formatCount(activePlayers.length)} joueurs actifs`,
+      value: atLeast(joueursSansPartie, participantsTruncated),
+      helper: `Sur ${atLeast(mau, participantsTruncated)} joueurs actifs`,
       tone:
-        joueursSansPartie > activePlayers.length * 0.5
+        participantsTruncated
+          ? "neutral"
+          : joueursSansPartie > mau * 0.5
           ? "danger"
-          : joueursSansPartie > activePlayers.length * 0.3
+          : joueursSansPartie > mau * 0.3
             ? "warning"
             : "success",
       accentBorder: false,
@@ -818,7 +818,7 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
     }
   });
 
-  if (iosRetention < 25) {
+  if (iosRetention !== null && iosRetention < 25) {
     bannerAlerts.unshift({
       id: "ios-retention",
       severity: "warning",
@@ -969,7 +969,7 @@ function buildDashboardData(raw: RawSnapshots): DashboardData {
           })
           .sort((left, right) => right.openRate - left.openRate)
           .slice(0, 3)
-      : MOCK_NOTIFICATIONS;
+      : [];
 
   return {
     kpis,
@@ -996,7 +996,7 @@ export async function subscribeDashboardData(
     analytics: [],
     notificationsPrimary: [],
     notificationsFallback: [],
-    gameSessions: [],
+    registeredPlayersCount: null,
   };
 
   const emit = () => {
@@ -1005,7 +1005,7 @@ export async function subscribeDashboardData(
 
   const thirtyDaysAgo = Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000);
   await Promise.all([
-    getDocs(query(collection(db, "users"), limit(1000)))
+    getDocs(query(collection(db, "users"), limit(USERS_SAMPLE_LIMIT)))
       .then((snapshot) => {
         raw.users = snapshot.docs;
       })
@@ -1018,8 +1018,8 @@ export async function subscribeDashboardData(
         collectionGroup(db, "participants"),
         orderBy("participation_date", "desc"),
         where("participation_date", ">=", thirtyDaysAgo),
-        // 5000 participations recentes suffisent pour les calculs MAU/WAU/today
-        limit(5000),
+        // Beyond PARTICIPANTS_LIMIT the 7/30-day counts are shown as minimums
+        limit(PARTICIPANTS_LIMIT),
       ),
     )
       .then((snapshot) => {
@@ -1029,6 +1029,13 @@ export async function subscribeDashboardData(
         raw.participants = [];
         onError?.(error);
       }),
+    getCountFromServer(query(collection(db, "users"), where("user_role", "==", "joueur")))
+      .then((snapshot) => {
+        raw.registeredPlayersCount = snapshot.data().count;
+      })
+      .catch(() => {
+        raw.registeredPlayersCount = null;
+      }),
     getCountFromServer(collectionGroup(db, "participants"))
       .then((snapshot) => {
         raw.totalParticipationsCount = snapshot.data().count;
@@ -1036,19 +1043,16 @@ export async function subscribeDashboardData(
       .catch(() => {
         raw.totalParticipationsCount = 0;
       }),
+    // enseignes is only the fallback of merchants: read it only when needed.
     getDocs(query(collection(db, "merchants")))
-      .then((snapshot) => {
-        raw.merchantsPrimary = snapshot.docs;
-      })
-      .catch(() => {
-        raw.merchantsPrimary = [];
-      }),
-    getDocs(query(collection(db, "enseignes")))
-      .then((snapshot) => {
-        raw.merchantsFallback = snapshot.docs;
-      })
-      .catch(() => {
-        raw.merchantsFallback = [];
+      .then((snapshot) => snapshot.docs)
+      .catch(() => [] as Array<QueryDocumentSnapshot<DocumentData>>)
+      .then(async (docs) => {
+        raw.merchantsPrimary = docs;
+        if (docs.length > 0) return;
+        raw.merchantsFallback = await getDocs(query(collection(db, "enseignes")))
+          .then((snapshot) => snapshot.docs)
+          .catch(() => []);
       }),
     getDocs(query(collection(db, "games"), orderBy("end_date", "desc"), limit(100)))
       .then((snapshot) => {
@@ -1077,13 +1081,6 @@ export async function subscribeDashboardData(
       })
       .catch(() => {
         raw.notificationsFallback = [];
-      }),
-    getDocs(query(collection(db, "game_sessions"), limit(500)))
-      .then((snapshot) => {
-        raw.gameSessions = snapshot.docs;
-      })
-      .catch(() => {
-        raw.gameSessions = [];
       }),
   ]);
 
