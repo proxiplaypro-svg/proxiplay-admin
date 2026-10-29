@@ -15,6 +15,23 @@ export type ReliableDashboardSnapshot = {
   daily: Array<{ day: string; participations: number | null; uniquePlayers: number | null }>;
 };
 
+/**
+ * Ids of the analytics_daily documents ("YYYY-MM-DD", Paris day) of the `days`
+ * days ending at `referenceDate`, oldest first. Reading them by id needs no
+ * Firestore index. Day ids are calendar dates: computed at noon UTC so that no
+ * daylight-saving change can skip or repeat a day.
+ */
+export function dailyDocumentIds(referenceDate: string | null, days = 30): string[] {
+  if (!referenceDate || !/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) return [];
+  const end = new Date(`${referenceDate}T12:00:00Z`);
+  if (Number.isNaN(end.getTime()) || end.toISOString().slice(0, 10) !== referenceDate) return [];
+  return Array.from({ length: days }, (_, index) => {
+    const day = new Date(end);
+    day.setUTCDate(end.getUTCDate() - (days - 1 - index));
+    return day.toISOString().slice(0, 10);
+  });
+}
+
 const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null);
 
 /**
