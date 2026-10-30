@@ -8,6 +8,8 @@ const ADMIN_STATS_FIELDS = {
   playersCount: "players_count",
   merchantsCount: "merchants_count",
   participationsCount: "participations_count",
+  lastRebuildAt: "last_rebuild_at",
+  lastRebuildParticipationsCount: "last_rebuild_participations_count",
   winnersCount: "winners_count",
   lastComputationAt: "last_computation_at",
   updatedBy: "updated_by",

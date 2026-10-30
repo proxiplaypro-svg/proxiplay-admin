@@ -41,6 +41,11 @@ async function writeAdminStatsRebuild(stats) {
       [ADMIN_STATS_FIELDS.playersCount]: stats.playersCount,
       [ADMIN_STATS_FIELDS.merchantsCount]: stats.merchantsCount,
       [ADMIN_STATS_FIELDS.participationsCount]: stats.participationsCount,
+      // Keep an explicit marker for a successful full rebuild. Incremental
+      // triggers also update last_computation_at, so that field alone cannot
+      // prove that the collection-group aggregation has completed recently.
+      [ADMIN_STATS_FIELDS.lastRebuildAt]: FieldValue.serverTimestamp(),
+      [ADMIN_STATS_FIELDS.lastRebuildParticipationsCount]: stats.participationsCount,
       [ADMIN_STATS_FIELDS.winnersCount]: stats.winnersCount,
       [ADMIN_STATS_FIELDS.lastComputationAt]: FieldValue.serverTimestamp(),
       [ADMIN_STATS_FIELDS.updatedBy]: "rebuild",

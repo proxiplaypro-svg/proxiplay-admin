@@ -19,6 +19,7 @@ const { resyncMerchantStats } = require("./src/merchant_stats");
 const { resolveOperationalMerchantEmail } = require("./src/merchant_email_policy");
 const { buildUserSearchIndex } = require("./src/user_search_index");
 const { createDashboardAutomations } = require("./src/dashboard_stats/automations");
+const { createPublicGamesPlayedPublisher } = require("./src/public_metrics/scheduledPublisher");
 
 setGlobalOptions({
   region: "europe-west1",
@@ -487,6 +488,7 @@ exports.onInstantWinnerCreated = onDocumentCreated(
 
 const dashboardAutomations = createDashboardAutomations({ db, logger });
 exports.dashboardStatsConsolidation = dashboardAutomations.dashboardStatsConsolidation;
+exports.publishPublicGamesPlayedWeekly = createPublicGamesPlayedPublisher({ db, logger });
 
 const {
   rebuildAdminStatsCallable,
