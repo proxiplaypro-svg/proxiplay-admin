@@ -75,6 +75,7 @@ const OVH_SMTP_PASS = defineSecret("OVH_SMTP_PASS");
 const OVH_SMTP_FROM = defineString("OVH_SMTP_FROM", { default: "" });
 const OVH_SMTP_FROM_NAME = defineString("OVH_SMTP_FROM_NAME", { default: "" });
 const OVH_SMTP_REPLY_TO = defineString("OVH_SMTP_REPLY_TO", { default: "" });
+const TURNSTILE_SECRET_KEY = defineSecret("TURNSTILE_SECRET_KEY");
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "proxiplay.pro@gmail.com")
   .split(",")
@@ -247,6 +248,44 @@ function getSafeSmtpErrorMessage(error) {
 
   return "Unable to send merchant email.";
 }
+
+function partnerLeadValue(value, limit, required = false) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if ((required && !text) || text.length > limit || /[\r\n]/.test(text)) return null;
+  return text;
+}
+
+exports.submitPartnerLead = onRequest({
+  invoker: "public", secrets: [OVH_SMTP_PASS, TURNSTILE_SECRET_KEY], maxInstances: 2, timeoutSeconds: 15,
+}, async (request, response) => {
+  response.set("Access-Control-Allow-Origin", "https://www.proxiplay.fr");
+  response.set("Vary", "Origin");
+  response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  response.set("Access-Control-Allow-Headers", "Content-Type");
+  if (request.method === "OPTIONS") return response.status(204).send();
+  if (request.method !== "POST" || !String(request.get("content-type") || "").startsWith("application/json")) return response.status(405).json({ error: "method_not_allowed" });
+  const raw = JSON.stringify(request.body || "");
+  if (Buffer.byteLength(raw, "utf8") > 8192) return response.status(413).json({ error: "payload_too_large" });
+  const body = request.body || {};
+  if (body.website) return response.status(200).json({ ok: true });
+  const business = partnerLeadValue(body.business, 120, true);
+  const name = partnerLeadValue(body.name, 120, true);
+  const email = partnerLeadValue(body.email, 254, true);
+  const phone = partnerLeadValue(body.phone, 40);
+  if (!business || !name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return response.status(400).json({ error: "invalid_fields" });
+  const token = partnerLeadValue(body.turnstileToken, 4096, true);
+  const verify = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ secret: TURNSTILE_SECRET_KEY.value(), response: token, remoteip: request.ip || "" }) });
+  const verification = await verify.json();
+  if (!verification.success) return response.status(400).json({ error: "verification_failed" });
+  try {
+    const { transport, from, replyTo } = getMailerTransport();
+    await transport.sendMail({ from, replyTo: email || replyTo, to: "contact@proxiplay.fr", subject: `[Partenariat] ${business}`, text: `Enseigne: ${business}\nContact: ${name}\nEmail: ${email}\nTéléphone: ${phone || "Non renseigné"}` });
+    return response.status(200).json({ ok: true });
+  } catch (error) {
+    logger.error("Partner lead delivery failed", { safeMessage: getSafeSmtpErrorMessage(error) });
+    return response.status(502).json({ error: "delivery_failed" });
+  }
+});
 
 exports.sendMerchantEmail = onCall(
   {
