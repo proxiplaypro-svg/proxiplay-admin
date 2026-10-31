@@ -22,6 +22,7 @@ const { createDashboardAutomations } = require("./src/dashboard_stats/automation
 const { createPublicGamesPlayedPublisher } = require("./src/public_metrics/scheduledPublisher");
 const { normalizeSmtpPassword } = require("./src/smtp_password");
 const { PARTNER_LEADS_COLLECTION, handlePartnerLead, verifyTurnstileToken } = require("./src/partner_lead");
+const { createPartnerLeadFailureMonitor } = require("./src/partner_lead_monitor");
 
 setGlobalOptions({
   region: "europe-west1",
@@ -523,6 +524,7 @@ exports.onInstantWinnerCreated = onDocumentCreated(
 const dashboardAutomations = createDashboardAutomations({ db, logger });
 exports.dashboardStatsConsolidation = dashboardAutomations.dashboardStatsConsolidation;
 exports.publishPublicGamesPlayedWeekly = createPublicGamesPlayedPublisher({ db, logger });
+exports.partnerLeadFailureMonitor = createPartnerLeadFailureMonitor({ db, logger });
 
 const {
   rebuildAdminStatsCallable,

@@ -82,7 +82,11 @@ test("panne SMTP : la demande est conservée, marquée en échec, réponse 200 d
   assert.deepEqual(result, { status: 200, body: { ok: true, delivery: "pending" } });
   assert.equal(calls.saved.length, 1);
   assert.deepEqual(calls.updates[0], { id: "lead-1", patch: { status: "email_failed", emailError: "SMTP authentication failed. Check OVH_SMTP_USER and OVH_SMTP_PASS." } });
-  assert.equal(calls.errors[0].data.leadId, "lead-1");
+  assert.deepEqual(calls.errors, [{
+    message: "Partner lead failure",
+    data: { reason: "email_failed", leadId: "lead-1", safeMessage: "SMTP authentication failed. Check OVH_SMTP_USER and OVH_SMTP_PASS." },
+  }]);
+  assert.ok(!JSON.stringify(calls.errors).includes(BODY.email), "aucune donnée personnelle dans le journal");
 });
 
 test("panne Firestore puis e-mail envoyé : 200, e-mail sans référence", async () => {
@@ -94,11 +98,15 @@ test("panne Firestore puis e-mail envoyé : 200, e-mail sans référence", async
 });
 
 test("panne Firestore ET SMTP : 502 delivery_failed", async () => {
-  const { deps } = fakeDeps({
+  const { deps, calls } = fakeDeps({
     saveLead: async () => { throw new Error("unavailable"); },
     sendMail: async () => { throw new Error("535 auth"); },
   });
   assert.deepEqual(await handlePartnerLead({ body: BODY, deps }), { status: 502, body: { error: "delivery_failed" } });
+  assert.deepEqual(calls.errors.map((entry) => [entry.message, entry.data.reason, entry.data.leadId]), [
+    ["Partner lead failure", "storage_failed", null],
+    ["Partner lead failure", "storage_and_email_failed", null],
+  ]);
 });
 
 test("jeton absent : 400 missing_turnstile_token, sans appel Turnstile ni écriture", async () => {

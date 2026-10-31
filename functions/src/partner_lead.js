@@ -65,6 +65,10 @@ async function verifyTurnstileToken({ secret, token, remoteIp, fetchImpl = fetch
   return verification.success === true;
 }
 
+// Message unique de tous les échecs, pour une alerte Cloud Monitoring basée sur les journaux.
+const PARTNER_LEAD_FAILURE_LOG = "Partner lead failure";
+const safeError = (error) => String(error && error.message).slice(0, 200);
+
 // Renvoie { status, body } ; aucune exception ne remonte au gestionnaire HTTP.
 async function handlePartnerLead({ body, deps }) {
   const { verifyTurnstile, saveLead, updateLead, sendMail, describeMailError, logger, now = () => new Date() } = deps;
@@ -80,7 +84,7 @@ async function handlePartnerLead({ body, deps }) {
   try {
     verified = await verifyTurnstile(token);
   } catch (error) {
-    logger.error("Partner lead Turnstile verification unavailable", { safeMessage: String(error && error.message).slice(0, 200) });
+    logger.error(PARTNER_LEAD_FAILURE_LOG, { reason: "turnstile_unavailable", leadId: null, safeMessage: safeError(error) });
     return { status: 503, body: { error: "verification_unavailable" } };
   }
   if (!verified) return { status: 400, body: { error: "verification_failed" } };
@@ -96,7 +100,7 @@ async function handlePartnerLead({ body, deps }) {
       expireAt: new Date(createdAt.getTime() + RETENTION_MS),
     });
   } catch (error) {
-    logger.error("Partner lead storage failed", { safeMessage: String(error && error.message).slice(0, 200) });
+    logger.error(PARTNER_LEAD_FAILURE_LOG, { reason: "storage_failed", leadId: null, safeMessage: safeError(error) });
   }
 
   try {
@@ -105,7 +109,7 @@ async function handlePartnerLead({ body, deps }) {
     return { status: 200, body: { ok: true } };
   } catch (error) {
     const safeMessage = describeMailError(error);
-    logger.error("Partner lead delivery failed", { safeMessage, leadId });
+    logger.error(PARTNER_LEAD_FAILURE_LOG, { reason: leadId ? "email_failed" : "storage_and_email_failed", leadId, safeMessage });
     if (!leadId) return { status: 502, body: { error: "delivery_failed" } };
     await updateLead(leadId, { status: "email_failed", emailError: safeMessage }).catch(() => {});
     // La demande est conservée : le visiteur n'a pas à la renvoyer.
@@ -115,6 +119,7 @@ async function handlePartnerLead({ body, deps }) {
 
 module.exports = {
   LEAD_FIELDS,
+  PARTNER_LEAD_FAILURE_LOG,
   PARTNER_LEADS_COLLECTION,
   RETENTION_MS,
   handlePartnerLead,
