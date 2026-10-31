@@ -20,6 +20,7 @@ const { resolveOperationalMerchantEmail } = require("./src/merchant_email_policy
 const { buildUserSearchIndex } = require("./src/user_search_index");
 const { createDashboardAutomations } = require("./src/dashboard_stats/automations");
 const { createPublicGamesPlayedPublisher } = require("./src/public_metrics/scheduledPublisher");
+const { normalizeSmtpPassword } = require("./src/smtp_password");
 
 setGlobalOptions({
   region: "europe-west1",
@@ -110,7 +111,7 @@ function getMailerTransport(options = {}) {
   const host = OVH_SMTP_HOST.value();
   const port = OVH_SMTP_PORT.value();
   const user = OVH_SMTP_USER.value();
-  const pass = OVH_SMTP_PASS.value();
+  const { pass, length: passLength, trimmed: passTrimmed } = normalizeSmtpPassword(OVH_SMTP_PASS.value());
   const fromEmail = OVH_SMTP_FROM.value();
   const fromName = OVH_SMTP_FROM_NAME.value();
   const from = fromEmail || user;
@@ -127,6 +128,8 @@ function getMailerTransport(options = {}) {
     hasFromName: Boolean(fromName),
   };
 
+  // Longueur et nettoyage seulement, jamais la valeur.
+  logger.info("SMTP password normalization", { passLength, passTrimmed });
   logger.info("SMTP configuration presence check", configPresence);
 
   const missingFields = [];
