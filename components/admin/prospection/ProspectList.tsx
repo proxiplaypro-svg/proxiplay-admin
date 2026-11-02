@@ -17,7 +17,7 @@ export function ProspectList({ prospects, selection, busy, onSelect, onRetry, se
     return <li className={`${s.prospectRow} ${!selectable ? s.prospectRowStatic : ""}`} key={p.id} data-prospect-id={p.id}>
       {selectable && <input className={s.rowSelect} type="checkbox" aria-label={`Sélectionner ${p.name}`} disabled={busy || (!selection.has(p.id) && selection.size >= 50)} checked={selection.has(p.id)} onChange={e => onSelect(p.id, e.target.checked)} />}
       <div className={s.prospectInfo}>
-        <Link className={s.companyName} href={href}>{p.name}</Link>
+        <Link className={s.companyName} href={href} title={p.name}>{p.name}</Link>
         <div className={s.emailInfo}>
           {summary.email && <p className={s.emailAddress}>✉ {summary.email}</p>}
           <p className={summary.state === "found" ? s.emailFound : summary.state === "failed" ? s.emailFailed : s.muted}>{summary.label}{summary.additional > 0 && <span className={s.muted}> · +{summary.additional} autre{summary.additional > 1 ? "s" : ""} email{summary.additional > 1 ? "s" : ""}</span>}</p>
@@ -27,10 +27,10 @@ export function ProspectList({ prospects, selection, busy, onSelect, onRetry, se
         {sentAt && <p className={s.emailFound}>Email envoyé · <time dateTime={sentAt}>{new Date(sentAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</time></p>}
         {campaignMode && category === "contacted" && days !== null && <p className={s.muted}>{days === 0 ? "Contacté aujourd’hui" : `Contacté il y a ${days} j`}</p>}
         {!campaignMode && p.next_follow_up_at && <p className={s.muted}>Relance : {new Date(p.next_follow_up_at).toLocaleDateString("fr-FR")}</p>}
-      </div>
         <p className={s.muted}>{fitLabel}</p>
         {!summary.email && <p className={s.muted}>Canaux disponibles : {channels.length ? channels.join(", ") : "aucun renseigné"}</p>}
-        <div className={s.rowActions}>
+      </div>
+      <div className={s.rowActions}>
         {showEmailActions && !campaignMode && summary.email && <Link className={`${s.link} ${s.primary}`} href={`${href}#proposition`}>Préparer le mail</Link>}
         {campaignMode && emailAction === "initial" && <Link className={`${s.link} ${s.primary}`} href={`${href}#proposition`}>Préparer le mail</Link>}
         {campaignMode && emailAction === "follow_up" && <Link className={`${s.link} ${s.primary}`} href={`${href}#proposition`}>Préparer la relance</Link>}

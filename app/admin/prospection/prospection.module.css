@@ -47,7 +47,7 @@
 .prospectRowStatic { grid-template-columns: minmax(0, 1fr) auto; }
 .rowSelect { margin-top: 5px; }
 .prospectInfo { min-width: 0; overflow-wrap: anywhere; }
-.companyName { font-weight: 650; font-size: 15px; color: #29460d; }
+.companyName { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; font-size: 15px; color: #29460d; }
 .companyName:hover { text-decoration: underline; }
 .emailInfo { margin: 5px 0 8px; }
 .emailAddress { font-weight: 500; overflow-wrap: anywhere; }
@@ -59,7 +59,7 @@
 .emailCounters button[aria-pressed=true] { background: #eaf3de; border-color: #507f1b; color: #355d13; }
 .proposalHeading { scroll-margin-top: 24px; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-@media(max-width: 760px) { .prospectRow { grid-template-columns: 20px minmax(0, 1fr); } .rowActions { grid-column: 2; } }
+@media(max-width: 760px) { .prospectRow { grid-template-columns: 20px minmax(0, 1fr); } .rowActions { grid-column: 2; } .prospectRowStatic { grid-template-columns: minmax(0, 1fr); } .prospectRowStatic .rowActions { grid-column: 1; } }
 @media(max-width: 1000px) { .filters, .grid { grid-template-columns: 1fr; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media(max-width: 600px) { .cards { grid-template-columns: 1fr; } .panel { padding: 12px; } }
 .bulkItem { padding: 16px 0; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
