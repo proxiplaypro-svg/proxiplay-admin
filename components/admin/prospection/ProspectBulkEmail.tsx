@@ -51,6 +51,7 @@ export function ProspectBulkEmail({ ids, emailCount, disabled }: { ids: string[]
     {open && batch && <section className={s.panel} aria-label="Envoi groupé">
       <h2>Envoi groupé</h2>
       <p>{batch.items.length} sélectionnés · {ready} prêts à envoyer · {batch.items.filter(i => i.state === "excluded").length} exclus</p>
+      {ready > 0 && !active && <button className={s.primary} disabled={busy || confirm} onClick={() => setConfirm(true)}>Envoyer les {ready} emails</button>}
       <p>Chaque entreprise reçoit son propre email, avec un seul destinataire. Les brouillons existants sont conservés.</p>
       <p>From : {batch.identity.from}<br />Reply-To : {batch.identity.replyTo}</p>
       <p role="status">{sent + failures} / {accepted.length} traités — {sent} envoyés · {failures} échecs ou résultats à vérifier</p>
@@ -62,18 +63,19 @@ export function ProspectBulkEmail({ ids, emailCount, disabled }: { ids: string[]
         <Link className={s.link} href={`/admin/prospection/${encodeURIComponent(i.id)}#proposition`} target="_blank">Voir la fiche</Link>
         {i.retryable && <button disabled={busy || active || pending > 0} onClick={() => setRetryId(i.id)}>Réessayer uniquement cet email</button>}
       </li>)}</ul>
-      {pending > 0 && !active && <button disabled={busy} onClick={() => setConfirm(true)}>{batch.confirmed ? "Reprendre les emails restants" : "Confirmer le lot"}</button>}
+      {pending > 0 && !active && <button disabled={busy || confirm} onClick={() => setConfirm(true)}>{batch.confirmed ? "Reprendre les emails restants" : "Confirmer le lot"}</button>}
       {active && <button onClick={() => { running.current = false; }}>Suspendre après l’email en cours</button>}
       <button disabled={busy || active} onClick={() => { setOpen(false); setConfirm(false); }}>Fermer</button>
       {(confirm || retryId) && <div role="alertdialog" aria-label="Confirmation de l’envoi groupé" className={s.panel}>
-        <p>Confirmer l’envoi de {retryId ? 1 : ready} emails individuels ?</p>
-        <p>From : {batch.identity.from}<br />Reply-To : {batch.identity.replyTo}</p>
+        <p>Confirmer l’envoi de {retryId ? 1 : ready} emails ?</p>
+        {!retryId && <p>Chaque entreprise recevra un email individuel.<br />Les envois seront traités avec la cadence prévue par le système.</p>}
+        {retryId && <p>From : {batch.identity.from}<br />Reply-To : {batch.identity.replyTo}</p>}
         <button disabled={busy} onClick={() => { setConfirm(false); setRetryId(null); }}>Annuler</button>
-        <button disabled={busy} onClick={() => void run(async () => {
+        <button className={s.primary} disabled={busy} onClick={() => void run(async () => {
           const id = retryId; setConfirm(false); setRetryId(null);
           await emailRequest({ action: id ? "batch_retry" : "batch_confirm", batchId: batch.id, confirmed: true, ...(id ? { id } : {}) });
           await process(batch.id);
-        })}>Envoyer les {retryId ? 1 : ready} emails</button>
+        })}>{retryId ? "Envoyer cet email" : `Confirmer l’envoi des ${ready} emails`}</button>
       </div>}
     </section>}
   </div>;
