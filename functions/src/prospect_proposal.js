@@ -28,16 +28,19 @@ function personalization(prospect, name) {
   return activityRule(prospect)?.sentence(name) || `L'idée est de présenter ${name} aux utilisateurs locaux à travers un jeu simple, avec un lot adapté à votre activité.`;
 }
 const factualProposalGenerator = {
-  async generate(prospect, settings = DEFAULT_SETTINGS) {
+  async generate(prospect, settings = DEFAULT_SETTINGS, { kind = "initial" } = {}) {
     settings = parseSettings(settings);
     const company = typeof prospect.name === "string" ? prospect.name.replace(/[\r\n\t]+/g, " ").trim().slice(0, 500) : "";
     const name = company || "votre entreprise";
     const signature = [settings.sender_name, settings.signature, settings.phone, settings.website_url].filter(Boolean).join("\n");
+    const facts = [settings.audience_metric && `Indicateur communiqué : ${settings.audience_metric}.`, settings.audience_metric_source && `Source : ${settings.audience_metric_source}`, settings.commercial_price_label && `Tarif indicatif : ${settings.commercial_price_label}`].filter(Boolean).join("\n");
     const body = [
-      settings.initial_email_body,
+      kind === "follow_up" ? settings.follow_up_email_body : settings.initial_email_body,
+      personalization(prospect, name),
+      facts,
       signature,
     ].filter(Boolean).join("\n\n");
-    return { subject: settings.initial_email_subject, body };
+    return { subject: kind === "follow_up" ? settings.follow_up_email_subject : settings.initial_email_subject, body };
   },
 };
 module.exports = { factualProposalGenerator, activityRule, RULES };

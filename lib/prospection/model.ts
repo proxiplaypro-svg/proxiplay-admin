@@ -2,7 +2,9 @@ export const STATUSES = { new: "Nouveaux", to_contact: "À contacter", contacted
 export type ProspectStatus = keyof typeof STATUSES;
 export const SECTORS = ["restaurants", "bars/cafés", "commerces", "beauté", "coiffure", "sport", "loisirs", "automobile", "habitat", "artisans B2C", "services locaux"];
 export const TEXT_FIELDS = ["name", "address", "postal_code", "city", "category", "subcategory", "phone", "email", "website", "google_place_id", "google_maps_url", "contact_name", "contact_role", "contact_email", "contact_phone", "source", "source_url", "notes", "assigned_to", "suggested_message", "suggested_angle"] as const;
-export type ProspectFields = Record<(typeof TEXT_FIELDS)[number], string> & { google_rating: number | null; google_user_rating_count: number | null; latitude: number | null; longitude: number | null; status: ProspectStatus; last_contact_at: string | null; next_follow_up_at: string | null; fetched_at: string | null; converted_enseigne_id: string | null };
+export const COMMERCIAL_PRIORITIES = { high: "Haute", medium: "Moyenne", low: "Basse" } as const;
+export type CommercialPriority = keyof typeof COMMERCIAL_PRIORITIES;
+export type ProspectFields = Record<(typeof TEXT_FIELDS)[number], string> & { google_rating: number | null; google_user_rating_count: number | null; latitude: number | null; longitude: number | null; status: ProspectStatus; commercial_priority: CommercialPriority; last_contact_at: string | null; next_follow_up_at: string | null; fetched_at: string | null; converted_enseigne_id: string | null };
 export type Qualification = { summary: string | null; relevance: number | null; reasons: string[]; suggested_angle: string | null; suggested_message: string | null };
 export type PublicEmail = { email: string; type: "general" | "direction" | "commercial" | "named_professional" | "other"; source_url: string; discovered_at: string; is_primary: boolean };
 export type Proposal = { id: string; revision: number; to: string; subject: string; body: string; status: "draft" | "sending" | "sent" | "failed"; sent_at?: string };
@@ -47,6 +49,8 @@ export function parseFields(input: unknown): ProspectFields {
   for (const key of ["email", "contact_email"] as const) { data[key] = data[key].toLowerCase(); if (data[key] && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data[key])) throw new ProspectError("Email invalide."); }
   const status = body.status ?? "new";
   if (typeof status !== "string" || !Object.hasOwn(STATUSES, status)) throw new ProspectError("Statut invalide.");
+  const commercial_priority = body.commercial_priority ?? "medium";
+  if (typeof commercial_priority !== "string" || !Object.hasOwn(COMMERCIAL_PRIORITIES, commercial_priority)) throw new ProspectError("Priorité commerciale invalide.");
   const dates = Object.fromEntries(["last_contact_at", "next_follow_up_at", "fetched_at"].map(key => {
     const value = body[key]; if (value == null || value === "") return [key, null];
     if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(value) || !Number.isFinite(Date.parse(value))) throw new ProspectError("Date invalide.");
@@ -56,7 +60,7 @@ export function parseFields(input: unknown): ProspectFields {
   const metric = (key: string, max: number, integer = false) => { const value = body[key]; if (value == null) return null; if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > max || (integer && !Number.isInteger(value))) throw new ProspectError("Donnée Google invalide."); return value; };
   const converted = text(body.converted_enseigne_id) || null;
   if (converted && !/^[\w-]+$/.test(converted)) throw new ProspectError("Identifiant enseigne invalide.");
-  return { ...data, google_rating: metric("google_rating", 5), google_user_rating_count: metric("google_user_rating_count", Number.MAX_SAFE_INTEGER, true), source: data.source || "manual", status: status as ProspectStatus, ...dates, latitude: coordinate("latitude", 90), longitude: coordinate("longitude", 180), converted_enseigne_id: converted };
+  return { ...data, google_rating: metric("google_rating", 5), google_user_rating_count: metric("google_user_rating_count", Number.MAX_SAFE_INTEGER, true), source: data.source || "manual", status: status as ProspectStatus, commercial_priority: commercial_priority as CommercialPriority, ...dates, latitude: coordinate("latitude", 90), longitude: coordinate("longitude", 180), converted_enseigne_id: converted };
 }
 export function identityKeys(data: Record<string, unknown>): string[] {
   const read = (...keys: string[]) => keys.map(key => data[key]).find(value => typeof value === "string" && value.trim()) as string | undefined;

@@ -29,7 +29,7 @@ test("vraie garde callable : toutes les actions réservées à l’admin", async
   }
 });
 test("paramètres persistants, modèle enregistré et contrôle de révision", async () => {
-  const defaults = await call("settings_get"); assert.equal(defaults.settings.connections_per_day, 350);
+  const defaults = await call("settings_get"); assert.equal(defaults.settings.audience_metric, "");
   await call("settings_save", { settings: { ...defaults.settings, initial_email_subject: "Objet enregistré", initial_email_body: "Corps enregistré" }, revision: 0 });
   assert.equal((await draft()).subject, "Objet enregistré"); assert.ok((await prospectRef().get()).data().proposal.body.startsWith("Corps enregistré"));
   await assert.rejects(call("settings_save", { settings: defaults.settings, revision: 0 }), { code: "failed-precondition" });

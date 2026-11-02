@@ -13,6 +13,21 @@ function parseBatchMessage(input) {
   if (!subject || subject.length > 200 || /[\r\n]/.test(subject) || !body || body.length > 10000) fail("invalid-argument", "Objet (200 caractères, une ligne) et message (10 000 caractères) requis.");
   return { subject, body };
 }
+function parseVariants(input) {
+  if (!input.variants) return null;
+  if (typeof input.variants !== "object") fail("invalid-argument", "Variantes invalides.");
+  const a = parseBatchMessage(input.variants.a || {}); const b = parseBatchMessage(input.variants.b || {});
+  if (!a || !b) fail("invalid-argument", "Les variantes A et B doivent avoir un objet et un message.");
+  return { a, b };
+}
+function followUpDue(p, at = Date.now()) {
+  if (p.do_not_contact || !["contacted", "follow_up"].includes(p.status)) return false;
+  const scheduled = p.next_follow_up_at ? Date.parse(p.next_follow_up_at) : Number.NaN;
+  if (Number.isFinite(scheduled)) return scheduled <= at;
+  if (p.status === "follow_up") return true;
+  const last = p.last_contact_at ? Date.parse(p.last_contact_at) : Number.NaN;
+  return Number.isFinite(last) && at - last >= 7 * 24 * 60 * 60 * 1000;
+}
 
 // Browser requests bounded steps; the server owns recipients, progress, locks and cadence.
 // Closing the browser pauses the batch. Resuming never replaces a draft or replays an uncertain send.
@@ -25,7 +40,7 @@ function createBatchService({ db, generator, sender, sendEmail, clock = Date.now
     const items = await Promise.all(batch.items.map(async item => {
       if (!item.draftId) return item;
       const p = (await db.doc(`prospects/${item.id}`).get()).data();
-      return { ...item, body: p?.proposal?.id === item.draftId && p.proposal.revision === item.revision ? p.proposal.body : "Proposition modifiée ou supprimée. Préparez un nouveau lot." };
+      return { ...item, prospect_status: p?.status || null, body: p?.proposal?.id === item.draftId && p.proposal.revision === item.revision ? p.proposal.body : "Proposition modifiée ou supprimée. Préparez un nouveau lot." };
     }));
     return { batch: { ...batch, id: ref.id, items } };
   }
@@ -37,7 +52,7 @@ function createBatchService({ db, generator, sender, sendEmail, clock = Date.now
     }
     if (input.action === "batch_template") {
       const settings = parseSettings((await db.doc("prospection_internal/commercial_settings").get()).data()?.values || {});
-      const { subject, body } = await generator.generate({}, settings);
+      const { subject, body } = await generator.generate({}, settings, { kind: input.kind === "follow_up" ? "follow_up" : "initial" });
       return { subject, body };
     }
     const ref = batchRef(input.batchId);
@@ -45,6 +60,9 @@ function createBatchService({ db, generator, sender, sendEmail, clock = Date.now
       if (!Array.isArray(input.ids) || !input.ids.length || input.ids.length > 50 || input.ids.some(id => typeof id !== "string" || !/^[\w-]{1,200}$/.test(id))) fail("invalid-argument", "Sélectionnez de 1 à 50 prospects maximum.");
       const ids = [...new Set(input.ids)];
       const message = parseBatchMessage(input);
+      const variants = parseVariants(input);
+      const kind = input.kind === "follow_up" ? "follow_up" : "initial";
+      const campaignName = typeof input.campaignName === "string" ? input.campaignName.trim().slice(0, 120) : "";
       const identity = sender.identity(); // Public headers only; never return SMTP credentials.
       await db.runTransaction(async tx => {
         const existing = (await tx.get(ref)).data();
@@ -59,23 +77,25 @@ function createBatchService({ db, generator, sender, sendEmail, clock = Date.now
         for (let index = 0; index < snapshots.length; index++) {
           const snapshot = snapshots[index]; const p = snapshot.data(); const id = ids[index];
           const to = prospectRecipient(p);
-          let reason = !p || p.deleting ? "Prospect supprimé" : p.do_not_contact ? "Opposition au contact" : !to ? "Sans adresse email envoyable" : p.email_sending_id ? "Envoi en cours ou à vérifier" : logs[index]?.exists || (p.proposal && p.proposal.status !== "draft") ? "Proposition déjà envoyée ou déjà tentée" : "";
+          let reason = !p || p.deleting ? "Prospect supprimé" : p.do_not_contact ? "Opposition au contact" : !to ? "Sans adresse email envoyable" : kind === "follow_up" && !followUpDue(p, clock()) ? "Relance non échue, réponse ou statut terminal" : p.email_sending_id ? "Envoi en cours ou à vérifier" : kind !== "follow_up" && (logs[index]?.exists || (p.proposal && p.proposal.status !== "draft")) ? "Proposition déjà envoyée ou déjà tentée" : "";
           if (!reason && p.proposal && p.proposal.to.toLowerCase() !== to) reason = "Le destinataire du brouillon diffère de l’adresse email retenue";
           if (reason) { items.push({ id, name: p?.name || id, to, state: "excluded", reason }); continue; }
           let proposal = p.proposal; let changed = false;
-          if (!proposal) {
-            proposal = { ...await generator.generate({ name: p.name, city: p.city, category: p.category, subcategory: p.subcategory, website: p.website }, settings), to, id: randomUUID(), revision: 1, status: "draft" };
+          if (!proposal || (kind === "follow_up" && proposal.status !== "draft")) {
+            proposal = { ...await generator.generate({ name: p.name, city: p.city, category: p.category, subcategory: p.subcategory, website: p.website }, settings, { kind }), to, id: randomUUID(), revision: 1, status: "draft" };
             changed = true;
           }
           // Only unsent drafts reach this point: sent or attempted proposals were excluded above.
-          if (message && (proposal.subject !== message.subject || proposal.body !== message.body)) {
-            proposal = { ...proposal, ...message, revision: changed ? proposal.revision : proposal.revision + 1 };
+          const variant = variants ? (index % 2 === 0 ? "A" : "B") : null;
+          const confirmedMessage = variant ? variants[variant.toLowerCase()] : message;
+          if (confirmedMessage && (proposal.subject !== confirmedMessage.subject || proposal.body !== confirmedMessage.body)) {
+            proposal = { ...proposal, ...confirmedMessage, revision: changed ? proposal.revision : proposal.revision + 1 };
             changed = true;
           }
           if (changed) tx.update(snapshot.ref, { proposal, revision: (p.revision || 0) + 1, updated_at: new Date(clock()).toISOString() });
-          items.push({ id, name: p.name || id, to, subject: proposal.subject, draftId: proposal.id, revision: proposal.revision, state: "ready" });
+          items.push({ id, name: p.name || id, to, subject: proposal.subject, draftId: proposal.id, revision: proposal.revision, state: "ready", ...(variant ? { variant } : {}) });
         }
-        tx.create(ref, { actor, items, confirmed: false, identity, created_at: new Date(clock()).toISOString() });
+        tx.create(ref, { actor, items, confirmed: false, identity, kind, ...(campaignName ? { campaign_name: campaignName } : {}), created_at: new Date(clock()).toISOString() });
         tx.set(currentRef, { id: ref.id });
       });
       return view(ref, actor);
