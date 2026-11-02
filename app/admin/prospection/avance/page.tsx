@@ -15,7 +15,7 @@ import { PROXIPLAY_CATEGORY_PRESETS } from "@/lib/prospection/searchConfig";
 import Link from "next/link";
 import s from "../prospection.module.css";
 
-type View = "companies" | "emails" | "campaigns" | "actions";
+type View = "dashboard" | "companies" | "emails" | "campaigns" | "actions";
 type CompanyPanel = "list" | "add" | "search" | "ignored";
 type Filters = typeof EMPTY_FILTERS;
 
@@ -39,8 +39,8 @@ function TodayActions({ prospects, busy, onCall, onReply }: { prospects: Prospec
   return <ul className={s.prospectList}>{prospects.map(p => <li className={s.prospectRow} key={p.id}><div className={s.prospectInfo}><Link className={s.companyName} href={`/admin/prospection/${encodeURIComponent(p.id)}`}>{p.name}</Link><div className={s.rowMeta}><span className={s.badge}>{COMMERCIAL_PRIORITIES[p.commercial_priority || "medium"]}</span><span>{p.next_follow_up_at ? `Échue le ${new Date(p.next_follow_up_at).toLocaleDateString("fr-FR")}` : "Relance J+7 échue"}</span></div></div><div className={s.rowActions}><Link className={s.link} href={`/admin/prospection/${encodeURIComponent(p.id)}`}>Consulter</Link><Link className={`${s.link} ${s.primary}`} href={`/admin/prospection/${encodeURIComponent(p.id)}#proposition`}>Préparer la relance</Link><button disabled={busy} onClick={() => onCall(p)}>Appel fait</button><button disabled={busy} onClick={() => onReply(p)}>Noter réponse</button><Link className={s.link} href={`/admin/prospection/${encodeURIComponent(p.id)}#suivi`}>Planifier / RDV</Link></div></li>)}</ul>;
 }
 
-export default function ProspectionAdvancedPage() {
-  const [view, setView] = useState<View>("companies"); const [companyPanel, setCompanyPanel] = useState<CompanyPanel>("list");
+export default function UnifiedProspectionPage({ initialView = "dashboard", legacy = false }: { initialView?: View; legacy?: boolean }) {
+  const [view, setView] = useState<View>(initialView); const [settingsOpen, setSettingsOpen] = useState(false); const [companyPanel, setCompanyPanel] = useState<CompanyPanel>("list");
   const [emailSelection, setEmailSelection] = useState<Set<string>>(new Set()); const [campaignSelection, setCampaignSelection] = useState<Set<string>>(new Set()); const [progress, setProgress] = useState("");
   const [prospects, setProspects] = useState<Prospect[]>([]); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
   const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [ignored, setIgnored] = useState<IgnoredPlace[]>([]);
@@ -83,10 +83,12 @@ export default function ProspectionAdvancedPage() {
   const quickUpdate = (p: Prospect, patch: Partial<Fields>, label: string) => void run(async () => { await prospectRequest("PATCH", { action: "update", revision: p.revision, fields: { ...p, ...patch } }, p.id); await reload(); setNotice(label); });
 
   return <div className={s.module}>
-    <ProspectionSettings />
-    <header className={s.pageHeader}><h1>Prospection — vue avancée</h1><p className={s.muted}>Statuts, filtres, ignorés, ajout manuel et paramètres commerciaux. <Link className={s.link} href="/admin/prospection">← Vue simple</Link></p></header>
-    <div className={s.tabs} role="tablist" aria-label="Étapes de prospection">{([ ["companies", "Entreprises"], ["emails", "Recherche d’emails"], ["campaigns", "Campagnes & suivi"], ["actions", `Actions du jour (${dueToday.length})`] ] as const).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? s.tabActive : ""} onClick={() => setView(key)}>{label}</button>)}</div>
+    <header className={s.sectionHeading}><div className={s.pageHeader}><h1>Prospection</h1><p className={s.muted}>{legacy ? "Point d’entrée historique de la prospection." : "Pilotez vos contacts, relances et campagnes depuis un seul espace."}</p></div><div className={s.actions}><button onClick={() => setSettingsOpen(open => !open)}>{settingsOpen ? "Fermer les paramètres" : "Paramètres commerciaux"}</button>{legacy && <Link className={s.link} href="/admin/prospection">Accueil Prospection</Link>}</div></header>
+    {settingsOpen && <ProspectionSettings />}
+    <div className={s.tabs} role="tablist" aria-label="Navigation de prospection">{([ ["dashboard", "Tableau de bord"], ["companies", "Prospects"], ["emails", "Recherche"], ["campaigns", "Campagnes"], ["actions", `Actions du jour (${dueToday.length})`] ] as const).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? s.tabActive : ""} onClick={() => setView(key)}>{label}</button>)}</div>
     {error && <p role="alert" className={s.error}>{error}</p>}{notice && <p role="status" className={s.notice}>{notice}</p>}
+
+    {view === "dashboard" && <><section className={s.sectionHeading}><div><h2>Tableau de bord commercial</h2><p className={s.muted}>Indicateurs issus des fiches et historiques enregistrés ; aucune activité de boîte mail n’est déduite automatiquement.</p></div></section><section className={s.cards} aria-label="Indicateurs de prospection"><button onClick={() => setView("companies")}><span>Prospects</span><strong>{prospects.length}</strong></button><button onClick={() => { updateEmailFilters({ email: "found" }); setView("emails"); }}><span>Emails exploitables</span><strong>{emailCounts.found}</strong></button><button onClick={() => setView("actions")}><span>Relances dues</span><strong>{dueToday.length}</strong></button><button onClick={() => setView("actions")}><span>Réponses enregistrées</span><strong>{metrics.replied}</strong></button><button onClick={() => setView("actions")}><span>Rendez-vous</span><strong>{metrics.meetings}</strong></button><button onClick={() => setView("actions")}><span>Partenaires convertis</span><strong>{metrics.converted}</strong></button></section><section className={s.grid}><article className={s.panel}><h2>Actions prioritaires</h2><p>{dueToday.length} relance(s) échue(s) à traiter.</p><button className={s.primary} onClick={() => setView("actions")}>Voir les relances dues</button></article><article className={s.panel}><h2>Recherche à reprendre</h2><p>{emailCounts.failed} recherche(s) d’email en erreur récupérable(s).</p><button onClick={() => { updateEmailFilters({ email: "failed" }); setView("emails"); }}>Voir les échecs</button></article></section></>}
 
     {view === "companies" && <>
       <section className={s.sectionHeading}><div><h2>Entreprises</h2><p className={s.muted}>Trouvez et ajoutez les entreprises que vous souhaitez prospecter.</p></div><div className={s.actions}><button onClick={() => setCompanyPanel("ignored")}>Ignorés ({ignored.length})</button><button onClick={() => setCompanyPanel("search")}>Rechercher sur Google</button><button className={s.primary} onClick={() => setCompanyPanel("add")}>+ Ajouter un prospect</button></div></section>
