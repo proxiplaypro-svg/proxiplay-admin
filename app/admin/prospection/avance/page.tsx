@@ -293,7 +293,7 @@ export default function UnifiedProspectionPage({
 }) {
   const [view, setView] = useState<View>(initialView);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [companyPanel, setCompanyPanel] = useState<CompanyPanel>("list");
+  const [companyPanel, setCompanyPanel] = useState<CompanyPanel>("search");
   const [emailSelection, setEmailSelection] = useState<Set<string>>(new Set());
   const [campaignSelection, setCampaignSelection] = useState<Set<string>>(
     new Set(),
@@ -709,12 +709,6 @@ export default function UnifiedProspectionPage({
               </p>
             </div>
             <div className={s.actions}>
-              <button onClick={() => setCompanyPanel("ignored")}>
-                Ignorés ({ignored.length})
-              </button>
-              <button onClick={() => setCompanyPanel("search")}>
-                Rechercher sur Google
-              </button>
               <button
                 className={s.primary}
                 onClick={() => setCompanyPanel("add")}
@@ -734,16 +728,14 @@ export default function UnifiedProspectionPage({
                     fields: draft,
                   });
                   setDraft({});
-                  setCompanyPanel("list");
+                  setCompanyPanel("search");
                   await reload();
                   setNotice("Prospect ajouté.");
                 });
               }}
             >
               <div>
-                <button type="button" onClick={() => setCompanyPanel("list")}>
-                  ← Mes prospects
-                </button>
+                <button type="button" onClick={() => setCompanyPanel("search")}>← Recherche</button>
               </div>
               <ProspectFields value={draft} onChange={setDraft} />
               <section className={s.panel}>
@@ -775,9 +767,6 @@ export default function UnifiedProspectionPage({
                     celles qui vous intéressent.
                   </p>
                 </div>
-                <button onClick={() => setCompanyPanel("list")}>
-                  ← Mes prospects
-                </button>
               </div>
               {!available && (
                 <p className={s.notice}>
