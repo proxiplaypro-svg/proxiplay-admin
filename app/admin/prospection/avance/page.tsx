@@ -1269,7 +1269,14 @@ export default function UnifiedProspectionPage({
         </>
       )}
 
-      {view === "campaigns" && (
+      {view === "campaigns" && campaignSelection.size === 0 && (
+        <section className={s.panel}>
+          <h2>Préparer une campagne</h2>
+          <p className={s.muted}>Choisissez d’abord les destinataires depuis l’onglet Prospects, puis utilisez « Lancer une campagne » ou « Préparer une relance ».</p>
+          <ProspectionSettings />
+        </section>
+      )}
+      {view === "campaigns" && campaignSelection.size > 0 && (
         <>
           <section className={s.sectionHeading}>
             <div>
@@ -1442,7 +1449,7 @@ export default function UnifiedProspectionPage({
           </p>
         </section>
       )}
-      {view === "campaigns" && (
+      {view === "campaigns" && false && (
         <section className={s.panel}>
           <div className={s.filters}>
             <label>
