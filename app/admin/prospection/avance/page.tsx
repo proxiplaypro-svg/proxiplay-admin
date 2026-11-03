@@ -93,8 +93,8 @@ function ProspectFilters({
             onChange={(e) => update({ email: e.target.value })}
           >
             <option value="">Tous</option>
-            <option value="found">Contactables par email</option>
-            <option value="missing">Non contactables par email</option>
+            <option value="with_email">Avec e-mail</option>
+            <option value="without_email">Sans e-mail</option>
           </select>
         </label>
       )}

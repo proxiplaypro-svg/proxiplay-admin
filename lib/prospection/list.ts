@@ -61,9 +61,15 @@ export function prospectEmailSummary(p: Prospect) {
   return { email, state, label, additional: Math.max(0, emails.length - 1) };
 }
 
+/** Business email filters: exclusive, independent from enrichment diagnostics. */
+export function hasValidProspectEmail(p: Prospect) {
+  const values = [p.email, p.contact_email, ...(p.emails || []).map(item => item.email)];
+  return values.some(value => typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()));
+}
+
 export function matchesProspectFilters(p: Prospect, filters: ProspectFilters) {
   return (!filters.status || p.status === filters.status)
-    && (!filters.email || prospectEmailSummary(p).state === filters.email)
+    && (!filters.email || (filters.email === "with_email" ? hasValidProspectEmail(p) : filters.email === "without_email" ? !hasValidProspectEmail(p) : prospectEmailSummary(p).state === filters.email))
     && (!filters.priority || (p.commercial_priority || "medium") === filters.priority)
     && (!filters.category || p.category === filters.category)
     && (!filters.city || normalize(p.city).includes(normalize(filters.city)))
