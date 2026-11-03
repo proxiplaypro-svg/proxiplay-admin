@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import type { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 import { mapGameDocument } from "./lib/firebase/gamesQueries";
-import { validateGamePrizes } from "./lib/firebase/gamePrizeValidation";
+import {
+  resolveDuplicatedMainPrizeFields,
+  validateGamePrizes,
+} from "./lib/firebase/gamePrizeValidation";
 
 // Historical mobile-created games may lack both dedicated prize fields.
 // Relaunching them must still use the legacy name/description; explicit
@@ -158,8 +161,9 @@ test("les autres parcours utilisent la meme resolution des champs", () => {
   assert.match(pageSource, /\.\.\.resolveMainPrizeFields\(game\)/);
 
   const fixedSource = readFileSync("lib/firebase/gamesQueriesFixed.ts", "utf8");
-  assert.match(fixedSource, /main_prize_title: resolveMainPrizeFields\(source\)\.mainPrizeTitle/);
-  assert.match(fixedSource, /main_prize_description: resolveMainPrizeFields\(source\)\.mainPrizeDescription/);
+  assert.match(fixedSource, /const duplicatedMainPrizeFields = resolveDuplicatedMainPrizeFields\(source\)/);
+  assert.match(fixedSource, /main_prize_title: duplicatedMainPrizeFields\.mainPrizeTitle/);
+  assert.match(fixedSource, /main_prize_description: duplicatedMainPrizeFields\.mainPrizeDescription/);
 });
 
 test("duplication conserve les champs dédiés vides ou nuls sans repli", () => {
@@ -176,4 +180,32 @@ test("duplication conserve les champs dédiés vides ou nuls sans repli", () => 
     assert.equal(original.mainPrizeTitle, fields.main_prize_title ?? "");
     assert.equal(original.mainPrizeDescription, fields.main_prize_description ?? "");
   }
+});
+
+test("un brouillon duplique avec tirage final, valeur et lots instantanes reste enregistrable", () => {
+  // Cas reel : le jeu original a les informations visibles, mais les deux
+  // champs dedies etaient vides dans Firestore.
+  const source = {
+    title: "un menu Midi semaine",
+    description: "Un menu midi semaine chez Crepe Touch Dunkerque",
+    hasMainPrize: true,
+    prize_value: 15.95,
+    main_prize_title: "",
+    main_prize_description: "",
+    secondary_prizes: [{ name: "une crepe sucree offerte", count: 10 }],
+  };
+
+  const copiedPrize = resolveDuplicatedMainPrizeFields(source);
+  assert.deepEqual(copiedPrize, {
+    mainPrizeTitle: "un menu Midi semaine",
+    mainPrizeDescription: "Un menu midi semaine chez Crepe Touch Dunkerque",
+  });
+  assert.equal(source.prize_value, 15.95, "la valeur du lot est preservee");
+
+  const validationError = validateGamePrizes({
+    hasMainPrize: source.hasMainPrize,
+    mainPrizeDescription: copiedPrize.mainPrizeTitle || copiedPrize.mainPrizeDescription,
+    secondaryPrizes: source.secondary_prizes,
+  });
+  assert.equal(validationError, null, "le brouillon doit etre enregistrable");
 });

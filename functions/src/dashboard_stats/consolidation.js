@@ -9,6 +9,28 @@ function dailyReference(now = Date.now()) {
   return { reference_date, start_date: start.toISOString().slice(0, 10) };
 }
 
+// Converts a Paris calendar day (YYYY-MM-DD) to its real UTC midnight.  A
+// plain `${day}T00:00:00Z` is not equivalent on either side of CET/CEST and
+// can silently omit the first one or two hours of the first J30 day.
+function parisMidnightMillis(dayKey) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey);
+  if (!match) throw new Error("A Paris day key is required.");
+  const target = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  });
+  let candidate = target;
+  // Two passes cover offset changes at the beginning/end of daylight saving
+  // time while keeping this dependency-free in the Functions runtime.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const parts = formatter.formatToParts(new Date(candidate));
+    const value = (type) => Number(parts.find((part) => part.type === type)?.value);
+    candidate += target - Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), value("second"));
+  }
+  return candidate;
+}
+
 async function readPaginated(query, maximum, pageSize = 500) {
   const docs = []; let cursor = null;
   while (docs.length < maximum) {
@@ -26,7 +48,7 @@ async function readPaginated(query, maximum, pageSize = 500) {
 // Beyond a budget the source is reported incomplete (null), never partially counted.
 async function consolidateFromFirestore({ db, now = Date.now(), maximum = 10000, participantsMaximum = 60000, pageSize = 500 }) {
   const reference = dailyReference(now);
-  const cutoff = new Date(`${reference.start_date}T00:00:00Z`);
+  const cutoff = new Date(parisMidnightMillis(reference.start_date));
   const [users, participants, games] = await Promise.all([
     readPaginated(db.collection("users").orderBy("__name__"), maximum, pageSize),
     readPaginated(db.collectionGroup("participants").where("participation_date", ">=", cutoff).orderBy("participation_date"), participantsMaximum, pageSize),
@@ -61,6 +83,8 @@ async function consolidateFromFirestore({ db, now = Date.now(), maximum = 10000,
   }
   const definitive = {
     registered_players: payload.registered_players,
+    active_players_j30: payload.active_players_j30,
+    participations_j30: payload.participations_j30,
     players_yesterday: participants.complete ? playersYesterday : null,
     participations_yesterday: payload.participations_today,
     // This stays unavailable until the explicit historical initializer has
@@ -90,7 +114,10 @@ async function consolidateTemporalMetrics({ db, now = Date.now(), days = 30 }) {
     // Daily uniques cannot be summed for a rolling unique-player metric.
     active_players_j30: null,
   };
-  await db.doc("dashboard_stats/current").set({ schema_version: 1, computed_at: new Date(now), temporal_complete: complete, ...metrics }, { merge: true });
+  // This legacy helper is intentionally unable to overwrite the authoritative
+  // J30 fields. Daily uniques cannot establish a rolling unique-player count;
+  // consolidateFromFirestore is the single writer for both J30 values.
+  await db.doc("dashboard_stats/current").set({ temporal_complete: complete, temporal_participations_today: metrics.participations_today }, { merge: true });
   return { metrics, complete, keys };
 }
 
@@ -107,4 +134,4 @@ function calculateSixIndicators({ users = [], activities = [], participations = 
   };
 }
 
-module.exports = { consolidateTemporalMetrics, calculateSixIndicators, consolidateFromFirestore, dailyReference };
+module.exports = { consolidateTemporalMetrics, calculateSixIndicators, consolidateFromFirestore, dailyReference, parisMidnightMillis };

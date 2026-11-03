@@ -29,6 +29,7 @@ type ReferralGame = {
   winnerTicketCount: number | null;
   totalTicketCount: number | null;
   winnerUid: string | null;
+  drawStatus: string | null;
   enseigneId: string | null;
 };
 
@@ -74,6 +75,7 @@ function mapReferralGame(id: string, data: Record<string, unknown>): ReferralGam
     winnerTicketCount: data.winner_ticket_count != null ? readNumber(data.winner_ticket_count) : null,
     totalTicketCount: data.total_ticket_count != null ? readNumber(data.total_ticket_count) : null,
     winnerUid: readText(data.winner_uid) || null,
+    drawStatus: readText(data.draw_status) || null,
     enseigneId: data.enseigne_id instanceof DocumentReference ? data.enseigne_id.id : null,
   };
 }
@@ -122,6 +124,14 @@ const statusStyles: Record<ReferralGameStatus, string> = {
   suspended: "bg-[#FBF3DD] text-[#8A6A10]",
   ended: "bg-[#EFE7FB] text-[#7C5CBF]",
 };
+
+// Same rule as the draw engine: an active or closed game, once its end date is
+// past and while it has no result. Earlier, the nightly draw is not due yet.
+function canDrawNow(game: ReferralGame, nowMs = Date.now()): boolean {
+  if (game.winnerUid || ["completed", "no_eligible_entries"].includes(game.drawStatus ?? "")) return false;
+  const endMs = game.endDate ? new Date(game.endDate).getTime() : NaN;
+  return (game.status === "active" || game.status === "ended") && !Number.isNaN(endMs) && endMs <= nowMs;
+}
 
 // Same rule as the API (app/api/admin/referral-games/[id]): a suspended game
 // comes back only while it can still run normally.
@@ -947,7 +957,7 @@ export default function AdminReferralGamePage() {
                             Activer maintenant
                           </button>
                         ) : null}
-                        {game.status === "active" ? (
+                        {canDrawNow(game) ? (
                           <button
                             type="button"
                             onClick={() => void handleEnd(game)}
@@ -955,6 +965,10 @@ export default function AdminReferralGamePage() {
                           >
                             Tirer le gagnant
                           </button>
+                        ) : game.status === "active" ? (
+                          <span className="inline-flex items-center px-1 text-[11px] text-[#999]">
+                            Tirage possible à partir du {formatDisplayDate(game.endDate)}
+                          </span>
                         ) : null}
                         {game.status === "active" ? (
                           <button
