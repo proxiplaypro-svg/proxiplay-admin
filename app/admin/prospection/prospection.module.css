@@ -64,3 +64,15 @@
 @media(max-width: 600px) { .cards { grid-template-columns: 1fr; } .panel { padding: 12px; } }
 .bulkItem { padding: 16px 0; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
 .bulkBody { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.selectionCount { font-weight: 650; color: #355d13; }
+.simpleFilters { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+.searchLabel { min-width: min(100%, 360px); }
+.inlineForm { display: flex; gap: 6px; min-width: 260px; }
+.inlineForm input { min-width: 0; }
+.inlineForm button { padding: 7px 9px; }
+.recipientSummary { margin: 16px 0; padding: 12px 14px; background: #f7f9f4; border-radius: 8px; }
+.composer { display: grid; gap: 14px; max-width: 820px; }
+.composer fieldset { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; border: 1px solid #e8e8e4; border-radius: 8px; padding: 12px; }
+.composer textarea { min-height: 240px; }
+.preview { border-top: 1px solid #e8e8e4; padding-top: 18px; }
+@media(max-width: 600px) { .inlineForm { min-width: 220px; } .composer fieldset { grid-template-columns: 1fr; } }

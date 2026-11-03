@@ -34,8 +34,8 @@ const factualProposalGenerator = {
     const name = company || "votre entreprise";
     const signature = [settings.sender_name, settings.signature, settings.phone, settings.website_url].filter(Boolean).join("\n");
     const facts = [settings.audience_metric && `Indicateur communiqué : ${settings.audience_metric}.`, settings.audience_metric_source && `Source : ${settings.audience_metric_source}`, settings.commercial_price_label && `Tarif indicatif : ${settings.commercial_price_label}`].filter(Boolean).join("\n");
-    const body = [
-      kind === "follow_up" ? settings.follow_up_email_body : settings.initial_email_body,
+    const body = kind === "follow_up" ? settings.follow_up_email_body : [
+      settings.initial_email_body,
       personalization(prospect, name),
       facts,
       signature,

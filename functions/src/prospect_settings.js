@@ -12,8 +12,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   commercial_price_label: "",
   initial_email_subject: "Faire découvrir votre entreprise avec ProxiPlay ?",
   initial_email_body: "Bonjour,\n\nProxiPlay propose aux commerçants et entreprises du Dunkerquois de faire découvrir leur activité grâce à une application locale basée sur le jeu.\n\nVous pouvez découvrir l’application ici :\nhttps://onelink.to/jx4ee7\n\nSi le concept vous intéresse, je peux vous l’expliquer rapidement.",
-  follow_up_email_subject: "Re: Découvrir votre entreprise avec ProxiPlay",
-  follow_up_email_body: "Bonjour,\n\nJe me permets de revenir vers vous au sujet de ProxiPlay. Seriez-vous disponible pour un court échange afin de voir si le concept peut convenir à votre entreprise ?",
+  follow_up_email_subject: "Et si vos clients jouaient avec vous ?",
+  follow_up_email_body: "Bonjour,\n\nJe me permets de revenir vers vous concernant ProxiPlay, une application locale qui permet aux commerçants de se faire connaître autrement, grâce à des jeux gratuits proposés aux habitants.\n\nL'idée est simple : créer de la sympathie autour de votre commerce et faire en sorte que les habitants pensent à vous plutôt qu'à vos concurrents.\n\nSeriez-vous curieux de découvrir comment cela fonctionne ?\n\nBien cordialement,\n\nPascal Rohart\nFondateur de ProxiPlay\n07 59 60 69 86\nwww.proxiplay.fr",
 });
 
 function parseSettings(input) {

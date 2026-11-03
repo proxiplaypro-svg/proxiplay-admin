@@ -5,6 +5,7 @@ import { getProspectProvider } from "@/lib/prospection/provider";
 
 export const runtime = "nodejs";
 async function handle(request: Request) {
+  let action = request.method;
   try {
     const admin = await assertIsAdminRequest(request);
     const service = new ProspectService();
@@ -23,6 +24,7 @@ async function handle(request: Request) {
         result = { results: await service.annotate(body.selection.map(parseFields)) };
       }
       else if (body.action === "search") {
+        action = "search";
         if (body.onlyNew !== undefined && typeof body.onlyNew !== "boolean") throw new ProspectError("Mode de recherche invalide.");
         result = await service.discover(parseSearch(body), body.onlyNew === true, getProspectProvider());
       }
@@ -41,7 +43,9 @@ async function handle(request: Request) {
   } catch (error) {
     const authError = handleAdminAuthError(error); if (authError) return authError;
     if (error && typeof error === "object" && "code" in error && String(error.code).startsWith("auth/")) return Response.json({ error: "Session invalide. Reconnectez-vous." }, { status: 401 });
-    return Response.json({ error: error instanceof ProspectError ? error.message : "L’opération de prospection a échoué." }, { status: error instanceof ProspectError ? error.status : 500 });
+    if (!(error instanceof ProspectError)) console.error("[PROSPECTION_ERROR]", { action, name: error instanceof Error ? error.name : "UnknownError", message: error instanceof Error ? error.message.slice(0, 300) : "unknown" });
+    const message = error instanceof ProspectError ? error.message : action === "search" ? "La recherche Google a échoué après la réponse du service, pendant la vérification locale des résultats. Réessayez ; si le problème persiste, contactez l’administrateur." : "L’opération de prospection a échoué.";
+    return Response.json({ error: message }, { status: error instanceof ProspectError ? error.status : 500 });
   }
 }
 export const GET = handle;

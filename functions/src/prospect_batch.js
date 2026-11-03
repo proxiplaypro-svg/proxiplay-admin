@@ -20,6 +20,12 @@ function parseVariants(input) {
   if (!a || !b) fail("invalid-argument", "Les variantes A et B doivent avoir un objet et un message.");
   return { a, b };
 }
+function personalize(message, prospect) {
+  if (!message) return message;
+  const values = { commerce: prospect.name || "votre commerce", ville: prospect.city || "votre ville", categorie: prospect.category || "votre activité" };
+  const replace = text => text.replace(/\[(commerce|ville|categorie)\]/gi, (_, key) => values[key.toLowerCase()]);
+  return { subject: replace(message.subject), body: replace(message.body) };
+}
 function followUpDue(p, at = Date.now()) {
   if (p.do_not_contact || !["contacted", "follow_up"].includes(p.status)) return false;
   const scheduled = p.next_follow_up_at ? Date.parse(p.next_follow_up_at) : Number.NaN;
@@ -87,7 +93,7 @@ function createBatchService({ db, generator, sender, sendEmail, clock = Date.now
           }
           // Only unsent drafts reach this point: sent or attempted proposals were excluded above.
           const variant = variants ? (index % 2 === 0 ? "A" : "B") : null;
-          const confirmedMessage = variant ? variants[variant.toLowerCase()] : message;
+          const confirmedMessage = variant ? variants[variant.toLowerCase()] : input.personalized === true ? personalize(message, p) : message;
           if (confirmedMessage && (proposal.subject !== confirmedMessage.subject || proposal.body !== confirmedMessage.body)) {
             proposal = { ...proposal, ...confirmedMessage, revision: changed ? proposal.revision : proposal.revision + 1 };
             changed = true;

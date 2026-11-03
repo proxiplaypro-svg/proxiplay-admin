@@ -24,9 +24,14 @@ test("template validation rejects invalid subject and body", () => {
   assert.throws(() => parseSettings({ ...DEFAULT_SETTINGS, initial_email_body: "  " }));
 });
 
-test("relance : modèle distinct et personnalisation métier sans promesse", async () => {
+test("relance : modèle distinct, sans ajout qui dénature le texte validé", async () => {
   const draft = await factualProposalGenerator.generate({ name: "Salon Test", category: "Salon de coiffure" }, { ...DEFAULT_SETTINGS, follow_up_email_subject: "Suite à notre échange", follow_up_email_body: "Bonjour, je reviens vers vous." }, { kind: "follow_up" });
-  assert.equal(draft.subject, "Suite à notre échange"); assert.ok(draft.body.includes("Bonjour, je reviens vers vous.")); assert.ok(draft.body.includes("une coupe, une prestation ou un bon cadeau")); assert.ok(!/350|360 € HT/.test(draft.body));
+  assert.equal(draft.subject, "Suite à notre échange"); assert.equal(draft.body, "Bonjour, je reviens vers vous."); assert.ok(!/350|360 € HT/.test(draft.body));
+});
+
+test("relance par défaut : le texte commercial validé reste distinct du premier contact", async () => {
+  const draft = await factualProposalGenerator.generate({ name: "Restaurant Test", category: "Restaurant" }, DEFAULT_SETTINGS, { kind: "follow_up" });
+  assert.equal(draft.subject, "Et si vos clients jouaient avec vous ?"); assert.ok(draft.body.includes("Pascal Rohart\nFondateur de ProxiPlay")); assert.ok(!draft.body.includes("faire gagner un repas"));
 });
 
 for (const category of ["Bijouterie", "Opticien", "Librairie", "Épicerie", "Caviste", "Papeterie", "Chocolaterie", "Pâtisserie", "Boulangerie", "Animalerie", "Mercerie", "Magasin de sport", "sporting_goods_store", "Bakery"]) test(`precise retail activity: ${category}`, async () => {

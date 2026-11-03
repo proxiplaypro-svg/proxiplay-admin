@@ -13,7 +13,7 @@ export class ProspectService {
     const read = async (collection: string, kind: Entry["kind"]) => {
       const query = this.db.collection(collection);
       const snapshot = transaction ? await transaction.get(query) : await query.get();
-      return snapshot.docs.map(doc => ({ id: doc.id, kind, data: doc.data() }));
+      return snapshot.docs.map(doc => { const data = doc.data(); return { id: doc.id, kind, data: data && typeof data === "object" ? data : {} }; });
     };
     return [...await read("enseignes", "client"), ...await read("merchants", "client"), ...await read("prospects", "prospect"), ...await read("prospection_internal/discovery/ignored", "ignored")];
   }
