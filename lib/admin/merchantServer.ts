@@ -3,6 +3,11 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin-app";
 import { isAllowedAdminEmail } from "@/lib/firebase/adminAccess";
 import { commerceFields, merchantEmail, MerchantError, ownerUid, textField } from "./merchantSchema";
+import { isMerchantValidated, merchantValidation } from "./merchantStatus";
+
+// Clés qui modifieraient le statut de validation ou la connexion : jamais
+// acceptées dans une modification ordinaire du compte.
+const statusKeys = ["account_status", "active", "loginAllowed", "disabled"];
 
 export async function existingMerchantAccount(email: string) {
   let account;
@@ -50,8 +55,10 @@ export async function createMerchant(body: Record<string, unknown>) {
       const user = await tx.get(userRef);
       if (existing && user.data()?.user_role !== "commercant") throw new MerchantError("Le compte a changé. Rechargez la fiche.", 409);
       if (!existing && user.exists) throw new MerchantError("Un profil existe déjà pour ce compte.", 409);
-      if (!existing) tx.create(userRef, { email, first_name, last_name, phone_number, user_role: "commercant", account_status: active ? "active" : "inactive", created_time: FieldValue.serverTimestamp() });
-      const enabled = existing ? !account.disabled && user.data()?.account_status === "active" : active;
+      // Un compte créé par l'administration est validé d'emblée ; "active"
+      // (option du formulaire) ne règle que la connexion Firebase Auth.
+      if (!existing) tx.create(userRef, { email, first_name, last_name, phone_number, user_role: "commercant", account_status: "approved", created_time: FieldValue.serverTimestamp() });
+      const enabled = existing ? !account.disabled && isMerchantValidated(user.data()?.account_status) : active;
       tx.create(shop, { ...fields, email, owner: `/users/${account.uid}`, owner_id: userRef, status: enabled ? "active" : "inactive", commercial_status: enabled ? "actif" : "inactif", created_at: FieldValue.serverTimestamp() });
     });
     committed = true;
@@ -86,7 +93,7 @@ export async function readMerchantAccount(merchantId: string) {
     if ((error as { code?: string }).code === "auth/user-not-found") return { account: null, warning: "Le propriétaire enregistré n’a plus de compte. Associez un compte commerçant existant.", ownerUid: uid };
     throw error;
   }
-  return { account: { uid, email: account.email ?? "", first_name: user.data()?.first_name ?? "", last_name: user.data()?.last_name ?? "", account_phone: user.data()?.phone_number ?? "", active: !account.disabled && user.data()?.account_status === "active", role: user.data()?.user_role ?? "" } };
+  return { account: { uid, email: account.email ?? "", first_name: user.data()?.first_name ?? "", last_name: user.data()?.last_name ?? "", account_phone: user.data()?.phone_number ?? "", loginAllowed: !account.disabled, validation: merchantValidation(user.data()?.account_status), role: user.data()?.user_role ?? "" } };
 }
 
 export async function manageMerchantAccount(merchantId: string, body: Record<string, unknown>) {
@@ -95,6 +102,12 @@ export async function manageMerchantAccount(merchantId: string, body: Record<str
   const shopRef = db.doc(`enseignes/${merchantId}`);
   const shop = await shopRef.get();
   if (!shop.exists) throw new MerchantError("Commerce introuvable.", 404);
+  // Le statut de validation ne s'écrit jamais ici ; la connexion ne change
+  // que par l'action explicite "access".
+  const sentStatus = statusKeys.filter(key => key in body);
+  if (sentStatus.length && !(body.action === "access" && sentStatus.every(key => key === "loginAllowed"))) {
+    throw new MerchantError("Le statut de validation et la connexion ne se modifient pas avec cette action.");
+  }
   if (body.action === "profile") {
     if (!body.fields || typeof body.fields !== "object" || Array.isArray(body.fields)) throw new MerchantError("Informations du commerce invalides.");
     const input = body.fields as Record<string, unknown>;
@@ -135,16 +148,24 @@ export async function manageMerchantAccount(merchantId: string, body: Record<str
   const before = await auth.getUser(uid);
   if (user.data()?.user_role !== "commercant" || before.customClaims?.admin || isAllowedAdminEmail(before.email)) throw new MerchantError("Seuls les comptes commerçants peuvent être gérés ici.", 403);
   if (body.action === "reset") return { email: before.email };
+  if (body.action === "access") {
+    // Seule action qui modifie la connexion : Firebase Auth uniquement, jamais
+    // account_status ni le statut des commerces.
+    if (typeof body.loginAllowed !== "boolean") throw new MerchantError("Choix de connexion invalide.");
+    await auth.updateUser(uid, { disabled: !body.loginAllowed });
+    if (!body.loginAllowed) await auth.revokeRefreshTokens(uid);
+    return readMerchantAccount(merchantId);
+  }
   if (body.action !== "update") throw new MerchantError("Action inconnue.");
-  if (typeof body.active !== "boolean") throw new MerchantError("Statut invalide.");
   const first_name = textField(body.first_name, "Prénom", 100);
   const last_name = textField(body.last_name, "Nom", 100);
   const phone_number = textField(body.account_phone, "Téléphone", 50);
   const email = merchantEmail(body.email ?? before.email);
   if (isAllowedAdminEmail(email)) throw new MerchantError("Cette adresse est réservée à l’administration.", 409);
   const changingEmail = email !== before.email;
-  const accountFields = { first_name, last_name, phone_number, email, account_status: body.active ? "active" : "inactive" };
-  await auth.updateUser(uid, { email, ...(changingEmail ? { emailVerified: false } : {}), disabled: !body.active, displayName: [first_name, last_name].filter(Boolean).join(" ") || null });
+  // Identité seulement : ni account_status, ni état de connexion (disabled).
+  const accountFields = { first_name, last_name, phone_number, email };
+  await auth.updateUser(uid, { email, ...(changingEmail ? { emailVerified: false } : {}), displayName: [first_name, last_name].filter(Boolean).join(" ") || null });
   try {
     await db.runTransaction(async tx => {
       const current = await tx.get(shopRef);
@@ -170,13 +191,13 @@ export async function manageMerchantAccount(merchantId: string, body: Record<str
     try { saved = (await userRef.get()).data(); }
     catch { throw new MerchantError("Le résultat de la modification n’a pas pu être confirmé. Vérification technique nécessaire.", 500, "cleanup-required"); }
     if (Object.entries(accountFields).every(([key, value]) => saved?.[key] === value)) {
-      if (!body.active || changingEmail) await auth.revokeRefreshTokens(uid);
+      if (changingEmail) await auth.revokeRefreshTokens(uid);
       return readMerchantAccount(merchantId);
     }
-    try { await auth.updateUser(uid, { email: before.email, emailVerified: before.emailVerified, disabled: before.disabled, displayName: before.displayName ?? null }); }
+    try { await auth.updateUser(uid, { email: before.email, emailVerified: before.emailVerified, displayName: before.displayName ?? null }); }
     catch { throw new MerchantError("La synchronisation du compte a échoué. Vérification technique nécessaire.", 500, "cleanup-required"); }
     throw error;
   }
-  if (!body.active || changingEmail) await auth.revokeRefreshTokens(uid);
+  if (changingEmail) await auth.revokeRefreshTokens(uid);
   return readMerchantAccount(merchantId);
 }

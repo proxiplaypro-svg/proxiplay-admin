@@ -17,6 +17,7 @@
     "test:prospection-email-api": "firebase --config firebase.emulator.json emulators:exec --project demo-prospection --only firestore,auth \"node --test functions/test/prospect_email_emulator.test.cjs\"",
     "test:prospection-api": "firebase --config firebase.emulator.json emulators:exec --project demo-prospection --only firestore,auth \"tsx --test prospection-api.test.ts\"",
     "test:admin-merchants": "firebase --config firebase.emulator.json emulators:exec --project demo-admin-merchants --only firestore,auth \"tsx --test merchant-admin.test.ts\"",
+    "test:merchant-status": "tsx --test merchant-status.test.ts && node --test merchant-account-ui.test.mjs",
     "test:merchant-media": "tsx --test merchant-media.test.ts && node --test merchant-media-ui.test.mjs",
     "test:merchant-media-api": "firebase --config firebase.emulator.json emulators:exec --project demo-admin-merchants --only firestore,auth \"tsx --test --test-concurrency=1 merchant-admin.test.ts merchant-photos-api.test.ts\"",
     "test:merchant-emails": "node --test functions/test/managed_merchant_email.test.cjs",

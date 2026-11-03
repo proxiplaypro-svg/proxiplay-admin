@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
+import { merchantValidation } from "@/lib/admin/merchantStatus";
 import type {
   MerchantActiveGameSummary,
   MerchantPilotageItem,
@@ -177,7 +178,7 @@ export function MerchantPanel({
                 {merchant.ownerEmail || "Email non renseigne"} · {merchant.ownerPhone || "Tel non renseigne"}
               </p>
               {merchant.ownerStatus && (
-                <p className="mt-1 text-[11px] text-[#999]">Statut compte : {merchant.ownerStatus}</p>
+                <p className="mt-1 text-[11px] text-[#999]">Validation : {merchantValidation(merchant.ownerStatus).label}</p>
               )}
             </div>
           )}

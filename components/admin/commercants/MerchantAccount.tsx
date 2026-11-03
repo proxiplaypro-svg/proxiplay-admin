@@ -4,7 +4,8 @@ import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase/auth";
 import { merchantRequest } from "@/lib/admin/merchantClient";
 
-type Account = { uid: string; email: string; first_name: string; last_name: string; account_phone: string; active: boolean; role: string };
+type Validation = { status: string; label: string; legacy: boolean };
+type Account = { uid: string; email: string; first_name: string; last_name: string; account_phone: string; loginAllowed: boolean; validation: Validation; role: string };
 export default function MerchantAccount({ merchantId }: { merchantId: string }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [owner, setOwner] = useState("");
@@ -25,18 +26,27 @@ export default function MerchantAccount({ merchantId }: { merchantId: string }) 
     }).catch(e => { if (!cancelled) setError(e.message); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [merchantId]);
-  async function run(action: "update" | "associate" | "reset") {
+  async function run(action: "update" | "associate" | "reset" | "access", loginAllowed?: boolean) {
     if (busy) return;
     setBusy(true); setError(""); setMessage("");
+    // Chaque action n'envoie que ses propres champs : une modification
+    // d'identité ne transmet jamais la connexion ni le statut de validation.
+    const payload = action === "update" && account
+      ? { first_name: account.first_name, last_name: account.last_name, account_phone: account.account_phone, email: account.email }
+      : action === "associate" ? { email }
+      : action === "access" ? { loginAllowed }
+      : {};
     try {
-      const result = await merchantRequest("PATCH", { ...account, action, expectedOwner: owner, ...(action === "associate" ? { email } : {}) }, merchantId);
+      const result = await merchantRequest("PATCH", { ...payload, action, expectedOwner: owner }, merchantId);
       if (action === "reset") {
         try { await sendPasswordResetEmail(auth, result.email); }
         catch { throw new Error("L’email n’a pas pu être envoyé. Le compte est conservé ; réessayez l’envoi plus tard."); }
         setMessage("Email de définition du mot de passe envoyé.");
       } else {
         setAccount(result.account); setOwner(result.account?.uid ?? result.ownerUid ?? ""); setConfirmed(false); setEmail("");
-        setMessage(action === "associate" ? "Compte associé. Son profil et son statut ont été conservés." : "Compte commerçant enregistré.");
+        setMessage(action === "associate" ? "Compte associé. Son profil et son statut ont été conservés."
+          : action === "access" ? (loginAllowed ? "Connexion autorisée." : "Connexion désactivée. Les sessions en cours ont été fermées.")
+          : "Compte commerçant enregistré.");
       }
     } catch (e) { setError(e instanceof Error ? e.message : "L’opération a échoué."); }
     finally { setBusy(false); }
@@ -45,13 +55,18 @@ export default function MerchantAccount({ merchantId }: { merchantId: string }) 
     <div className="panel-heading"><h2>Compte commerçant associé</h2><p>Gérez l’identité, l’accès et le mot de passe du propriétaire.</p></div>
     {loading ? <p>Chargement du compte…</p> : <>
       {account ? <form className="game-edit-form" onSubmit={e => { e.preventDefault(); void run("update"); }}>
-        <p><strong>{account.email}</strong> · {account.active ? "Actif" : "Désactivé"}</p>
+        <p><strong>{account.email}</strong></p>
+        <p>Validation : <strong>{account.validation.label}</strong> · Connexion : <strong>{account.loginAllowed ? "autorisée" : "désactivée"}</strong></p>
+        {account.validation.legacy && <p className="muted">Ce statut provient de l’ancien Admin. Il est conservé tel quel en attendant sa régularisation.</p>}
         <p className="muted">Une modification de l’email met à jour l’adresse de connexion et celle de ses commerces. Pour changer de propriétaire, associez un autre compte ci-dessous.</p>
         <fieldset disabled={busy || account.role !== "commercant"} className="merchant-fieldset">
           <label className="game-edit-field"><span className="search-label">Email du commerçant</span><input className="search-input" type="email" required maxLength={300} value={account.email} onChange={e => setAccount({ ...account, email: e.target.value })} /></label>
           <div className="game-edit-grid">{([ ["first_name", "Prénom"], ["last_name", "Nom"], ["account_phone", "Téléphone du commerçant"] ] as const).map(([key, label]) => <label key={key} className="game-edit-field"><span className="search-label">{label}</span><input className="search-input" maxLength={key === "account_phone" ? 50 : 100} value={account[key]} onChange={e => setAccount({ ...account, [key]: e.target.value })} /></label>)}</div>
-          <label className="merchant-option"><input type="checkbox" checked={account.active} onChange={e => setAccount({ ...account, active: e.target.checked })} />Compte commerçant actif (pour tous ses commerces)</label>
           <div className="dashboard-actions"><button className="primary-button" type="submit">Enregistrer le compte</button><button className="secondary-button" type="button" onClick={() => void run("reset")}>Envoyer un email de définition / réinitialisation du mot de passe</button></div>
+          <div className="merchant-option">
+            <span>Connexion autorisée (pour tous ses commerces) : {account.loginAllowed ? "oui" : "non"}. Le statut de validation n’est pas modifié.</span>
+            <button className="secondary-button" type="button" onClick={() => void run("access", !account.loginAllowed)}>{account.loginAllowed ? "Désactiver la connexion" : "Autoriser la connexion"}</button>
+          </div>
         </fieldset>
         {account.role !== "commercant" && <p>Ce profil ne possède pas le rôle commerçant. Associez un compte commerçant existant.</p>}
       </form> : <p>Aucun compte commerçant associé.</p>}

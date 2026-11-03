@@ -55,8 +55,8 @@ Travail local uniquement : aucun déploiement, commit ou push. Les modifications
 
 | Document | Champs créés |
 | --- | --- |
-| Auth | `email`, `displayName`, mot de passe aléatoire non exposé, `disabled = !active` |
-| `users/{uid}` | `email`, `first_name`, `last_name`, `phone_number`, `user_role: "commercant"`, `account_status: "active"` ou `"inactive"`, `created_time` |
+| Auth | `email`, `displayName`, mot de passe aléatoire non exposé, `disabled = !active` (option « Autoriser la connexion immédiatement ») |
+| `users/{uid}` | `email`, `first_name`, `last_name`, `phone_number`, `user_role: "commercant"`, `account_status: "approved"` (compte créé par l’administration, donc validé), `created_time` |
 | `enseignes/{id}` | `name`, `category: string[]`, `description`, `address`, `area_code`, `city`, `phone`, `phone_number`, `site_web_url`, `google_place_id`, `imageUrl`, `created_at`, `status`, `commercial_status` ; avec compte : `email`, `owner`, `owner_id` |
 
    L’identifiant de la nouvelle enseigne est indépendant du compte : un compte peut être associé à plusieurs commerces. Aucun nouveau pointeur inverse n’est inventé dans `users`. La fiche seule ne crée ni Auth, ni utilisateur, ni propriétaire ; ses statuts sont `inactive` / `inactif`. Pour un compte existant, son profil et son activation sont conservés.
@@ -94,3 +94,12 @@ Travail local uniquement : aucun déploiement, commit ou push. Les modifications
    - Les anciennes fiches sans document utilisateur restent éditables, mais leur ancien compte incomplet n’est pas promu automatiquement ; il faut associer un compte commerçant valide.
    - L’activation/désactivation concerne le compte entier, donc tous ses commerces. Le changement de propriétaire n’effectue pas de réécriture des anciens jeux ou des preuves QR liées au propriétaire précédent.
    - Les anciens objets de stockage sont conservés lors du remplacement/retrait d’une photo ; leur purge n’est pas automatisée.
+
+## Statut de validation et connexion (correctif du 3 novembre 2026)
+
+Deux notions distinctes :
+
+- **Validation administrative** : `users/{uid}.account_status` (`pendingValidation`, `approved`, `rejected`, `suspended`), lue par les règles Firestore, l’app et la facturation. L’Admin web ne l’écrit qu’à la création d’un compte (`approved`) ; aucune modification de fiche (commerçant ou joueur) ne la change, et toute requête qui la contient est refusée.
+- **Connexion** : uniquement Firebase Auth `disabled`. Elle ne change que par l’action explicite « Autoriser / Désactiver la connexion » (`action: "access"`), jamais lors d’une modification d’identité, et ne touche ni `account_status` ni le statut des commerces.
+
+Les anciennes valeurs `active` et `inactive` (écrites par l’Admin web jusqu’à ce correctif) sont conservées et affichées « à régulariser » ; aucune migration automatique. L’association d’un compte ou la modification d’une enseigne ne réactive jamais une enseigne : seul `createMerchant` fixe `status`, pour la nouvelle enseigne (ouverte si le compte est validé et peut se connecter).

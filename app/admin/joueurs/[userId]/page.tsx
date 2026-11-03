@@ -316,7 +316,8 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
         email: editForm.email.trim() || null,
         phone_number: editForm.phone.trim() || null,
         city: editForm.city.trim() || null,
-        account_status: editForm.accountStatus.trim() || null,
+        // account_status n'est jamais écrit ici : c'est le statut de validation
+        // lu par les règles, l'app et la facturation (commerçants compris).
       });
       const nextFullName = [editForm.firstName.trim(), editForm.lastName.trim()]
         .filter(Boolean)
@@ -329,7 +330,6 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
               email: editForm.email.trim() || "Non renseigne",
               phone: editForm.phone.trim() || "Non renseigne",
               city: editForm.city.trim() || "Non renseignee",
-              accountStatus: editForm.accountStatus.trim() || "Non renseigne",
             }
           : current,
       );
@@ -709,11 +709,12 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
                       />
                     </div>
                     <div className="grid gap-2">
-                      <label className="text-[0.9rem] font-medium text-[var(--muted)]">Statut compte</label>
+                      <label className="text-[0.9rem] font-medium text-[var(--muted)]">Statut compte (non modifiable ici)</label>
                       <input
-                        className="w-full rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[0.96rem] text-[var(--foreground)] outline-none transition focus:border-[rgba(99,153,34,0.32)]"
+                        className="w-full rounded-[14px] border border-[rgba(159,177,199,0.12)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[0.96rem] text-[var(--muted)] outline-none"
                         value={editForm.accountStatus}
-                        onChange={(event) => setEditForm((current) => ({ ...current, accountStatus: event.target.value }))}
+                        readOnly
+                        aria-readonly="true"
                       />
                     </div>
                   </div>
