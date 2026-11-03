@@ -41,7 +41,8 @@ import { PROXIPLAY_CATEGORY_PRESETS } from "@/lib/prospection/searchConfig";
 import Link from "next/link";
 import s from "../prospection.module.css";
 
-type View = "dashboard" | "companies" | "emails" | "campaigns" | "actions" | "prospects";
+type View =
+  "dashboard" | "companies" | "emails" | "campaigns" | "actions" | "prospects";
 type CompanyPanel = "list" | "add" | "search" | "ignored";
 type Filters = typeof EMPTY_FILTERS;
 
@@ -586,7 +587,8 @@ export default function UnifiedProspectionPage({
               : "Pilotez vos contacts, relances et campagnes depuis un seul espace."}
           </p>
         </div>
-        <div className={s.actions}>{legacy && (
+        <div className={s.actions}>
+          {legacy && (
             <Link className={s.link} href="/admin/prospection">
               Accueil Prospection
             </Link>
@@ -735,7 +737,9 @@ export default function UnifiedProspectionPage({
               }}
             >
               <div>
-                <button type="button" onClick={() => setCompanyPanel("search")}>← Recherche</button>
+                <button type="button" onClick={() => setCompanyPanel("search")}>
+                  ← Recherche
+                </button>
               </div>
               <ProspectFields value={draft} onChange={setDraft} />
               <section className={s.panel}>
@@ -1106,7 +1110,66 @@ export default function UnifiedProspectionPage({
         </>
       )}
 
-      {view === "prospects" && <section className={s.panel}><div className={s.toolbar}><div><h2>Prospects</h2><p className={s.muted}>{prospects.length} prospect(s) enregistré(s)</p></div><button disabled={busy} onClick={() => void run(reload)}>Actualiser</button></div><ProspectFilters filters={filters} update={updateFilters} prospects={prospects} showStatus showEmail /><div className={s.toolbar}><p className={s.muted}>{filtered.length} résultat(s)</p><div className={s.actions}><button onClick={() => setFilters(EMPTY_FILTERS)}>Réinitialiser les filtres</button><button disabled={busy || !filtered.length} onClick={() => selectProspects(filtered.map(p => p.id))}>Sélectionner les prospects</button><button className={s.primary} disabled={busy || !emailSelection.size} onClick={() => void run(enrichSelection)}>Rechercher les e-mails</button></div></div><ProspectList prospects={filtered} selection={emailSelection} busy={busy} showEmailActions={false} onSelect={(id, checked) => setEmailSelection(previous => { const next = new Set(previous); checked ? next.add(id) : next.delete(id); return next; })} onRetry={retryEmail} />{progress && <p role="status">{progress}</p>}</section>}
+      {view === "prospects" && (
+        <section className={s.panel}>
+          <div className={s.toolbar}>
+            <div>
+              <h2>Prospects</h2>
+              <p className={s.muted}>
+                {prospects.length} prospect(s) enregistré(s)
+              </p>
+            </div>
+            <div className={s.actions}>
+              <button onClick={() => { setView("companies"); setCompanyPanel("add"); }}>+ Ajouter un prospect</button>
+              <button disabled={!emailSelection.size} onClick={() => { setCampaignSelection(new Set([...emailSelection])); setView("campaigns"); }}>Lancer une campagne</button>
+            </div>
+          </div>
+          <ProspectFilters
+            filters={filters}
+            update={updateFilters}
+            prospects={prospects}
+            showStatus
+            showEmail
+          />
+          <div className={s.toolbar}>
+            <p className={s.muted}>{filtered.length} résultat(s)</p>
+            <div className={s.actions}>
+              <button onClick={() => setFilters(EMPTY_FILTERS)}>
+                Réinitialiser les filtres
+              </button>
+              <button
+                disabled={busy || !filtered.length}
+                onClick={() => selectProspects(filtered.map((p) => p.id))}
+              >
+                Sélectionner les prospects
+              </button>
+              <button
+                className={s.primary}
+                disabled={busy || !emailSelection.size}
+                onClick={() => void run(enrichSelection)}
+              >
+                Rechercher les e-mails
+              </button>
+              <button disabled={!emailSelection.size} onClick={() => { setCampaignSelection(new Set([...emailSelection])); setCampaignKind("follow_up"); setView("campaigns"); }}>Préparer une relance</button>
+            </div>
+          </div>
+          <ProspectList
+            prospects={filtered}
+            selection={emailSelection}
+            busy={busy}
+            showEmailActions={false}
+            onSelect={(id, checked) =>
+              setEmailSelection((previous) => {
+                const next = new Set(previous);
+                checked ? next.add(id) : next.delete(id);
+                return next;
+              })
+            }
+            onRetry={retryEmail}
+          />
+          {progress && <p role="status">{progress}</p>}
+        </section>
+      )}
       {view === "emails" && (
         <>
           <section className={s.sectionHeading}>
