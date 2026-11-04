@@ -20,7 +20,7 @@ export function importableIndices(results: SearchResult[]): number[] { return re
 export function googleRatingLabel(data: Partial<ProspectFields>): string {
   return [data.google_rating != null ? "★ " + data.google_rating.toLocaleString("fr-FR") : "", data.google_user_rating_count != null ? data.google_user_rating_count.toLocaleString("fr-FR") + " avis" : ""].filter(Boolean).join(" · ");
 }
-export type SearchInput = { location: string; radius: number; categories: string[]; limit: number };
+export type SearchInput = { location: string; radius: number; categories: string[]; limit: number; center?: { latitude: number; longitude: number } };
 export class ProspectError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
@@ -92,7 +92,9 @@ export function parseSearch(input: unknown): SearchInput {
   if (!Array.isArray(body.categories) || !body.categories.length || body.categories.length > 11) throw new ProspectError("Sélectionnez de 1 à 11 secteurs.");
   const categories = [...new Set(body.categories.map(value => text(value, 100)))];
   if (categories.some(value => !value)) throw new ProspectError("Secteur vide.");
-  return { location, radius: body.radius, limit: Number(body.limit), categories };
+  const center = body.center;
+  if (center != null && (!center || typeof center !== "object" || !Number.isFinite((center as { latitude?: unknown }).latitude) || !Number.isFinite((center as { longitude?: unknown }).longitude))) throw new ProspectError("Coordonnées de ville invalides.");
+  return { location, radius: body.radius, limit: Number(body.limit), categories, ...(center ? { center: { latitude: (center as { latitude: number }).latitude, longitude: (center as { longitude: number }).longitude } } : {}) };
 }
 
 export function enrichMissing(current: Partial<ProspectFields>, details: ProspectFields): Partial<ProspectFields> {

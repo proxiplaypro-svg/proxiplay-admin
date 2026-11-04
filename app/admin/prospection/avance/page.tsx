@@ -31,6 +31,7 @@ import {
 import { ProspectList } from "@/components/admin/prospection/ProspectList";
 import { ProspectFields } from "@/components/admin/prospection/ProspectFields";
 import { ProspectBulkEmail } from "@/components/admin/prospection/ProspectBulkEmail";
+import { CityAutocomplete } from "@/components/admin/prospection/CityAutocomplete";
 import { ProspectionSettings } from "@/components/admin/prospection/ProspectionSettings";
 import {
   emailRequest,
@@ -327,6 +328,7 @@ export default function UnifiedProspectionPage({
   >("all");
   const [search, setSearch] = useState<SearchInput>({
     location: "Dunkerque",
+    center: { latitude: 51.0344, longitude: 2.3768 },
     radius: 15,
     categories: ["restaurants"],
     limit: 50,
@@ -521,6 +523,7 @@ export default function UnifiedProspectionPage({
     await reload();
   }
   async function discover(input: SearchInput, onlyNew = false) {
+    if (!input.center) throw new Error("Sélectionnez une ville proposée avant de lancer la recherche.");
     const data = await prospectRequest<{
       results: SearchResult[];
       excludedCount: number;
@@ -788,13 +791,7 @@ export default function UnifiedProspectionPage({
                 <div className={s.filters}>
                   <label>
                     Ville / zone
-                    <input
-                      required
-                      value={search.location}
-                      onChange={(event) =>
-                        setSearch({ ...search, location: event.target.value })
-                      }
-                    />
+                    <CityAutocomplete value={search.location} onChange={({ label, center }) => setSearch({ ...search, location: label, ...(center ? { center } : { center: undefined }) })} />
                   </label>
                   <label>
                     Rayon (km)

@@ -31,6 +31,10 @@
 .module label { display: grid; gap: 5px; font-size: 13px; color: #555; }
 .module input:not([type=checkbox]), .module select, .module textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #d4d8cf; border-radius: 6px; background: white; color: #1a1a1a; font: inherit; }
 .module textarea { min-height: 100px; resize: vertical; }
+.module .cityAutocomplete { position: relative; }
+.module .cityAutocomplete ul { position: absolute; z-index: 10; width: 100%; max-height: 220px; overflow: auto; margin: 3px 0 0; padding: 4px 0; list-style: none; background: white; border: 1px solid #d4d8cf; border-radius: 6px; box-shadow: 0 8px 20px rgba(0,0,0,.12); }
+.module .cityAutocomplete li { padding: 8px 10px; cursor: pointer; }
+.module .cityAutocomplete li:hover, .module .cityAutocomplete li[aria-selected=true] { background: #eaf3de; }
 .module .check { display: flex; align-items: center; gap: 8px; }
 .table { overflow-x: auto; }
 .module table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
