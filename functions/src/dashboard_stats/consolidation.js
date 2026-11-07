@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { parisDayKey } = require("./gameContract");
+const { parisDayKey, toMillis } = require("./gameContract");
 const { isEligibleRegisteredPlayer, isParticipationInRolling30Days, merchantIdentity, gameInProgress } = require("./gameContract");
 
 function dailyReference(now = Date.now()) {
@@ -7,6 +7,64 @@ function dailyReference(now = Date.now()) {
   day.setUTCDate(day.getUTCDate() - 1); const reference_date = day.toISOString().slice(0, 10);
   const start = new Date(`${reference_date}T12:00:00Z`); start.setUTCDate(start.getUTCDate() - 29);
   return { reference_date, start_date: start.toISOString().slice(0, 10) };
+}
+
+function participationMillis(item) {
+  const value = item?.participation_date;
+  if (value && typeof value.toMillis === "function") return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function addParisCalendarDays(dayKey, offset) {
+  const day = new Date(`${dayKey}T12:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + offset);
+  return day.toISOString().slice(0, 10);
+}
+
+function completedWeekReference(now = Date.now()) {
+  const today = parisDayKey(now);
+  if (!today) throw new Error("A valid date is required.");
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Paris", weekday: "short" }).format(new Date(now));
+  const daysSinceMonday = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 }[weekday];
+  if (daysSinceMonday === undefined) throw new Error("Unable to resolve Paris weekday.");
+  const end_date = addParisCalendarDays(today, -daysSinceMonday);
+  return { start_date: addParisCalendarDays(end_date, -7), end_date };
+}
+
+function completedMonthReference(now = Date.now()) {
+  const today = parisDayKey(now);
+  if (!today) throw new Error("A valid date is required.");
+  const [year, month] = today.split("-").map(Number);
+  const end_date = `${year}-${String(month).padStart(2, "0")}-01`;
+  const previous = new Date(Date.UTC(year, month - 2, 1, 12));
+  return { start_date: previous.toISOString().slice(0, 10), end_date };
+}
+
+function userRegistrationMillis(user) {
+  return toMillis(user?.created_time) ?? toMillis(user?.created_at) ?? toMillis(user?.createdAt);
+}
+
+// Converts a Paris calendar day (YYYY-MM-DD) to its real UTC midnight.  A
+// plain `${day}T00:00:00Z` is not equivalent on either side of CET/CEST and
+// can silently omit the first one or two hours of the first J30 day.
+function parisMidnightMillis(dayKey) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey);
+  if (!match) throw new Error("A Paris day key is required.");
+  const target = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  });
+  let candidate = target;
+  // Two passes cover offset changes at the beginning/end of daylight saving
+  // time while keeping this dependency-free in the Functions runtime.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const parts = formatter.formatToParts(new Date(candidate));
+    const value = (type) => Number(parts.find((part) => part.type === type)?.value);
+    candidate += target - Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), value("second"));
+  }
+  return candidate;
 }
 
 async function readPaginated(query, maximum, pageSize = 500) {
@@ -26,7 +84,7 @@ async function readPaginated(query, maximum, pageSize = 500) {
 // Beyond a budget the source is reported incomplete (null), never partially counted.
 async function consolidateFromFirestore({ db, now = Date.now(), maximum = 10000, participantsMaximum = 60000, pageSize = 500 }) {
   const reference = dailyReference(now);
-  const cutoff = new Date(`${reference.start_date}T00:00:00Z`);
+  const cutoff = new Date(parisMidnightMillis(reference.start_date));
   const [users, participants, games] = await Promise.all([
     readPaginated(db.collection("users").orderBy("__name__"), maximum, pageSize),
     readPaginated(db.collectionGroup("participants").where("participation_date", ">=", cutoff).orderBy("participation_date"), participantsMaximum, pageSize),
@@ -54,13 +112,23 @@ async function consolidateFromFirestore({ db, now = Date.now(), maximum = 10000,
   metrics.participations_j30 = participationData.length;
   metrics.active_players_j30 = new Set(participationData.map((item) => typeof item.user_id === "string" ? item.user_id : item.user_id?.id).filter(Boolean)).size;
   const playersYesterday = new Set(participationData.filter((item) => parisDayKey(item.participation_date) === reference.reference_date).map((item) => typeof item.user_id === "string" ? item.user_id : item.user_id?.id).filter(Boolean)).size;
-  const payload = { registered_players: users.complete ? metrics.registered_players : null, active_players_j30: users.complete && participants.complete ? metrics.active_players_j30 : null, participations_today: participants.complete ? metrics.participations_today : null, participations_j30: participants.complete ? metrics.participations_j30 : null, active_games: games.complete ? metrics.active_games : null, merchants_with_active_game: games.complete ? metrics.merchants_with_active_game : null };
+  const rollingComplete = users.complete && participants.complete;
+  const payload = {
+    registered_players: users.complete ? metrics.registered_players : null,
+    active_players_j30: rollingComplete ? metrics.active_players_j30 : null,
+    participations_today: participants.complete ? metrics.participations_today : null,
+    participations_j30: participants.complete ? metrics.participations_j30 : null,
+    active_games: games.complete ? metrics.active_games : null,
+    merchants_with_active_game: games.complete ? metrics.merchants_with_active_game : null,
+  };
   if (participants.complete) {
     const unique = new Set(participationData.filter((item) => parisDayKey(item.participation_date) === reference.reference_date).map((item) => typeof item.user_id === "string" ? item.user_id : item.user_id?.id).filter(Boolean));
     await db.doc(`analytics_daily/${reference.reference_date}`).set({ participations_count: metrics.participations_today, unique_players_count: unique.size, updated_at: new Date(now), source: "daily_consolidation" }, { merge: true });
   }
   const definitive = {
     registered_players: payload.registered_players,
+    active_players_j30: payload.active_players_j30,
+    participations_j30: payload.participations_j30,
     players_yesterday: participants.complete ? playersYesterday : null,
     participations_yesterday: payload.participations_today,
     // This stays unavailable until the explicit historical initializer has
@@ -70,8 +138,53 @@ async function consolidateFromFirestore({ db, now = Date.now(), maximum = 10000,
     active_games: payload.active_games,
   };
   const complete = users.complete && participants.complete && games.complete;
-  await db.doc("dashboard_stats/current").set({ schema_version: 2, computed_at: new Date(now), reference_date: reference.reference_date, source_complete: complete, ...definitive }, { merge: true });
+  await db.doc("dashboard_stats/current").set({ schema_version: 3, computed_at: new Date(now), reference_date: reference.reference_date, source_complete: complete, ...definitive }, { merge: true });
   return { metrics: payload, complete, reads: users.docs.length + participants.docs.length + games.docs.length + gameInputs.filter((item) => item.data.access_mode === "qr_only").length };
+}
+
+// The closed-period jobs write only their own fields. This keeps the daily
+// consolidation authoritative for all existing dashboard indicators.
+async function consolidateCompletedPeriod({ db, period, now = Date.now(), maximum = 10000, participantsMaximum = 60000, pageSize = 500 }) {
+  if (period !== "week" && period !== "month") throw new Error("period must be week or month");
+  const reference = period === "week" ? completedWeekReference(now) : completedMonthReference(now);
+  const start = new Date(parisMidnightMillis(reference.start_date));
+  const end = new Date(parisMidnightMillis(reference.end_date));
+  const [users, participants] = await Promise.all([
+    readPaginated(db.collection("users").orderBy("__name__"), maximum, pageSize),
+    readPaginated(db.collectionGroup("participants").where("participation_date", ">=", start).where("participation_date", "<", end).orderBy("participation_date"), participantsMaximum, pageSize),
+  ]);
+  const userById = new Map(users.docs.map((item) => [item.id, item.data()]));
+  const eligibleUsers = users.docs.map((item) => item.data()).filter(isEligibleRegisteredPlayer);
+  // A historical inactive count needs a creation time for every eligible
+  // account. Returning null is safer than treating an unknown account as old.
+  const registrationsComplete = eligibleUsers.every((user) => userRegistrationMillis(user) !== null);
+  const eligibleAtEnd = eligibleUsers.filter((user) => {
+    const registeredAt = userRegistrationMillis(user);
+    return registeredAt !== null && registeredAt < end.getTime();
+  });
+  const participantIds = new Set(participants.docs.flatMap((item) => {
+    const data = item.data(); const at = participationMillis(data);
+    const raw = data.user_id; const id = typeof raw === "string" ? raw : raw?.id;
+    const user = userById.get(id);
+    const registeredAt = userRegistrationMillis(user);
+    return at !== null && at >= start.getTime() && at < end.getTime() && typeof id === "string" && id && isEligibleRegisteredPlayer(user) && registeredAt !== null && registeredAt < end.getTime() ? [id] : [];
+  }));
+  const complete = users.complete && participants.complete && registrationsComplete;
+  const fieldPrefix = period === "week" ? "weekly" : "monthly";
+  const common = {
+    [`${fieldPrefix}_period_start`]: reference.start_date,
+    [`${fieldPrefix}_period_end`]: reference.end_date,
+    [`${fieldPrefix}_source_complete`]: complete,
+    [`${fieldPrefix}_computed_at`]: new Date(now),
+  };
+  const fields = period === "week"
+    ? { weekly_unique_players: complete ? participantIds.size : null }
+    : {
+      monthly_unique_players: complete ? participantIds.size : null,
+      monthly_inactive_players: complete ? Math.max(0, eligibleAtEnd.length - participantIds.size) : null,
+    };
+  await db.doc("dashboard_stats/current").set({ ...common, ...fields }, { merge: true });
+  return { period, reference, complete, reads: users.docs.length + participants.docs.length, uniquePlayers: complete ? participantIds.size : null };
 }
 
 function readCount(data, field) { return typeof data?.[field] === "number" && data[field] >= 0 ? data[field] : null; }
@@ -90,7 +203,10 @@ async function consolidateTemporalMetrics({ db, now = Date.now(), days = 30 }) {
     // Daily uniques cannot be summed for a rolling unique-player metric.
     active_players_j30: null,
   };
-  await db.doc("dashboard_stats/current").set({ schema_version: 1, computed_at: new Date(now), temporal_complete: complete, ...metrics }, { merge: true });
+  // This legacy helper is intentionally unable to overwrite the authoritative
+  // J30 fields. Daily uniques cannot establish a rolling unique-player count;
+  // consolidateFromFirestore is the single writer for both J30 values.
+  await db.doc("dashboard_stats/current").set({ temporal_complete: complete, temporal_participations_today: metrics.participations_today }, { merge: true });
   return { metrics, complete, keys };
 }
 
@@ -107,4 +223,4 @@ function calculateSixIndicators({ users = [], activities = [], participations = 
   };
 }
 
-module.exports = { consolidateTemporalMetrics, calculateSixIndicators, consolidateFromFirestore, dailyReference };
+module.exports = { consolidateTemporalMetrics, calculateSixIndicators, consolidateFromFirestore, consolidateCompletedPeriod, completedWeekReference, completedMonthReference, dailyReference, parisMidnightMillis };

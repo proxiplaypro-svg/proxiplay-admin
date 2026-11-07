@@ -2,7 +2,7 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { isEligibleRegisteredPlayer } = require("./gameContract");
-const { consolidateFromFirestore } = require("./consolidation");
+const { consolidateFromFirestore, consolidateCompletedPeriod } = require("./consolidation");
 
 function createDashboardAutomations({ db, logger }) {
   const onDashboardUserWritten = onDocumentWritten("users/{userId}", async (event) => {
@@ -21,12 +21,23 @@ function createDashboardAutomations({ db, logger }) {
   const onDashboardGameWritten = onDocumentWritten("games/{gameId}", async () => {
     await db.doc("dashboard_stats/control").set({ games_dirty: true, games_dirty_at: new Date() }, { merge: true });
   });
+  // Existing operational indicators retain their production consolidation cadence.
   const dashboardStatsConsolidation = onSchedule({ schedule: "0 3 * * *", timeZone: "Europe/Paris", region: "europe-west1", timeoutSeconds: 300, memory: "512MiB" }, async () => {
     try {
       const result = await consolidateFromFirestore({ db });
       await db.doc("dashboard_stats/current").set({ computed_at: new Date(), temporal_complete: result.complete }, { merge: true });
     } catch (error) { logger.error("Dashboard consolidation failed", { error: error instanceof Error ? error.message : String(error) }); throw error; }
   });
-  return { onDashboardUserWritten, onDashboardGameWritten, dashboardStatsConsolidation };
+  const dashboardWeeklyUniquePlayers = onSchedule({ schedule: "0 2 * * 1", timeZone: "Europe/Paris", region: "europe-west1", timeoutSeconds: 300, memory: "512MiB" }, async () => {
+    try {
+      await consolidateCompletedPeriod({ db, period: "week" });
+    } catch (error) { logger.error("Weekly dashboard consolidation failed", { error: error instanceof Error ? error.message : String(error) }); throw error; }
+  });
+  const dashboardMonthlyUniquePlayers = onSchedule({ schedule: "0 3 1 * *", timeZone: "Europe/Paris", region: "europe-west1", timeoutSeconds: 300, memory: "512MiB" }, async () => {
+    try {
+      await consolidateCompletedPeriod({ db, period: "month" });
+    } catch (error) { logger.error("Monthly dashboard consolidation failed", { error: error instanceof Error ? error.message : String(error) }); throw error; }
+  });
+  return { onDashboardUserWritten, onDashboardGameWritten, dashboardStatsConsolidation, dashboardWeeklyUniquePlayers, dashboardMonthlyUniquePlayers };
 }
 module.exports = { createDashboardAutomations };

@@ -3,15 +3,19 @@
 
 export type ReliableDashboardMetricKey =
   | "registeredPlayers"
-  | "playersYesterday"
+  | "uniquePlayersLastWeek"
+  | "uniquePlayersLastMonth"
+  | "inactivePlayersLastMonth"
   | "participationsYesterday"
-  | "merchantsWithActiveGame"
+  | "participationsSinceLaunch"
   | "activeGames";
 
 export type ReliableDashboardSnapshot = {
   ready: boolean;
   referenceDate: string | null;
   metrics: Record<ReliableDashboardMetricKey, number | null>;
+  weeklyPeriod: { start: string; end: string } | null;
+  monthlyPeriod: { start: string; end: string } | null;
   daily: Array<{ day: string; participations: number | null; uniquePlayers: number | null }>;
 };
 
@@ -36,24 +40,32 @@ const count = (value: unknown) => (typeof value === "number" && Number.isFinite(
 
 /**
  * `current` is dashboard_stats/current, `days` the analytics_daily documents
- * (id = Paris day "YYYY-MM-DD"), any order. Only a complete schema 2
- * consolidation is "ready": anything else is shown as unavailable, never as 0.
+ * (id = Paris day "YYYY-MM-DD"), any order. The screen can render partial
+ * data; each unavailable metric remains explicitly unavailable rather than 0.
  */
 export function mapReliableDashboard(
   current: Record<string, unknown> | null,
   days: Array<{ id: string; data: Record<string, unknown> }>,
 ): ReliableDashboardSnapshot {
-  const ready = current?.schema_version === 2 && current.source_complete === true;
+  const ready = current?.source_complete === true;
+  const period = (prefix: "weekly" | "monthly") => {
+    const start = current?.[`${prefix}_period_start`]; const end = current?.[`${prefix}_period_end`];
+    return typeof start === "string" && typeof end === "string" ? { start, end } : null;
+  };
   return {
     ready,
     referenceDate: typeof current?.reference_date === "string" ? current.reference_date : null,
     metrics: {
       registeredPlayers: count(current?.registered_players),
-      playersYesterday: count(current?.players_yesterday),
+      uniquePlayersLastWeek: current?.weekly_source_complete === true ? count(current?.weekly_unique_players) : null,
+      uniquePlayersLastMonth: current?.monthly_source_complete === true ? count(current?.monthly_unique_players) : null,
+      inactivePlayersLastMonth: current?.monthly_source_complete === true ? count(current?.monthly_inactive_players) : null,
       participationsYesterday: count(current?.participations_yesterday),
-      merchantsWithActiveGame: count(current?.merchants_with_active_game),
+      participationsSinceLaunch: count(current?.participations_since_launch),
       activeGames: count(current?.active_games),
     },
+    weeklyPeriod: period("weekly"),
+    monthlyPeriod: period("monthly"),
     daily: days
       .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.id))
       .sort((left, right) => left.id.localeCompare(right.id))

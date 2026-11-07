@@ -488,6 +488,8 @@ exports.onInstantWinnerCreated = onDocumentCreated(
 
 const dashboardAutomations = createDashboardAutomations({ db, logger });
 exports.dashboardStatsConsolidation = dashboardAutomations.dashboardStatsConsolidation;
+exports.dashboardWeeklyUniquePlayers = dashboardAutomations.dashboardWeeklyUniquePlayers;
+exports.dashboardMonthlyUniquePlayers = dashboardAutomations.dashboardMonthlyUniquePlayers;
 exports.publishPublicGamesPlayedWeekly = createPublicGamesPlayedPublisher({ db, logger });
 
 const {
