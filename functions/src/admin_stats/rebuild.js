@@ -8,6 +8,7 @@ const {
   logAdminStatsError,
   writeAdminStatsRebuild,
 } = require("./helpers");
+const { buildActiveCatalog } = require("../public_content/activeCatalog");
 
 async function rebuildAdminStats() {
   logger.info("Starting admin_stats/global rebuild");
@@ -32,9 +33,10 @@ async function rebuildAdminStats() {
   ]);
 
   const now = new Date();
-  const activeGamesCount = gamesSnapshot.docs.filter((doc) =>
+  const activeGameDocs = gamesSnapshot.docs.filter((doc) =>
     isActiveGameData(doc.data(), now),
-  ).length;
+  );
+  const activeGamesCount = activeGameDocs.length;
 
   const stats = {
     gamesCount: gamesSnapshot.size,
@@ -48,6 +50,12 @@ async function rebuildAdminStats() {
   };
 
   await writeAdminStatsRebuild(stats);
+  // One public, cacheable projection. It is written only after the complete
+  // rebuild has succeeded; a failed rebuild leaves the previous document in
+  // place, and validUntil prevents clients from presenting it as current.
+  await db.doc("public_content/active_catalog").set(
+    buildActiveCatalog({ activeGameDocs, now }),
+  );
 
   logger.info("Completed admin_stats/global rebuild", stats);
 
