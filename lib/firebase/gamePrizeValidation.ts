@@ -37,6 +37,30 @@ export function resolveMainPrizeFields(game: {
       };
 }
 
+/**
+ * A duplicate is a new draft. Some legacy games have a final draw and a
+ * value, but empty dedicated prize text fields. For that copied draft only,
+ * fall back to the legacy game title and description so it can be saved.
+ * This function only maps in-memory data; it never changes the source game.
+ */
+export function resolveDuplicatedMainPrizeFields(game: {
+  main_prize_title?: unknown;
+  main_prize_description?: unknown;
+  title?: unknown;
+  name?: unknown;
+  description?: unknown;
+  conditions?: unknown;
+}) {
+  const fields = resolveMainPrizeFields(game);
+  const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
+
+  return {
+    mainPrizeTitle: fields.mainPrizeTitle || text(game.title) || text(game.name),
+    mainPrizeDescription:
+      fields.mainPrizeDescription || text(game.description) || text(game.conditions),
+  };
+}
+
 export function buildMainPrizeWriteFields<T extends Record<string, unknown>>(
   hasMainPrize: boolean,
   fields: T,

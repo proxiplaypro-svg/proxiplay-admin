@@ -26,7 +26,11 @@ import {
   type DuplicateGameResult,
   type UpdateGameInput,
 } from "./gamesQueries";
-import { resolveHasMainPrize, resolveMainPrizeFields, validateGamePrizes } from "./gamePrizeValidation";
+import {
+  resolveDuplicatedMainPrizeFields,
+  resolveHasMainPrize,
+  validateGamePrizes,
+} from "./gamePrizeValidation";
 import { planGameFulfillment, resolveShopOwner } from "@/lib/admin/gameFulfillment";
 
 export * from "./gamesQueries";
@@ -448,6 +452,7 @@ export async function duplicateGameDocument(
   const createdRef = doc(collection(db, input.collectionName));
   const now = Timestamp.now();
   const hasMainPrize = resolveHasMainPrize(source.hasMainPrize, source.prize_value);
+  const duplicatedMainPrizeFields = resolveDuplicatedMainPrizeFields(source);
   const secondaryPrizes = Array.isArray(source.secondary_prizes)
     ? source.secondary_prizes.map((prize) => ({ ...(prize ?? {}) }))
     : [];
@@ -487,8 +492,8 @@ export async function duplicateGameDocument(
     hasMainPrize,
     ...(hasMainPrize
       ? {
-          main_prize_title: resolveMainPrizeFields(source).mainPrizeTitle,
-          main_prize_description: resolveMainPrizeFields(source).mainPrizeDescription,
+          main_prize_title: duplicatedMainPrizeFields.mainPrizeTitle,
+          main_prize_description: duplicatedMainPrizeFields.mainPrizeDescription,
           main_prize_image: readString(source.main_prize_image),
         }
       : {}),
@@ -544,7 +549,7 @@ export async function duplicateGameDocument(
     collectionName: input.collectionName,
     imageMissing: !imageUrl,
     hasMainPrize,
-    ...resolveMainPrizeFields(source),
+    ...duplicatedMainPrizeFields,
     mainPrizeValue,
     mainPrizeImage: readString(source.main_prize_image) || null,
     secondaryPrizes: mappedSecondaryPrizes,
