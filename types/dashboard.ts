@@ -171,6 +171,11 @@ export interface GameMerchantOption {
   id: string;
   name: string;
   collectionName: "enseignes" | "merchants";
+  /** The shop has a ProxiPlay merchant account (same rules as the Cloud Functions). */
+  hasMerchantOwner: boolean;
+  /** Malformed or conflicting owner: game creation is refused until the record is fixed. */
+  ownerInvalid: boolean;
+  email: string;
 }
 
 export interface AnimationOption {

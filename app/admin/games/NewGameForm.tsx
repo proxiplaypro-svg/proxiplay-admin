@@ -21,6 +21,7 @@ import {
   getNewGamePostCreationRoute,
   shouldOfferInstantWinnerGeneration,
 } from "@/lib/admin/newGamePostCreation";
+import type { PrizeDeliverer } from "@/lib/admin/gameFulfillment";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -45,6 +46,8 @@ type FormState = {
   qrConsumesParticipation: boolean;
   prizeUsageDeadlineEnabled: boolean;
   prizeUsageDeadline: string;
+  prizeDeliverer: PrizeDeliverer;
+  partnerEmail: string;
 };
 
 const emptyForm: FormState = {
@@ -60,6 +63,8 @@ const emptyForm: FormState = {
   qrConsumesParticipation: false,
   prizeUsageDeadlineEnabled: false,
   prizeUsageDeadline: "",
+  prizeDeliverer: "commercant",
+  partnerEmail: "",
 };
 
 type SecondaryPrizeFormItem = {
@@ -172,6 +177,12 @@ export default function NewGameForm({
     try {
       const merchant = merchants.find((item) => item.id === form.merchantId);
       if (!merchant) throw new Error("Choisis un commerçant.");
+      if (merchant.ownerInvalid) {
+        throw new Error("Le propriétaire de ce commerce est incohérent : corrigez la fiche commerçant avant de créer un jeu.");
+      }
+      if (!merchant.hasMerchantOwner && form.prizeDeliverer === "commercant" && !merchant.email && !form.partnerEmail.trim()) {
+        throw new Error("Indiquez l'adresse e-mail à laquelle envoyer la liste des gagnants au commerçant.");
+      }
 
       for (const prize of secondaryPrizes) {
         if (isSecondaryPrizeEmpty(prize)) continue;
@@ -222,6 +233,8 @@ export default function NewGameForm({
         prizeValue: form.prizeValue,
         imageFile,
         restrictedToAdults: form.restrictedToAdults,
+        prizeDeliverer: form.prizeDeliverer,
+        partnerEmail: merchant.email ? "" : form.partnerEmail,
         secondaryPrizes: configuredSecondaryPrizes
           .map((prize) => ({
             name: prize.name.trim(),
@@ -347,11 +360,28 @@ export default function NewGameForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5 sm:col-span-2">
               <span className="text-[12px] font-medium text-[#666]">Commerçant</span>
-              <select className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" value={form.merchantId} onChange={(event) => setForm((prev) => ({ ...prev, merchantId: event.target.value }))} disabled={loadingMerchants} required>
+              <select className="rounded-[8px] border border-[#E0E0DA] px-3 py-2 text-[14px] text-[#1a1a1a] focus:outline-none focus:ring-2 focus:ring-[#639922]" value={form.merchantId} onChange={(event) => setForm((prev) => ({ ...prev, merchantId: event.target.value, partnerEmail: "" }))} disabled={loadingMerchants} required>
                 <option value="">{loadingMerchants ? "Chargement..." : "Choisir un commerçant"}</option>
                 {merchants.map((merchant) => <option key={merchant.id} value={merchant.id}>{merchant.name}</option>)}
               </select>
             </label>
+
+            {(() => {
+              const merchant = merchants.find((item) => item.id === form.merchantId);
+              if (!merchant) return null;
+              if (merchant.ownerInvalid) {
+                return <p className="sm:col-span-2 rounded-[10px] border border-[#E8B4B4] bg-[#FDF0F0] p-4 text-[13px] text-[#8A1F1F]">Le propriétaire de ce commerce est incohérent. Corrigez la fiche commerçant avant de créer un jeu.</p>;
+              }
+              const setDeliverer = (prizeDeliverer: PrizeDeliverer) => setForm((prev) => ({ ...prev, prizeDeliverer }));
+              return <fieldset className="sm:col-span-2 rounded-[10px] border border-[#E0E0DA] bg-[#FAFAF7] p-4">
+                <legend className="px-1 text-[13px] font-medium text-[#1A1A1A]">Qui remet le lot ?</legend>
+                <label className="flex items-start gap-2 text-[13px]"><input className="mt-0.5" type="radio" name="prizeDeliverer" checked={form.prizeDeliverer === "commercant"} onChange={() => setDeliverer("commercant")} /><span>Le commerçant<span className="block text-[12px] text-[#666]">{merchant.hasMerchantOwner ? "Il valide les codes gagnants depuis son compte ProxiPlay." : "La liste des gagnants lui est envoyée par e-mail."}</span></span></label>
+                <label className="mt-2 flex items-start gap-2 text-[13px]"><input className="mt-0.5" type="radio" name="prizeDeliverer" checked={form.prizeDeliverer === "proxiplay"} onChange={() => setDeliverer("proxiplay")} /><span>ProxiPlay<span className="block text-[12px] text-[#666]">ProxiPlay organise la remise et valide les codes gagnants.</span></span></label>
+                {!merchant.hasMerchantOwner && form.prizeDeliverer === "commercant" ? (merchant.email
+                  ? <p className="mt-3 text-[12px] text-[#444]">Liste des gagnants envoyée à <strong>{merchant.email}</strong> (e-mail de la fiche commerçant).</p>
+                  : <label className="mt-3 flex flex-col gap-1.5"><span className="text-[12px] font-medium text-[#666]">E-mail du commerçant pour la liste des gagnants</span><input className="rounded-[8px] border border-[#E0E0DA] bg-white px-3 py-2 text-[14px]" type="email" value={form.partnerEmail} onChange={(event) => setForm((prev) => ({ ...prev, partnerEmail: event.target.value }))} required /><span className="text-[12px] text-[#666]">Cette adresse sera enregistrée sur la fiche du commerce.</span></label>) : null}
+              </fieldset>;
+            })()}
 
             <label className="flex flex-col gap-1.5 sm:col-span-2">
               <span className="text-[12px] font-medium text-[#666]">Titre du jeu</span>

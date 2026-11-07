@@ -31,6 +31,7 @@ import { duplicateGame } from "@/lib/firebase/adminActions";
 import { db } from "@/lib/firebase/client-app";
 import { adminGameState } from "@/lib/admin/gamePublication";
 import { createExactCountCache, loadExactCounts } from "@/lib/admin/exactCounts";
+import { merchantDeliveryInfo } from "@/lib/admin/gameFulfillment";
 import { resolveHasMainPrize, resolveMainPrizeFields } from "@/lib/firebase/gamePrizeValidation";
 import {
   deriveGameFinalization,
@@ -109,6 +110,9 @@ type FirestoreMerchantDocument = {
   name?: string;
   title?: string;
   merchantName?: string;
+  owner?: DocumentReference | string | null;
+  owner_id?: DocumentReference | null;
+  email?: string;
 };
 
 type FirestoreAnimationDocument = {
@@ -276,6 +280,8 @@ function mapMerchantOption(
     id: snapshot.id,
     name: readText(merchant.name, merchant.title, merchant.merchantName, "Marchand sans nom"),
     collectionName,
+    // Same ownership rules as createGame and the Cloud Functions (shopOwnerPath).
+    ...merchantDeliveryInfo(merchant),
   };
 }
 
