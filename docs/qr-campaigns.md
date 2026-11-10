@@ -94,8 +94,8 @@ Tarif multirégion `eur3`, à confirmer sur la grille Google en vigueur.
 
 ## 5. Projet de paragraphe pour la politique de confidentialité
 
-**À relire, non publié.** Ce paragraphe est à ajouter à la section « 11.
-Cookies et Suivi » de `legal-content.json` du site.
+**Intégré** au commit du site `591d952` (section 13 du texte de référence
+`politique-confidentialite-rgpd.md` et du `RGPD.pdf` publié, version du 11/11/2026).
 
 > **Mesure des campagnes de communication (QR codes).** Lorsque vous ouvrez
 > une adresse de campagne ProxiPlay (par exemple proxiplay.fr/bus, affichée
@@ -199,28 +199,74 @@ Cookies et Suivi » de `legal-content.json` du site.
   redirection de secours va vers OneLink le temps de la première lecture.
   C'est sans effet pour `bus_dunkerque`, dont la destination est OneLink.
 
-## 8. Déploiement, plus tard et avec validation
+## 8. Mise en production (chaque étape sur accord explicite)
 
-1. **Admin.** Branche `feat/qr-campaigns`, créée à partir de `b60697c`,
-   c'est-à-dire l'arbre exact de la production Admin du 07/11 (303 fichiers
-   sur 303). Déployer en production depuis cette branche, par la même voie
-   que d'habitude.
-2. **Créer la campagne** depuis l'Admin :
+État vérifié le 11/11/2026 :
 
-   | Champ | Valeur |
-   |---|---|
-   | Identifiant | `bus_dunkerque` |
-   | Nom | `Bus Dunkerque` |
-   | Chemin | `bus` |
-   | Canal | Bus |
-   | Destination | `https://onelink.to/jx4ee7` |
-   | Statut | À préparer |
+| | Admin | Site |
+|---|---|---|
+| Production actuelle | `dpl_4UThEKBMwu6AABfybbp3TUmFM5wL` (07/11), arbre `b60697c` | `dpl_8LoRL9RdZeXe1gnKpTVwrSgrYaRT` (04/11), arbre `1351fa9` |
+| Commit à déployer | `005ecd4` | `591d952` |
+| Écart avec la production | uniquement les fichiers des campagnes QR | réécritures QR et politique de confidentialité |
 
-3. **Site.** Branche `feat/qr-campaigns`, créée à partir de `1351fa9`,
-   c'est-à-dire l'arbre exact de la production du site du 04/11 (150
-   fichiers sur 150). Faire la Preview et les contrôles de la section 7,
-   puis la production.
-4. **Lancement.** Fixer la date de lancement, passer la campagne « Active »
-   et télécharger le QR en PNG.
-5. **Politique de confidentialité** : publier le paragraphe de la section 5
-   après relecture.
+Aucun déploiement plus récent ni aucune modification locale ne serait écrasé.
+
+### Ordre
+
+1. **Admin en production** depuis `wt-admin-qr-campaigns` (`005ecd4`), par
+   la voie habituelle : `vercel deploy --prod` depuis le worktree lié au
+   projet `proxiplay-admin`.
+   - Aucune variable n'est à créer : les `FIREBASE_*` de production
+     servent tels quels.
+   - En production, `getQrDb()` utilise la base de l'Admin, les en-têtes
+     de diagnostic et le délai de test sont inactifs.
+   - Contrôle : `https://admin.proxiplay.fr/api/public/qr/bus` doit
+     répondre par une 302 vers `https://www.proxiplay.fr/`, puisque la
+     campagne n'existe pas encore.
+2. **Créer la campagne** dans l'Admin, rubrique Campagnes QR :
+   identifiant `bus_dunkerque`, nom `Bus Dunkerque`, chemin `bus`, canal
+   Bus, destination `https://onelink.to/jx4ee7`.
+   - Elle est créée « À préparer ».
+   - C'est la **première écriture en production**.
+   - Contrôle : `node scripts/check-qr-redirect.mjs https://admin.proxiplay.fr/api/public/qr/bus https://onelink.to/jx4ee7`
+     doit tout renvoyer OK. Les ouvertures de test sont comptées « hors
+     période ».
+3. **Site en production** depuis `wt-site-qr-campaigns` (`591d952`) :
+   `vercel deploy --prod` depuis le worktree lié au projet
+   `proxiplay-website`.
+   - Contrôles :
+     - `node scripts/check-qr-redirect.mjs https://proxiplay.fr/bus https://onelink.to/jx4ee7`
+       (la redirection `proxiplay.fr` vers `www` est suivie
+       automatiquement par le navigateur ; le script contrôle
+       `https://www.proxiplay.fr/bus`) ;
+     - pages `/`, `/joueurs/`, `/mentions-legales/` ;
+     - nouveau `RGPD.pdf` ;
+     - scan du QR sur Android et iPhone.
+4. **Lancement**, au moment voulu : passer la campagne « Active »,
+   éventuellement avec une date de lancement. À partir de là, les
+   ouvertures sont comptées.
+
+### Retour arrière
+
+- **Site** : `vercel rollback dpl_8LoRL9RdZeXe1gnKpTVwrSgrYaRT --scope proxiplaypro-svgs-projects`.
+  `/bus` redevient une 404 et l'ancienne politique de confidentialité
+  revient.
+- **Admin** : `vercel rollback dpl_4UThEKBMwu6AABfybbp3TUmFM5wL --scope proxiplaypro-svgs-projects`.
+  Faire d'abord le retour arrière du site, sinon `/bus` renverrait une
+  erreur.
+- **Campagne seule** : statut « En pause ». La redirection continue et
+  n'est plus comptée.
+- **Changer de destination** se fait dans l'Admin, sans toucher au QR
+  code imprimé.
+- **Comptage en panne** : la redirection n'en dépend jamais. Firestore lent
+  ou indisponible entraîne une redirection de secours vers
+  `https://onelink.to/jx4ee7`.
+- **Données** : les documents `qr_campaigns`, `qr_campaign_slugs` et leurs
+  sous-collections sont propres à cette fonctionnalité. Ils peuvent rester
+  en place après un retour arrière, car aucune autre fonction ne les lit.
+
+### Après la mise en production
+
+Supprimer l'environnement de test : les Admin Preview `mc1x7njbm` et
+`8g4rhep14`, la clé du compte de service `qr-preview`, et éventuellement
+le projet `proxiplay-qr-preview`.
