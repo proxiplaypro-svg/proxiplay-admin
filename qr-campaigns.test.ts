@@ -139,3 +139,21 @@ test("périodes : bornes comprises, 366 jours au plus", () => {
   assert.equal(listDayKeys("2026-02-30", "2026-03-01"), null);
   assert.equal(QR_STATS_SHARDS, 4);
 });
+
+test("Preview : la base de production n'est jamais utilisée pour les campagnes QR", async () => {
+  const { resolveQrDatabaseTarget, QrDatabaseUnavailableError } = await import("@/lib/qr/qrDb");
+  // Production (et tests locaux) : base de l'Admin.
+  assert.deepEqual(resolveQrDatabaseTarget({ VERCEL_ENV: "production" }), { kind: "admin" });
+  assert.deepEqual(resolveQrDatabaseTarget({}), { kind: "admin" });
+  // Preview sans base de test, meme avec les identifiants FIREBASE_* herites : refus.
+  assert.throws(() => resolveQrDatabaseTarget({ VERCEL_ENV: "preview", FIREBASE_PROJECT_ID: "proxi-play-odzp2e" }), QrDatabaseUnavailableError);
+  // Preview pointee sur la production : refus.
+  assert.throws(() => resolveQrDatabaseTarget({ VERCEL_ENV: "preview", QR_FIREBASE_PROJECT_ID: "proxi-play-odzp2e",
+    QR_FIREBASE_CLIENT_EMAIL: "x@y", QR_FIREBASE_PRIVATE_KEY: "k" }), QrDatabaseUnavailableError);
+  // Preview avec base de test complete : base isolee.
+  const isolated = resolveQrDatabaseTarget({ VERCEL_ENV: "preview", QR_FIREBASE_PROJECT_ID: "proxiplay-qr-preview",
+    QR_FIREBASE_CLIENT_EMAIL: "qr@proxiplay-qr-preview.iam.gserviceaccount.com", QR_FIREBASE_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----" });
+  assert.equal(isolated.kind, "isolated");
+  assert.ok(isolated.kind === "isolated" && isolated.privateKey.includes("\nabc\n"));
+  assert.throws(() => resolveQrDatabaseTarget({ VERCEL_ENV: "preview", QR_FIREBASE_PROJECT_ID: "proxiplay-qr-preview" }), QrDatabaseUnavailableError);
+});

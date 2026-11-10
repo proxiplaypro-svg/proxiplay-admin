@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin-app";
+import { getQrDb } from "@/lib/qr/qrDb";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 import { QrCampaignError, getQrCampaignStats } from "@/lib/qr/qrCampaignAdmin";
 
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest, context: Context) {
     const { id } = await context.params;
     const from = request.nextUrl.searchParams.get("from") ?? "";
     const to = request.nextUrl.searchParams.get("to") ?? "";
-    return NextResponse.json({ stats: await getQrCampaignStats(getAdminDb(), id, from, to) });
+    return NextResponse.json({ stats: await getQrCampaignStats(getQrDb(), id, from, to) });
   } catch (error) {
     const authResponse = handleAdminAuthError(error);
     if (authResponse) return authResponse;

@@ -5,7 +5,7 @@
 // charge par Vercel avec waitUntil).
 
 import { after } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin-app";
+import { getQrDb } from "@/lib/qr/qrDb";
 import { createFirestoreQrStore } from "@/lib/qr/firestoreQrStore";
 import { createQrRedirectHandler } from "@/lib/qr/qrRedirect";
 
@@ -19,7 +19,7 @@ export const maxDuration = 10;
 // l'adresse d'origine n'est pas transmise fidelement par la reecriture.
 const burstWindowMs = Number(process.env.QR_BURST_WINDOW_MS ?? 30_000);
 const handler = createQrRedirectHandler({
-  store: createFirestoreQrStore(getAdminDb),
+  store: createFirestoreQrStore(getQrDb),
   burstWindowMs: Number.isFinite(burstWindowMs) && burstWindowMs >= 0 ? burstWindowMs : 30_000,
 });
 
