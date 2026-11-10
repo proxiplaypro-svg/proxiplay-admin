@@ -22,7 +22,10 @@
     "test:merchant-emails": "node --test functions/test/managed_merchant_email.test.cjs",
     "test:admin-api": "firebase --config firebase.emulator.json emulators:exec --only firestore,auth \"tsx --test referral-games-api.test.ts\"",
     "test:admin-qr": "firebase --config firebase.emulator.json emulators:exec --project demo-admin-qr --only firestore,auth \"tsx --test secure-game-qr.test.ts\"",
-    "test:emulator-rules-guard": "firebase --config firebase.emulator.json emulators:exec --project demo-rules-guard --only firestore,auth \"node --test functions/test/firestore_emulator_rules_guard.test.cjs\""
+    "test:emulator-rules-guard": "firebase --config firebase.emulator.json emulators:exec --project demo-rules-guard --only firestore,auth \"node --test functions/test/firestore_emulator_rules_guard.test.cjs\"",
+    "test:qr": "tsx --test qr-campaigns.test.ts qr-redirect.test.ts qr-campaigns-qrcode.test.ts && node --test qr-campaigns-ui.test.mjs",
+    "test:qr-api": "firebase --config firebase.emulator.json emulators:exec --project demo-admin-qr-campaigns --only firestore,auth \"tsx --test --test-concurrency=1 qr-campaigns-api.test.ts\"",
+    "test:qr-e2e": "next build && firebase --config firebase.emulator.json emulators:exec --project demo-admin-qr-campaigns --only firestore \"node scripts/qr-redirect-local-e2e.mjs\""
   },
   "dependencies": {
     "@sparticuz/chromium-min": "^147.0.0",
