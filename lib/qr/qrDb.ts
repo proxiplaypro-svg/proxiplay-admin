@@ -19,8 +19,19 @@ export class QrDatabaseUnavailableError extends Error {}
 
 type Env = Record<string, string | undefined>;
 
+// Lectures litterales de process.env : compatibles avec l'injection de
+// next.config (env) au build, utilisee pour une Preview isolee.
+function qrEnv(): Env {
+  return {
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    QR_FIREBASE_PROJECT_ID: process.env.QR_FIREBASE_PROJECT_ID,
+    QR_FIREBASE_CLIENT_EMAIL: process.env.QR_FIREBASE_CLIENT_EMAIL,
+    QR_FIREBASE_PRIVATE_KEY: process.env.QR_FIREBASE_PRIVATE_KEY,
+  };
+}
+
 /** Ou lire et ecrire, sans rien initialiser (testable). */
-export function resolveQrDatabaseTarget(env: Env = process.env):
+export function resolveQrDatabaseTarget(env: Env = qrEnv()):
   | { kind: "admin" }
   | { kind: "isolated"; projectId: string; clientEmail: string; privateKey: string } {
   const isPreview = env.VERCEL_ENV === "preview";
