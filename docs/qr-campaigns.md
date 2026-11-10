@@ -140,31 +140,64 @@ Cookies et Suivi » de `legal-content.json` du site.
   - Base injoignable : 302 vers OneLink, 514 ms pour la première requête
     puis 6 à 7 ms.
 
-## 7. À vérifier sur Vercel Preview
+## 7. Vérifications sur Vercel Preview (10/11/2026)
 
-Ces vérifications demandent un déploiement, non autorisé à ce stade.
+### Isolation
 
-1. **Redirection transmise telle quelle par la réécriture entre projets.**
-   Avec `node scripts/check-qr-redirect.mjs <url>/bus https://onelink.to/jx4ee7`,
-   la réponse doit être une 302, avec `Location` vers OneLink et
-   `Cache-Control: no-store`. La redirection ne doit pas être suivie par le
-   proxy.
-2. **Chaîne d'adresses de `/c/<chemin>?param=…`** : la requête doit arriver
-   à l'Admin. Les paramètres d'URL ne sont pas transmis à la destination,
-   volontairement.
-3. **En-tête `x-forwarded-for` reçu par l'Admin.** Il doit contenir
-   l'adresse du téléphone, pas celle du proxy du site. Sinon, mettre
-   `QR_BURST_WINDOW_MS=0`.
-4. **`after()`** : le compteur doit s'incrémenter après la réponse, y
-   compris lors d'un démarrage à froid.
-5. **Protection des déploiements Preview** : si l'Admin Preview est protégé,
-   le proxy du site recevra une 401. Ordre recommandé :
-   1. publier l'Admin en production, où la route est sans effet tant
-      qu'aucune campagne n'existe (chemin inconnu : redirection vers
-      l'accueil) ;
-   2. créer `bus_dunkerque` **à préparer** ;
-   3. tester le site en Preview. Les ouvertures de test sont alors comptées
-      « hors période ».
+- **Base de test.** Projet Firebase dédié `proxiplay-qr-preview` :
+  Firestore `eur3`, aucune facturation. Compte de service limité au rôle
+  `roles/datastore.user`.
+- **Variables Vercel.** Les `FIREBASE_*` de l'Admin sont partagées
+  Production et Preview. `getQrDb()` refuse donc la production dès que
+  `VERCEL_ENV=preview` : vérifié, une Preview sans base de test redirige en
+  secours et n'écrit rien.
+- **Variables d'exécution par déploiement.** `vercel deploy --env` n'a pas
+  été appliqué à ce projet (deux essais, variables absentes à l'exécution).
+  Les identifiants de test ont donc été passés par `--build-env`, avec une
+  modification **temporaire, non commitée** de `next.config.ts` (`env`).
+  Aucune variable de projet n'a été modifiée.
+- **Production intacte.** Les déploiements Preview n'ont reçu aucun alias.
+  `www.proxiplay.fr`, `proxiplay.fr` et `admin.proxiplay.fr` sont restés
+  sur leurs déploiements de production. La base de production contient 0
+  document `qr_campaigns`, `qr_campaign_slugs` et `hourly_stats`.
+- **Protection Vercel.** Elle est active sur les deux projets : sans
+  contournement, la Preview renvoie vers `vercel.com/sso-api`. Les tests
+  ont utilisé le secret « automation-bypass » existant, sans changer de
+  réglage. Pour la Preview du site, une copie non commitée avait ce secret
+  dans la destination de la réécriture ; ces Previews ont été supprimées.
+
+### Résultats (`scripts/check-qr-redirect.mjs` et en-têtes de diagnostic)
+
+| Vérification | Résultat |
+|---|---|
+| `/bus` sur le site Preview, réécrit vers l'Admin Preview | 302 transmise telle quelle, `Location: https://onelink.to/jx4ee7`, `no-store`, sans page intermédiaire ni boucle |
+| iPhone, Android, robot, HEAD | 302 pour tous ; iPhone et Android comptés, robot écarté, HEAD non compté |
+| Adresse reçue par l'Admin à travers la réécriture | Empreinte d'origine identique en direct et via le site, une seule adresse transmise : l'adresse du téléphone arrive bien |
+| Rafale | Même requête rejouée dans les 30 s : `burst`, non comptée |
+| `after()` | Compteurs écrits après la réponse, y compris au démarrage à froid |
+| Démarrage à froid | Première requête entre 1,4 et 2 s. Lecture Firestore de plus de 500 ms : redirection de secours, comptage différé |
+| Charge : 30 et 60 ouvertures simultanées via le site | 100 % de 302 vers OneLink, 100 % comptées après correctif, environ 2,3 s par requête, à cause des démarrages à froid des instances |
+| Base indisponible (Preview sans base de test) | 302 vers OneLink, aucune écriture |
+| `/c/inconnu`, `/c/BUS`, `/busx`, `/joueurs/`, `/` | accueil (302) ; OneLink, comptée ; 404 du site ; 200 ; 200 |
+| `/bus?utm_source=…` | 302 vers OneLink, comptée ; paramètres non transmis |
+| API d'administration | 401 sans jeton, 401 avec un jeton invalide (après correctif ; c'était 500) |
+
+### Anomalies corrigées pendant ces tests
+
+1. **Comptage perdu sur une instance froide** : 20 ouvertures comptées sur
+   60. La lecture lente est désormais partagée, elle remplit le cache, et le
+   comptage l'attend après la réponse.
+2. **Jeton invalide → 500** sur les routes QR : c'est maintenant 401.
+
+### Non vérifié sur Vercel
+
+- **L'interface de l'Admin** : création, modification, statistiques et
+  téléchargement du QR. Il faut se connecter en administrateur dans un
+  navigateur. Ces points sont vérifiés localement (émulateurs et Chrome).
+  Sur l'Admin Preview, les routes QR lisent et écrivent la base de test.
+- **Les destinations autres que OneLink au démarrage à froid** : la
+  redirection de secours va vers OneLink le temps de la première lecture.
+  C'est sans effet pour `bus_dunkerque`, dont la destination est OneLink.
 
 ## 8. Déploiement, plus tard et avec validation
 
