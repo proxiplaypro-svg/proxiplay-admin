@@ -206,14 +206,14 @@ Tarif multirégion `eur3`, à confirmer sur la grille Google en vigueur.
 | | Admin | Site |
 |---|---|---|
 | Production actuelle | `dpl_4UThEKBMwu6AABfybbp3TUmFM5wL` (07/11), arbre `b60697c` | `dpl_8LoRL9RdZeXe1gnKpTVwrSgrYaRT` (04/11), arbre `1351fa9` |
-| Commit à déployer | `005ecd4` | `591d952` |
+| Commit à déployer | tête de `feat/qr-campaigns` (code identique à `005ecd4`, puis documentation) | `591d952` |
 | Écart avec la production | uniquement les fichiers des campagnes QR | réécritures QR et politique de confidentialité |
 
 Aucun déploiement plus récent ni aucune modification locale ne serait écrasé.
 
 ### Ordre
 
-1. **Admin en production** depuis `wt-admin-qr-campaigns` (`005ecd4`), par
+1. **Admin en production** depuis `wt-admin-qr-campaigns` (tête de `feat/qr-campaigns`), par
    la voie habituelle : `vercel deploy --prod` depuis le worktree lié au
    projet `proxiplay-admin`.
    - Aucune variable n'est à créer : les `FIREBASE_*` de production
