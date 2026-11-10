@@ -228,8 +228,11 @@ test("plafond d'écritures par instance et par jour : redirection maintenue, com
 test("la route publique confie le comptage à after() et ne l'attend jamais", () => {
   const source = readFileSync("app/api/public/qr/[slug]/route.ts", "utf8");
   assert.match(source, /import \{ after \} from "next\/server"/);
-  assert.match(source, /if \(task\) after\(task\);\s*return response;/);
-  assert.doesNotMatch(source, /await task/);
+  assert.match(source, /if \(result\.task\) after\(result\.task\);/);
+  assert.doesNotMatch(source, /await (result\.)?task/);
+  // Reglages de verification (delai, en-tetes de diagnostic) inactifs en production.
+  assert.match(source, /const debugHeaders = !isProduction && process\.env\.QR_DEBUG_HEADERS === "1";/);
+  assert.match(source, /resolveTimeoutMs: isProduction \? 500 :/);
   assert.match(source, /export const HEAD = redirect;/);
   assert.match(source, /export const dynamic = "force-dynamic";/);
 });
