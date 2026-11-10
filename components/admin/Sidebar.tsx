@@ -70,6 +70,7 @@ function buildSections(counts: { gamesToFix: number; merchantsWithoutGame: numbe
       icon: "◯",
       items: [
         { href: "/admin/publicite", label: "Publicités", icon: "▣" },
+        { href: "/admin/qr-campaigns", label: "Campagnes QR", icon: "▦" },
         { href: "/admin/notifications", label: "Notifications push", icon: "◯" },
       ],
     },
