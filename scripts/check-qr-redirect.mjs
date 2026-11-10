@@ -6,6 +6,8 @@
 //
 // Usage : node scripts/check-qr-redirect.mjs <url> <destination attendue>
 //   ex. node scripts/check-qr-redirect.mjs https://<preview>.vercel.app/bus https://onelink.to/jx4ee7
+// Preview protegee : la variable d'environnement VERCEL_PROTECTION_BYPASS
+// (jamais ecrite dans un fichier) ajoute l'en-tete x-vercel-protection-bypass.
 
 const AGENTS = {
   iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
@@ -13,17 +15,22 @@ const AGENTS = {
   robot: "facebookexternalhit/1.1",
 };
 
-export async function checkQrRedirect(url, expected, { fetchImpl = fetch } = {}) {
+export async function checkQrRedirect(url, expected, { fetchImpl = fetch, headers = {} } = {}) {
+  const bypass = process.env.VERCEL_PROTECTION_BYPASS;
+  const extra = { ...(bypass ? { "x-vercel-protection-bypass": bypass } : {}), ...headers };
   const results = [];
   for (const [name, agent, method] of [["iphone", AGENTS.iphone, "GET"], ["android", AGENTS.android, "GET"],
     ["robot", AGENTS.robot, "GET"], ["head", AGENTS.iphone, "HEAD"]]) {
     const started = performance.now();
-    const response = await fetchImpl(url, { method, redirect: "manual", headers: { "user-agent": agent } });
+    const response = await fetchImpl(url, { method, redirect: "manual", headers: { "user-agent": agent, ...extra } });
     const elapsedMs = Math.round(performance.now() - started);
     const location = response.headers.get("location");
     const cacheControl = response.headers.get("cache-control") ?? "";
     results.push({
       name, method, status: response.status, location, elapsedMs, cacheControl,
+      // En-tetes de diagnostic (Preview avec QR_DEBUG_HEADERS=1 seulement).
+      outcome: response.headers.get("x-qr-outcome"), origin: response.headers.get("x-qr-origin"),
+      forwarded: response.headers.get("x-qr-forwarded-count"), fallback: response.headers.get("x-qr-fallback"),
       ok: response.status === 302 && location === expected && /no-store/.test(cacheControl),
     });
   }

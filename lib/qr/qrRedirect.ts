@@ -96,7 +96,7 @@ function redirectResponse(location: string): Response {
 }
 
 /** Cle ephemere d'une origine (jamais stockee ni journalisee). */
-async function burstKey(slug: string, request: Request): Promise<string | null> {
+export async function burstKey(slug: string, request: Request): Promise<string | null> {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     request.headers.get("x-real-ip")?.trim() || "";
   if (!forwarded) return null;
