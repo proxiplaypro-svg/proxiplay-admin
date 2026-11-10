@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin-app";
+import { getQrDb } from "@/lib/qr/qrDb";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
 import { QrCampaignError, getQrCampaign, listQrCampaignChanges, updateQrCampaign } from "@/lib/qr/qrCampaignAdmin";
 
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, context: Context) {
   try {
     await assertIsAdminRequest(request);
     const { id } = await context.params;
-    const db = getAdminDb();
+    const db = getQrDb();
     const campaign = await getQrCampaign(db, id);
     return NextResponse.json({ campaign, changes: await listQrCampaignChanges(db, id) });
   } catch (error) {
@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest, context: Context) {
     const { id } = await context.params;
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body || typeof body !== "object") return NextResponse.json({ error: "Données invalides." }, { status: 400 });
-    const campaign = await updateQrCampaign(getAdminDb(), id, body, admin.email ?? admin.uid);
+    const campaign = await updateQrCampaign(getQrDb(), id, body, admin.email ?? admin.uid);
     return NextResponse.json({ campaign });
   } catch (error) {
     return failure(error);
