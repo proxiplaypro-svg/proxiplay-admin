@@ -91,17 +91,42 @@ test("écriture Firestore en échec ou trop lente : l'utilisateur est redirigé,
   assert.doesNotMatch(logs.join(" "), /10\.0\.1|Mozilla/);
 });
 
-test("lecture Firestore lente ou en panne, sans cache : lien de téléchargement par défaut, aucun comptage", async () => {
-  for (const mode of ["slow", "down"] as const) {
-    const { handler, state } = setup();
-    if (mode === "slow") state.readDelayMs = 300; else state.readError = true;
-    const started = Date.now();
-    const result = await handler.handle(request(UA.iphone, { ip: "10.0.2.1" }), "bus");
-    assert.ok(Date.now() - started < 250, `${mode} : la redirection n'attend pas Firestore`);
-    assert.equal(result.response.headers.get("location"), DEFAULT_APP_DESTINATION);
-    assert.equal(result.fallback, true);
-    assert.equal(result.task, null);
-  }
+test("lecture lente sans cache (instance froide) : lien de secours immédiat, comptage différé après la réponse", async () => {
+  const { handler, state, writes } = setup();
+  state.readDelayMs = 300;
+  const started = Date.now();
+  const result = await handler.handle(request(UA.iphone, { ip: "10.0.2.1" }), "bus");
+  assert.ok(Date.now() - started < 250, "la redirection n'attend pas Firestore");
+  assert.equal(result.response.headers.get("location"), DEFAULT_APP_DESTINATION);
+  assert.equal(result.fallback, true);
+  assert.equal(result.outcome, "deferred");
+  assert.equal(writes.length, 0);
+  await result.task?.();
+  // Compte une fois la lecture terminee, repli signale.
+  assert.deepEqual(writes.map((write) => [write.campaignId, write.increments]),
+    [["bus_dunkerque", { opens: 1, ios: 1, fallback_redirects: 1 }]]);
+});
+
+test("lecture en panne sans cache : lien de secours immédiat, rien à compter", async () => {
+  const { handler, state, writes } = setup();
+  state.readError = true;
+  const result = await handler.handle(request(UA.iphone, { ip: "10.0.2.2" }), "bus");
+  assert.equal(result.response.headers.get("location"), DEFAULT_APP_DESTINATION);
+  assert.equal(result.outcome, "uncounted");
+  assert.equal(result.task, null);
+  assert.equal(writes.length, 0);
+});
+
+test("lecture lente partagée : une seule lecture, toutes les requêtes en attente sont comptées", async () => {
+  const { handler, state, writes } = setup();
+  state.readDelayMs = 200;
+  const results = await Promise.all(Array.from({ length: 5 }, (_, i) =>
+    handler.handle(request(i % 2 ? UA.android : UA.iphone, { ip: `10.0.2.${10 + i}` }), "bus")));
+  assert.ok(results.every((result) => result.outcome === "deferred"));
+  await Promise.all(results.map((result) => result.task?.()));
+  assert.equal(state.reads, 1);
+  assert.equal(writes.length, 5);
+  assert.equal(writes.filter((write) => write.increments.android).length, 2);
 });
 
 test("panne après une première lecture : dernière destination connue, redirection de secours comptée", async () => {
@@ -141,8 +166,8 @@ test("destination enregistrée invalide : jamais suivie, repli constant sur le l
   assert.deepEqual(writes.map((write) => write.increments), Array(3).fill({ outside_campaign: 1, fallback_redirects: 1 }));
 });
 
-test("panne de lecture : seule la première requête attend le délai, les suivantes partent aussitôt pendant 10 s", async () => {
-  const { handler, state, advance } = setup();
+test("lecture lente : seule la première requête attend le délai, puis la lecture terminée remplit le cache", async () => {
+  const { handler, state } = setup();
   state.readDelayMs = 300;
   const first = Date.now();
   await handler.handle(request(UA.iphone), "bus");
@@ -151,12 +176,25 @@ test("panne de lecture : seule la première requête attend le délai, les suiva
   const result = await handler.handle(request(UA.iphone), "bus");
   assert.ok(Date.now() - second < 30, "repli immédiat");
   assert.equal(result.response.headers.get("location"), DEFAULT_APP_DESTINATION);
-  assert.equal(state.reads, 1);
-  state.readDelayMs = 0;
+  assert.equal(state.reads, 1, "lecture partagée");
+  await result.task?.();
+  const recovered = await handler.handle(request(UA.iphone), "bus");
+  assert.equal(recovered.fallback, false);
+  assert.equal(recovered.response.headers.get("location"), "https://onelink.to/jx4ee7");
+  assert.equal(state.reads, 1, "destination servie depuis le cache rempli par la lecture lente");
+});
+
+test("lecture en échec : repli immédiat pendant 10 s, puis nouvelle lecture", async () => {
+  const { handler, state, advance } = setup();
+  state.readError = true;
+  await handler.handle(request(UA.iphone), "bus");
+  await handler.handle(request(UA.iphone), "bus");
+  assert.equal(state.reads, 1, "aucune nouvelle lecture pendant 10 s");
+  state.readError = false;
   advance(11_000);
   const recovered = await handler.handle(request(UA.iphone), "bus");
   assert.equal(recovered.fallback, false);
-  assert.equal(state.reads, 2, "nouvelle lecture après 10 s");
+  assert.equal(state.reads, 2);
 });
 
 test("chemin inconnu ou invalide : accueil du site, aucun comptage", async () => {

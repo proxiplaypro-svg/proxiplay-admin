@@ -57,8 +57,10 @@ export type QrRedirectOptions = {
   dailyWriteCap?: number;
   /** Une meme origine n'est comptee qu'une fois par fenetre (memoire seule). */
   burstWindowMs?: number;
-  /** Apres un echec de lecture, repli immediat pendant cette duree. */
+  /** Apres un echec ou une lecture lente, repli immediat pendant cette duree. */
   failureBackoffMs?: number;
+  /** Attente maximale d'une lecture lente avant comptage differe. */
+  deferredLookupTimeoutMs?: number;
   log?: (message: string) => void;
 };
 
@@ -66,7 +68,11 @@ export type QrRedirectResult = {
   response: Response;
   task: (() => Promise<void>) | null;
   /** Pour les tests et le diagnostic. */
-  outcome: "counted" | "outside_campaign" | "automated" | "head" | "burst" | "capped" | "unknown_slug" | "invalid_slug";
+  outcome: "counted" | "outside_campaign" | "automated" | "head" | "burst" | "capped" | "unknown_slug" | "invalid_slug"
+    /** Lecture lente : comptage differe jusqu'a la fin de la lecture (after()). */
+    | "deferred"
+    /** Lecture impossible : redirection de secours, rien a compter. */
+    | "uncounted";
   fallback: boolean;
 };
 
@@ -116,43 +122,77 @@ export function createQrRedirectHandler(options: QrRedirectOptions) {
   const log = options.log ?? ((message: string) => console.warn(message));
 
   const failureBackoffMs = options.failureBackoffMs ?? 10_000;
+  const deferredLookupTimeoutMs = options.deferredLookupTimeoutMs ?? 8_000;
 
-  type Resolved = { target: QrRedirectTarget | null; fallback: boolean };
-  const cache = new Map<string, Resolved & { fetchedAt: number }>();
-  // Apres un echec de lecture, les requetes suivantes n'attendent plus le
-  // delai maximal : repli immediat pendant failureBackoffMs.
-  const failedUntil = new Map<string, number>();
+  type Resolved = {
+    target: QrRedirectTarget | null;
+    fallback: boolean;
+    /** Lecture encore en cours : le comptage l'attendra apres la reponse. */
+    pending?: Promise<QrRedirectTarget | null>;
+  };
+  const cache = new Map<string, { target: QrRedirectTarget | null; fallback: boolean; fetchedAt: number }>();
+  // Apres une lecture lente ou en echec, les requetes suivantes n'attendent
+  // plus : repli immediat pendant failureBackoffMs (ou jusqu'a la fin de la
+  // lecture en cours, qui remplit le cache).
+  const degradedUntil = new Map<string, number>();
+  // Une seule lecture en cours par chemin, partagee par les requetes.
+  const inflight = new Map<string, Promise<QrRedirectTarget | null>>();
   const recent = new Map<string, number>();
   let writes = { day: "", count: 0 };
 
-  function fallbackFor(cached: Resolved | undefined): Resolved {
+  /** Cible utilisable, ou repli sur le lien de telechargement si invalide. */
+  function normalize(slug: string, target: QrRedirectTarget | null): { target: QrRedirectTarget | null; fallback: boolean } {
+    if (!target) return { target: null, fallback: false };
+    if (isAllowedQrDestination(target.destination) && isQrCampaignStatus(target.status)) return { target, fallback: false };
+    log(`[qr] campagne ${slug} : destination ou statut invalide, repli`);
+    // Jamais suivie : lien de telechargement, compte hors campagne.
+    return { target: { campaignId: target.campaignId, destination: DEFAULT_APP_DESTINATION, status: "paused", launchAt: null }, fallback: true };
+  }
+
+  function lookup(slug: string): Promise<QrRedirectTarget | null> {
+    const running = inflight.get(slug);
+    if (running) return running;
+    const promise = options.store.findBySlug(slug).then(
+      (target) => {
+        cache.set(slug, { ...normalize(slug, target), fetchedAt: now().getTime() });
+        degradedUntil.delete(slug);
+        return target;
+      },
+      (error) => {
+        log(`[qr] lecture de ${slug} impossible (erreur), repli`);
+        degradedUntil.set(slug, now().getTime() + failureBackoffMs);
+        throw error;
+      },
+    ).finally(() => inflight.delete(slug));
+    // Une lecture abandonnee par toutes les requetes ne doit jamais lever
+    // d'exception non geree.
+    promise.catch(() => undefined);
+    inflight.set(slug, promise);
+    return promise;
+  }
+
+  function fallbackFor(slug: string, pending?: Promise<QrRedirectTarget | null>): Resolved {
+    const cached = cache.get(slug);
     if (cached?.target) return { target: cached.target, fallback: true };
-    // Chemin inconnu de cette instance : le lien de telechargement, sans comptage.
-    return { target: { campaignId: "", destination: DEFAULT_APP_DESTINATION, status: "paused", launchAt: null }, fallback: true };
+    // Chemin pas encore connu de cette instance : lien de telechargement ;
+    // le comptage attendra la lecture en cours, s'il y en a une.
+    return { target: { campaignId: "", destination: DEFAULT_APP_DESTINATION, status: "paused", launchAt: null }, fallback: true, pending };
   }
 
   async function resolve(slug: string): Promise<Resolved> {
     const cached = cache.get(slug);
     const nowMs = now().getTime();
     if (cached && nowMs - cached.fetchedAt < cacheTtlMs) return { target: cached.target, fallback: cached.fallback };
-    if ((failedUntil.get(slug) ?? 0) > nowMs) return fallbackFor(cached);
+    if ((degradedUntil.get(slug) ?? 0) > nowMs) return fallbackFor(slug, inflight.get(slug));
+    const pending = lookup(slug);
     try {
-      const target = await withTimeout(options.store.findBySlug(slug), resolveTimeoutMs);
-      failedUntil.delete(slug);
-      let resolved: Resolved;
-      if (!target) resolved = { target: null, fallback: false };
-      else if (isAllowedQrDestination(target.destination) && isQrCampaignStatus(target.status)) resolved = { target, fallback: false };
-      else {
-        log(`[qr] campagne ${slug} : destination ou statut invalide, repli`);
-        // Jamais suivie : lien de telechargement, compte hors campagne.
-        resolved = { target: { campaignId: target.campaignId, destination: DEFAULT_APP_DESTINATION, status: "paused", launchAt: null }, fallback: true };
-      }
-      cache.set(slug, { ...resolved, fetchedAt: nowMs });
-      return resolved;
+      const target = await withTimeout(pending, resolveTimeoutMs);
+      return normalize(slug, target);
     } catch (error) {
-      log(`[qr] lecture de ${slug} impossible (${error instanceof TimeoutError ? "délai dépassé" : "erreur"}), repli`);
-      failedUntil.set(slug, nowMs + failureBackoffMs);
-      return fallbackFor(cached);
+      if (!(error instanceof TimeoutError)) return fallbackFor(slug);
+      log(`[qr] lecture de ${slug} lente (délai dépassé), repli`);
+      degradedUntil.set(slug, nowMs + failureBackoffMs);
+      return fallbackFor(slug, pending);
     }
   }
 
@@ -179,7 +219,8 @@ export function createQrRedirectHandler(options: QrRedirectOptions) {
     if (!isValidQrSlugFormat(slug)) {
       return { response: redirectResponse(SITE_HOME_URL), task: null, outcome: "invalid_slug", fallback: false };
     }
-    const { target, fallback } = await resolve(slug);
+    const resolved = await resolve(slug);
+    const { target, fallback } = resolved;
     if (!target) {
       return { response: redirectResponse(SITE_HOME_URL), task: null, outcome: "unknown_slug", fallback: false };
     }
@@ -192,8 +233,11 @@ export function createQrRedirectHandler(options: QrRedirectOptions) {
       xPurpose: request.headers.get("x-purpose"),
       xMoz: request.headers.get("x-moz"),
     });
-    if (reason === "head" || !target.campaignId) {
+    if (reason === "head") {
       return { response, task: null, outcome: "head", fallback };
+    }
+    if (!target.campaignId && !resolved.pending) {
+      return { response, task: null, outcome: "uncounted", fallback };
     }
     const at = now();
     const automated = reason !== null;
@@ -204,29 +248,46 @@ export function createQrRedirectHandler(options: QrRedirectOptions) {
     if (!takeWriteBudget(bucket.date)) {
       return { response, task: null, outcome: "capped", fallback };
     }
-    const live = isQrCampaignLive(target.status, target.launchAt, at);
     const shard = Math.min(QR_STATS_SHARDS - 1, Math.floor(random() * QR_STATS_SHARDS));
-    const update: QrHourlyIncrement = {
-      campaignId: target.campaignId,
-      docId: qrStatsDocId(bucket.date, bucket.hour, shard),
-      date: bucket.date,
-      hour: bucket.hour,
-      shard,
-      increments: qrCounterIncrements({
-        automated,
-        live,
-        device: classifyQrDevice(request.headers.get("user-agent")),
-        fallback,
-      }),
-    };
-    const task = async () => {
+    const device = classifyQrDevice(request.headers.get("user-agent"));
+    const record = async (campaign: QrRedirectTarget) => {
+      const update: QrHourlyIncrement = {
+        campaignId: campaign.campaignId,
+        docId: qrStatsDocId(bucket.date, bucket.hour, shard),
+        date: bucket.date,
+        hour: bucket.hour,
+        shard,
+        increments: qrCounterIncrements({
+          automated,
+          live: isQrCampaignLive(campaign.status, campaign.launchAt, at),
+          device,
+          fallback,
+        }),
+      };
       try {
         await withTimeout(options.store.increment(update), writeTimeoutMs);
       } catch (error) {
         log(`[qr] comptage de ${slug} non enregistré (${error instanceof TimeoutError ? "délai dépassé" : "erreur"})`);
       }
     };
-    return { response, task, outcome: automated ? "automated" : live ? "counted" : "outside_campaign", fallback };
+    if (!target.campaignId && resolved.pending) {
+      const pending = resolved.pending;
+      // Comptage differe : la redirection est deja partie ; on attend la fin
+      // de la lecture lente (instance froide), puis on compte, repli signale.
+      const task = async () => {
+        let campaign: QrRedirectTarget | null = null;
+        try {
+          campaign = normalize(slug, await withTimeout(pending, deferredLookupTimeoutMs)).target;
+        } catch {
+          log(`[qr] comptage différé de ${slug} abandonné (lecture impossible)`);
+          return;
+        }
+        if (campaign?.campaignId) await record(campaign);
+      };
+      return { response, task, outcome: "deferred", fallback };
+    }
+    const live = isQrCampaignLive(target.status, target.launchAt, at);
+    return { response, task: () => record(target), outcome: automated ? "automated" : live ? "counted" : "outside_campaign", fallback };
   }
 
   return { handle };
