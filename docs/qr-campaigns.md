@@ -94,7 +94,7 @@ Tarif multirégion `eur3`, à confirmer sur la grille Google en vigueur.
 
 ## 5. Projet de paragraphe pour la politique de confidentialité
 
-**Intégré** au commit du site `591d952` (section 13 du texte de référence
+**Intégré** au commit du site `78b8be0` (section 13 du texte de référence
 `politique-confidentialite-rgpd.md` et du `RGPD.pdf` publié, version du 11/11/2026).
 
 > **Mesure des campagnes de communication (QR codes).** Lorsque vous ouvrez
@@ -206,7 +206,7 @@ Tarif multirégion `eur3`, à confirmer sur la grille Google en vigueur.
 | | Admin | Site |
 |---|---|---|
 | Production actuelle | `dpl_4UThEKBMwu6AABfybbp3TUmFM5wL` (07/11), arbre `b60697c` | `dpl_8LoRL9RdZeXe1gnKpTVwrSgrYaRT` (04/11), arbre `1351fa9` |
-| Commit à déployer | tête de `feat/qr-campaigns` (code identique à `005ecd4`, puis documentation) | `591d952` |
+| Commit à déployer | tête de `feat/qr-campaigns` (code identique à `005ecd4`, puis documentation) | `78b8be0` |
 | Écart avec la production | uniquement les fichiers des campagnes QR | réécritures QR et politique de confidentialité |
 
 Aucun déploiement plus récent ni aucune modification locale ne serait écrasé.
@@ -231,7 +231,7 @@ Aucun déploiement plus récent ni aucune modification locale ne serait écrasé
    - Contrôle : `node scripts/check-qr-redirect.mjs https://admin.proxiplay.fr/api/public/qr/bus https://onelink.to/jx4ee7`
      doit tout renvoyer OK. Les ouvertures de test sont comptées « hors
      période ».
-3. **Site en production** depuis `wt-site-qr-campaigns` (`591d952`) :
+3. **Site en production** depuis `wt-site-qr-campaigns` (`78b8be0`) :
    `vercel deploy --prod` depuis le worktree lié au projet
    `proxiplay-website`.
    - Contrôles :
