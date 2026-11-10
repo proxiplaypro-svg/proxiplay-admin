@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getQrDb } from "@/lib/qr/qrDb";
 import { assertIsAdminRequest, handleAdminAuthError } from "@/lib/firebase/adminAuth";
-import { QrCampaignError, createQrCampaign, listQrCampaigns } from "@/lib/qr/qrCampaignAdmin";
+import { qrCampaignErrorResponse, createQrCampaign, listQrCampaigns } from "@/lib/qr/qrCampaignAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function failure(error: unknown) {
-  const authResponse = handleAdminAuthError(error);
-  if (authResponse) return authResponse;
-  if (error instanceof QrCampaignError) return NextResponse.json({ error: error.message }, { status: error.status });
-  console.error("[qr-campaigns]", error instanceof Error ? error.message : error);
-  return NextResponse.json({ error: "Erreur serveur." }, { status: 500 });
+  return qrCampaignErrorResponse(error, handleAdminAuthError, "qr-campaigns");
 }
 
 export async function GET(request: NextRequest) {

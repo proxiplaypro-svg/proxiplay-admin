@@ -211,3 +211,19 @@ export async function listQrCampaignChanges(db: Firestore, id: string) {
     return { id: doc.id, at: iso(data.at), by: text(data.by), kind: text(data.kind), changes: data.changes ?? {} };
   });
 }
+
+/**
+ * Reponse d'erreur des routes /api/admin/qr-campaigns. Un jeton invalide ou
+ * expire (erreur Firebase « auth/... ») vaut 401, jamais 500.
+ */
+export function qrCampaignErrorResponse(error: unknown, handleAdminAuthError: (error: unknown) => Response | null, scope: string): Response {
+  const authResponse = handleAdminAuthError(error);
+  if (authResponse) return authResponse;
+  const code = (error as { code?: unknown })?.code;
+  if (typeof code === "string" && code.startsWith("auth/")) {
+    return Response.json({ error: "Connexion admin requise." }, { status: 401 });
+  }
+  if (error instanceof QrCampaignError) return Response.json({ error: error.message }, { status: error.status });
+  console.error(`[${scope}]`, error instanceof Error ? error.message : error);
+  return Response.json({ error: "Erreur serveur." }, { status: 500 });
+}

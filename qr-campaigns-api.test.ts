@@ -62,9 +62,9 @@ async function createBus() {
   return (await response.json()).campaign;
 }
 
-test("accès réservé aux administrateurs : 401 sans jeton, 403 pour un joueur", async () => {
+test("accès réservé aux administrateurs : 401 sans jeton ou jeton invalide, 403 pour un joueur", async () => {
   await createBus();
-  for (const [token, status] of [["", 401], [playerToken, 403]] as const) {
+  for (const [token, status] of [["", 401], ["jeton-invalide", 401], [playerToken, 403]] as const) {
     const responses = [
       await routes.list.GET(call("/api/admin/qr-campaigns", "GET", undefined, token)),
       await routes.list.POST(call("/api/admin/qr-campaigns", "POST", { ...BUS, id: "autre_campagne", slug: "autre" }, token)),
