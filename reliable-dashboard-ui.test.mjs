@@ -4,10 +4,17 @@ import { readFileSync } from "node:fs";
 
 const source = readFileSync("components/admin/ReliableDashboard.tsx", "utf8");
 
-test("the simplified dashboard contains only the seven requested cards", () => {
+test("the dashboard keeps the existing cards and adds reliable daily activity", () => {
   for (const label of ["Joueurs inscrits", "Joueurs uniques", "Joueurs inactifs", "Parties jouées hier", "Parties jouées depuis le lancement", "Jeux en cours"]) assert.match(source, new RegExp(label));
-  for (const removed of ["Enseignes avec jeu", "Joueurs quotidiens", "Parties quotidiennes", "DAU", "Rétention"]) assert.doesNotMatch(source, new RegExp(removed));
+  assert.match(source, /Joueurs uniques hier/);
+  assert.match(source, /Évolution de l’activité des joueurs/);
+  assert.match(source, /Joueurs uniques par jour/);
+  assert.match(source, /Parties jouées par jour/);
+  assert.match(source, /\[7, 30, 90\]/);
+  assert.match(source, /Donnée indisponible/);
+  assert.match(source, /data-chart-tooltip/);
+  assert.doesNotMatch(source, /Enseignes avec jeu/);
   assert.match(source, /min-\[420px\]:grid-cols-2/);
-  assert.match(source, /xl:grid-cols-3/);
-  assert.match(source, /Indisponible/);
+  assert.match(source, /xl:grid-cols-4/);
+  assert.match(source, /aria-label="Période des graphiques"/);
 });

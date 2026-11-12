@@ -23,6 +23,12 @@ test("30 Paris day ids ending at the reference date, oldest first", () => {
   assert.equal(new Set(ids).size, 30);
 });
 
+test("the API requests no more than 90 known daily aggregate ids", () => {
+  const source = readFileSync("app/api/admin/dashboard-stats/route.ts", "utf8");
+  assert.match(source, /dailyDocumentIds\([^,]+, 90\)/);
+  assert.equal(dailyDocumentIds("2026-10-28", 90).length, 90);
+});
+
 test("month, year and daylight-saving boundaries keep one id per day", () => {
   // 25/10/2026: switch to winter time in Paris.
   assert.deepEqual(dailyDocumentIds("2026-10-26", 3), ["2026-10-24", "2026-10-25", "2026-10-26"]);

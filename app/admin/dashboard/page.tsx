@@ -5,9 +5,9 @@ import ReliableDashboard from "@/components/admin/ReliableDashboard";
 import { fetchReliableDashboard, type ReliableDashboardSnapshot } from "@/lib/firebase/reliableDashboardQueries";
 
 const unavailableDashboard: ReliableDashboardSnapshot = {
-  ready: false, referenceDate: null, weeklyPeriod: null, monthlyPeriod: null, daily: [],
+  ready: false, referenceDate: null, referenceIsYesterday: false, weeklyPeriod: null, monthlyPeriod: null, daily: [],
   metrics: {
-    registeredPlayers: null, uniquePlayersLastWeek: null, uniquePlayersLastMonth: null,
+    registeredPlayers: null, uniquePlayersYesterday: null, uniquePlayersLastWeek: null, uniquePlayersLastMonth: null,
     inactivePlayersLastMonth: null, participationsYesterday: null,
     participationsSinceLaunch: null, activeGames: null,
   },

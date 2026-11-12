@@ -1,36 +1,36 @@
 "use client";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { formatChartDay, formatChartValue, type ChartUnit, type ReliableDashboardMetricKey, type ReliableDashboardSnapshot } from "@/lib/admin/reliableDashboard";
 
-import type { ReliableDashboardMetricKey, ReliableDashboardSnapshot } from "@/lib/admin/reliableDashboard";
-
-const cards: Array<{ key: ReliableDashboardMetricKey; label: string; period?: "week" | "month" }> = [
-  { key: "registeredPlayers", label: "Joueurs inscrits" },
-  { key: "uniquePlayersLastWeek", label: "Joueurs uniques", period: "week" },
-  { key: "uniquePlayersLastMonth", label: "Joueurs uniques", period: "month" },
-  { key: "inactivePlayersLastMonth", label: "Joueurs inactifs", period: "month" },
-  { key: "participationsYesterday", label: "Parties jouées hier" },
-  { key: "participationsSinceLaunch", label: "Parties jouées depuis le lancement" },
-  { key: "activeGames", label: "Jeux en cours" },
+const cards: Array<{ key: ReliableDashboardMetricKey; label: string; period?: "week" | "month"; daily?: boolean }> = [
+  { key: "registeredPlayers", label: "Joueurs inscrits" }, { key: "uniquePlayersYesterday", label: "Joueurs uniques hier", daily: true },
+  { key: "uniquePlayersLastWeek", label: "Joueurs uniques", period: "week" }, { key: "uniquePlayersLastMonth", label: "Joueurs uniques", period: "month" },
+  { key: "inactivePlayersLastMonth", label: "Joueurs inactifs", period: "month" }, { key: "participationsYesterday", label: "Parties jouées hier" },
+  { key: "participationsSinceLaunch", label: "Parties jouées depuis le lancement" }, { key: "activeGames", label: "Jeux en cours" },
 ];
+type DailyValue = { day: string; value: number | null; available: boolean };
+type ActiveBar = { chart: string; day: string } | null;
+const formatDay = (day: string | null) => day ? day.split("-").reverse().join("/") : "Date indisponible";
+function formatPeriod(period: { start: string; end: string } | null) { return period ? `Du ${formatDay(period.start)} au ${formatDay(period.end)} exclu` : "Période indisponible"; }
 
-function formatPeriod(period: { start: string; end: string } | null) {
-  if (!period) return "Période indisponible";
-  const format = (value: string) => value.split("-").reverse().join("/");
-  return `Du ${format(period.start)} au ${format(period.end)} exclu`;
+function DailyChart({ title, color, unit, values, activeDay, onActivate }: { title: string; color: string; unit: ChartUnit; values: DailyValue[]; activeDay: string | null; onActivate: (day: string | null) => void }) {
+  const maximum = Math.max(1, ...values.flatMap((item) => item.value === null ? [] : [item.value]));
+  const buttons = useRef<Array<HTMLButtonElement | null>>([]); const [focusIndex, setFocusIndex] = useState(Math.max(0, values.length - 1)); const pressedWith = useRef<string | null>(null);
+  const activeIndex = values.findIndex((item) => item.day === activeDay); const active = activeIndex >= 0 ? values[activeIndex] : null; const missing = values.filter((item) => !item.available).length;
+  const heightOf = (value: number) => Math.max(2, value / maximum * 100);
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) { if (event.key === "Escape") { onActivate(null); return; } const next = { ArrowLeft: focusIndex - 1, ArrowRight: focusIndex + 1, Home: 0, End: values.length - 1 }[event.key]; if (next === undefined) return; event.preventDefault(); const index = Math.min(values.length - 1, Math.max(0, next)); setFocusIndex(index); buttons.current[index]?.focus(); }
+  const position = active ? (() => { const edge = Math.max(1, Math.round(values.length * .15)); const [left, shift] = activeIndex < edge ? [activeIndex / values.length * 100, "0%"] : activeIndex >= values.length - edge ? [(activeIndex + 1) / values.length * 100, "-100%"] : [(activeIndex + .5) / values.length * 100, "-50%"]; return { left: `${left}%`, transform: `translateX(${shift})`, bottom: active.value === null ? "1.25rem" : `calc(${Math.min(heightOf(active.value), 70)}% + 1.25rem)` }; })() : null;
+  return <section className="min-w-0 rounded-xl border border-[#E8E8E4] bg-white p-4"><h3 className="text-base font-medium">{title}</h3><p className="mt-1 text-xs text-[#777]">Journées civiles closes — Europe/Paris.</p>{missing > 0 ? <p role="status" className="mt-2 text-xs text-[#9A6700]">{missing} journée{missing > 1 ? "s" : ""} indisponible{missing > 1 ? "s" : ""} : elles ne sont pas comptées comme zéro.</p> : null}
+    <div data-chart-bars role="group" aria-label={`${title}, ${values.length} journées. Flèches gauche et droite pour changer de jour.`} onKeyDown={onKeyDown} className="relative mt-5 flex h-44 items-end gap-px sm:gap-1">{values.map((item, index) => { const label = item.value === null ? `${formatChartDay(item.day)} : donnée indisponible` : `${formatChartDay(item.day)} : ${formatChartValue(item.value, unit)}`; return <button key={item.day} ref={(element) => { buttons.current[index] = element; }} type="button" tabIndex={index === focusIndex ? 0 : -1} aria-label={label} onPointerDown={(event) => { pressedWith.current = event.pointerType; }} onPointerEnter={(event) => { if (event.pointerType === "mouse") onActivate(item.day); }} onPointerLeave={(event) => { if (event.pointerType === "mouse" && item.day === activeDay) onActivate(null); }} onFocus={() => { setFocusIndex(index); if (!pressedWith.current) onActivate(item.day); }} onBlur={() => { if (item.day === activeDay) onActivate(null); }} onClick={() => { const pointer = pressedWith.current; pressedWith.current = null; onActivate(pointer !== "mouse" && pointer !== null && item.day === activeDay ? null : item.day); }} className="flex h-full min-w-0 flex-1 cursor-pointer flex-col rounded-t outline-none focus-visible:ring-2 focus-visible:ring-[#1A1A1A] focus-visible:ring-offset-1"><span className="relative block w-full flex-1">{item.value === null ? <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-2 rounded-t border border-dashed border-[#B7B7B1] bg-[#F5F5F2]" /> : <span data-chart-bar className="absolute inset-x-0 bottom-0 block rounded-t transition-[filter]" style={{ height: `${heightOf(item.value)}%`, backgroundColor: color, filter: item.day === activeDay ? "brightness(.8)" : undefined }} />}</span><span aria-hidden="true" className="mt-1 block h-3 w-full whitespace-nowrap text-center text-[9px] leading-3 text-[#777]">{(values.length - 1 - index) % Math.max(1, Math.ceil(values.length / 6)) === 0 ? item.day.slice(8) : ""}</span></button>; })}{active && position ? <div data-chart-tooltip aria-hidden="true" className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md bg-[#1A1A1A] px-2.5 py-1.5 text-xs text-white shadow-lg" style={position}><span className="block text-[#D8D8D2]">{formatChartDay(active.day)}</span><strong className="block text-sm font-medium">{active.value === null ? "Donnée indisponible" : formatChartValue(active.value, unit)}</strong></div> : null}</div>
+  </section>;
 }
 
 export default function ReliableDashboard({ data }: { data: ReliableDashboardSnapshot }) {
-  return <section className="space-y-5 text-[#1A1A1A]">
-    <header><h1 className="text-[22px] font-medium">Tableau de bord</h1></header>
-    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-3">
-      {cards.map(({ key, label, period }) => {
-        const value = data.metrics[key];
-        const dateRange = period === "week" ? data.weeklyPeriod : period === "month" ? data.monthlyPeriod : null;
-        return <article key={key} className="rounded-xl border border-[#E8E8E4] bg-white p-4">
-          <p className="text-xs text-[#777]">{label}</p>
-          <strong className="mt-2 block text-2xl font-medium">{value === null ? "Indisponible" : value.toLocaleString("fr-FR")}</strong>
-          {period ? <p className="mt-2 text-xs text-[#777]">{formatPeriod(dateRange)}</p> : null}
-        </article>;
-      })}
-    </div>
+  const [active, setActive] = useState<ActiveBar>(null); const [periodDays, setPeriodDays] = useState<7 | 30 | 90>(30);
+  useEffect(() => { if (!active) return; const close = (event: PointerEvent) => { if (!(event.target instanceof Element && event.target.closest("[data-chart-bars]"))) setActive(null); }; document.addEventListener("pointerdown", close); return () => document.removeEventListener("pointerdown", close); }, [active]);
+  const selected = data.daily.slice(-periodDays); const chart = (title: string, color: string, unit: ChartUnit, values: DailyValue[]) => <DailyChart title={title} color={color} unit={unit} values={values} activeDay={active?.chart === title ? active.day : null} onActivate={(day) => setActive(day ? { chart: title, day } : null)} />;
+  return <section className="space-y-5 text-[#1A1A1A]"><header><h1 className="text-[22px] font-medium">Tableau de bord</h1><p className="mt-1 text-[13px] text-[#777]">{data.referenceDate ? `Données disponibles pour le ${formatDay(data.referenceDate)}.` : "Statistiques en attente de consolidation."}</p>{data.referenceDate && !data.referenceIsYesterday ? <p role="status" className="mt-1 text-[13px] text-[#9A6700]">Consolidation en retard : la veille réelle n’est pas encore disponible.</p> : null}</header>
+    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">{cards.map(({ key, label, period, daily }) => { const value = data.metrics[key]; const dateRange = period === "week" ? data.weeklyPeriod : period === "month" ? data.monthlyPeriod : null; return <article key={key} className="rounded-xl border border-[#E8E8E4] bg-white p-4"><p className="text-xs text-[#777]">{label}</p><strong className="mt-2 block text-2xl font-medium">{value === null ? "Indisponible" : value.toLocaleString("fr-FR")}</strong>{period ? <p className="mt-2 text-xs text-[#777]">{formatPeriod(dateRange)}</p> : null}{daily ? <p className="mt-2 text-xs text-[#777]">{formatDay(data.referenceDate)}</p> : null}</article>; })}</div>
+    <section aria-labelledby="daily-activity-heading" className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="daily-activity-heading" className="text-lg font-medium">Évolution de l’activité des joueurs</h2><p className="mt-1 text-xs text-[#777]">Les jours indisponibles restent visibles, sans valeur inventée.</p></div><div role="group" aria-label="Période des graphiques" className="flex rounded-lg border border-[#E8E8E4] bg-white p-1">{([7, 30, 90] as const).map((days) => <button key={days} type="button" aria-pressed={periodDays === days} onClick={() => { setPeriodDays(days); setActive(null); }} className={`rounded-md px-3 py-1.5 text-sm ${periodDays === days ? "bg-[#EAF3DE] font-medium text-[#3B6D11]" : "text-[#555]"}`}>{days} jours</button>)}</div></div><div className="grid gap-5 xl:grid-cols-2">{chart("Joueurs uniques par jour", "#2F6FED", { one: "joueur unique", many: "joueurs uniques" }, selected.map((item) => ({ day: item.day, value: item.uniquePlayers, available: item.available })))}{chart("Parties jouées par jour", "#639922", { one: "partie jouée", many: "parties jouées" }, selected.map((item) => ({ day: item.day, value: item.participations, available: item.available })))}</div></section>
   </section>;
 }
