@@ -20,6 +20,9 @@ const { resolveOperationalMerchantEmail } = require("./src/merchant_email_policy
 const { buildUserSearchIndex } = require("./src/user_search_index");
 const { createDashboardAutomations } = require("./src/dashboard_stats/automations");
 const { createPublicGamesPlayedPublisher } = require("./src/public_metrics/scheduledPublisher");
+const { normalizeSmtpPassword } = require("./src/smtp_password");
+const { PARTNER_LEADS_COLLECTION, handlePartnerLead, verifyTurnstileToken } = require("./src/partner_lead");
+const { createPartnerLeadFailureMonitor } = require("./src/partner_lead_monitor");
 
 setGlobalOptions({
   region: "europe-west1",
@@ -75,6 +78,7 @@ const OVH_SMTP_PASS = defineSecret("OVH_SMTP_PASS");
 const OVH_SMTP_FROM = defineString("OVH_SMTP_FROM", { default: "" });
 const OVH_SMTP_FROM_NAME = defineString("OVH_SMTP_FROM_NAME", { default: "" });
 const OVH_SMTP_REPLY_TO = defineString("OVH_SMTP_REPLY_TO", { default: "" });
+const TURNSTILE_SECRET_KEY = defineSecret("TURNSTILE_SECRET_KEY");
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "proxiplay.pro@gmail.com")
   .split(",")
@@ -109,7 +113,7 @@ function getMailerTransport(options = {}) {
   const host = OVH_SMTP_HOST.value();
   const port = OVH_SMTP_PORT.value();
   const user = OVH_SMTP_USER.value();
-  const pass = OVH_SMTP_PASS.value();
+  const { pass, length: passLength, trimmed: passTrimmed } = normalizeSmtpPassword(OVH_SMTP_PASS.value());
   const fromEmail = OVH_SMTP_FROM.value();
   const fromName = OVH_SMTP_FROM_NAME.value();
   const from = fromEmail || user;
@@ -126,6 +130,8 @@ function getMailerTransport(options = {}) {
     hasFromName: Boolean(fromName),
   };
 
+  // Longueur et nettoyage seulement, jamais la valeur.
+  logger.info("SMTP password normalization", { passLength, passTrimmed });
   logger.info("SMTP configuration presence check", configPresence);
 
   const missingFields = [];
@@ -247,6 +253,35 @@ function getSafeSmtpErrorMessage(error) {
 
   return "Unable to send merchant email.";
 }
+
+exports.submitPartnerLead = onRequest({
+  invoker: "public", secrets: [OVH_SMTP_PASS, TURNSTILE_SECRET_KEY], maxInstances: 2, timeoutSeconds: 15,
+}, async (request, response) => {
+  response.set("Access-Control-Allow-Origin", "https://www.proxiplay.fr");
+  response.set("Vary", "Origin");
+  response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  response.set("Access-Control-Allow-Headers", "Content-Type");
+  if (request.method === "OPTIONS") return response.status(204).send();
+  if (request.method !== "POST" || !String(request.get("content-type") || "").startsWith("application/json")) return response.status(405).json({ error: "method_not_allowed" });
+  const raw = JSON.stringify(request.body || "");
+  if (Buffer.byteLength(raw, "utf8") > 8192) return response.status(413).json({ error: "payload_too_large" });
+  const leads = db.collection(PARTNER_LEADS_COLLECTION);
+  const result = await handlePartnerLead({
+    body: request.body || {},
+    deps: {
+      verifyTurnstile: (token) => verifyTurnstileToken({ secret: TURNSTILE_SECRET_KEY.value(), token, remoteIp: request.ip }),
+      saveLead: async (lead) => (await leads.add(lead)).id,
+      updateLead: (leadId, patch) => leads.doc(leadId).update(patch),
+      sendMail: async (message) => {
+        const { transport, from } = getMailerTransport();
+        await transport.sendMail({ from, to: "contact@proxiplay.fr", ...message });
+      },
+      describeMailError: getSafeSmtpErrorMessage,
+      logger,
+    },
+  });
+  return response.status(result.status).json(result.body);
+});
 
 exports.sendMerchantEmail = onCall(
   {
@@ -491,6 +526,7 @@ exports.dashboardStatsConsolidation = dashboardAutomations.dashboardStatsConsoli
 exports.dashboardWeeklyUniquePlayers = dashboardAutomations.dashboardWeeklyUniquePlayers;
 exports.dashboardMonthlyUniquePlayers = dashboardAutomations.dashboardMonthlyUniquePlayers;
 exports.publishPublicGamesPlayedWeekly = createPublicGamesPlayedPublisher({ db, logger });
+exports.partnerLeadFailureMonitor = createPartnerLeadFailureMonitor({ db, logger });
 
 const {
   rebuildAdminStatsCallable,
