@@ -133,8 +133,8 @@ test("same generator for individual and bulk; regeneration alone replaces edited
   await seed("two", { name: "Restaurant Dupont", category: "Restaurant" });
   await seed("three", { name: "Artisan Test", category: "Établissement", subcategory: "plombier" });
   const individual = (await call("generate", { id: "one" })).proposal;
-  assert.equal(individual.subject, "Être visible auprès de 350 personnes par jour avec ProxiPlay ?");
-  assert.ok(individual.body.includes("360 € HT"));
+  assert.equal(individual.subject, "Faire découvrir votre entreprise avec ProxiPlay ?");
+  assert.ok(!/350|360 € HT/.test(individual.body));
   const edited = (await call("save", { id: "one", draftId: individual.id, revision: individual.revision, to: individual.to, subject: "Objet retouché", body: "Message manuel conservé" })).proposal;
   const settings = await call("settings_get");
   await call("settings_save", { settings: { ...settings.settings, phone: "01 23 45 67 89", initial_email_subject: "Objet du lot", initial_email_body: "Base du lot" }, revision: settings.revision });

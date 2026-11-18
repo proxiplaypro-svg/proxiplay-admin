@@ -96,6 +96,24 @@ test("recherche : résultats annotés, aucune écriture avant import", async () 
     assert.equal((await db.collection("prospects").get()).size, 1);
   } finally { globalThis.fetch = savedFetch; if (savedKey === undefined) delete process.env.GOOGLE_PLACES_API_KEY; else process.env.GOOGLE_PLACES_API_KEY = savedKey; }
 });
+test("recherche : une erreur réseau Google reste explicite pour l’administrateur", async () => {
+  const savedFetch = globalThis.fetch; const savedKey = process.env.GOOGLE_PLACES_API_KEY;
+  process.env.GOOGLE_PLACES_API_KEY = "test-key";
+  globalThis.fetch = async () => { throw new Error("mock network failure"); };
+  try {
+    const response = await request("POST", { action: "search", location: "Dunkerque", radius: 15, categories: ["restaurants"], limit: 50 });
+    assert.equal(response.status, 502); assert.match((await response.json()).error, /service de recherche ne répond pas/i);
+  } finally { globalThis.fetch = savedFetch; if (savedKey === undefined) delete process.env.GOOGLE_PLACES_API_KEY; else process.env.GOOGLE_PLACES_API_KEY = savedKey; }
+});
+test("recherche : une réponse Google illisible ne retourne plus le message générique", async () => {
+  const savedFetch = globalThis.fetch; const savedKey = process.env.GOOGLE_PLACES_API_KEY;
+  process.env.GOOGLE_PLACES_API_KEY = "test-key";
+  globalThis.fetch = async () => new Response("not-json", { status: 200 });
+  try {
+    const response = await request("POST", { action: "search", location: "Dunkerque", radius: 15, categories: ["restaurants"], limit: 50 });
+    assert.equal(response.status, 500); assert.match((await response.json()).error, /recherche Google a échoué après la réponse/i);
+  } finally { globalThis.fetch = savedFetch; if (savedKey === undefined) delete process.env.GOOGLE_PLACES_API_KEY; else process.env.GOOGLE_PLACES_API_KEY = savedKey; }
+});
 test("conversion explicite : association requise, enseigne existante, aucune création automatique", async () => {
   const id = await create({ name: "Client futur", google_place_id: "convert" });
   assert.equal((await request("PATCH", { revision: 1, fields: { status: "client" } }, id)).status, 400);

@@ -31,6 +31,10 @@
 .module label { display: grid; gap: 5px; font-size: 13px; color: #555; }
 .module input:not([type=checkbox]), .module select, .module textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #d4d8cf; border-radius: 6px; background: white; color: #1a1a1a; font: inherit; }
 .module textarea { min-height: 100px; resize: vertical; }
+.module .cityAutocomplete { position: relative; }
+.module .cityAutocomplete ul { position: absolute; z-index: 10; width: 100%; max-height: 220px; overflow: auto; margin: 3px 0 0; padding: 4px 0; list-style: none; background: white; border: 1px solid #d4d8cf; border-radius: 6px; box-shadow: 0 8px 20px rgba(0,0,0,.12); }
+.module .cityAutocomplete li { padding: 8px 10px; cursor: pointer; }
+.module .cityAutocomplete li:hover, .module .cityAutocomplete li[aria-selected=true] { background: #eaf3de; }
 .module .check { display: flex; align-items: center; gap: 8px; }
 .table { overflow-x: auto; }
 .module table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
@@ -47,7 +51,7 @@
 .prospectRowStatic { grid-template-columns: minmax(0, 1fr) auto; }
 .rowSelect { margin-top: 5px; }
 .prospectInfo { min-width: 0; overflow-wrap: anywhere; }
-.companyName { font-weight: 650; font-size: 15px; color: #29460d; }
+.companyName { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; font-size: 15px; color: #29460d; }
 .companyName:hover { text-decoration: underline; }
 .emailInfo { margin: 5px 0 8px; }
 .emailAddress { font-weight: 500; overflow-wrap: anywhere; }
@@ -59,8 +63,20 @@
 .emailCounters button[aria-pressed=true] { background: #eaf3de; border-color: #507f1b; color: #355d13; }
 .proposalHeading { scroll-margin-top: 24px; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-@media(max-width: 760px) { .prospectRow { grid-template-columns: 20px minmax(0, 1fr); } .rowActions { grid-column: 2; } }
+@media(max-width: 760px) { .prospectRow { grid-template-columns: 20px minmax(0, 1fr); } .rowActions { grid-column: 2; } .prospectRowStatic { grid-template-columns: minmax(0, 1fr); } .prospectRowStatic .rowActions { grid-column: 1; } }
 @media(max-width: 1000px) { .filters, .grid { grid-template-columns: 1fr; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media(max-width: 600px) { .cards { grid-template-columns: 1fr; } .panel { padding: 12px; } }
 .bulkItem { padding: 16px 0; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
 .bulkBody { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.selectionCount { font-weight: 650; color: #355d13; }
+.simpleFilters { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+.searchLabel { min-width: min(100%, 360px); }
+.inlineForm { display: flex; gap: 6px; min-width: 260px; }
+.inlineForm input { min-width: 0; }
+.inlineForm button { padding: 7px 9px; }
+.recipientSummary { margin: 16px 0; padding: 12px 14px; background: #f7f9f4; border-radius: 8px; }
+.composer { display: grid; gap: 14px; max-width: 820px; }
+.composer fieldset { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; border: 1px solid #e8e8e4; border-radius: 8px; padding: 12px; }
+.composer textarea { min-height: 240px; }
+.preview { border-top: 1px solid #e8e8e4; padding-top: 18px; }
+@media(max-width: 600px) { .inlineForm { min-width: 220px; } .composer fieldset { grid-template-columns: 1fr; } }

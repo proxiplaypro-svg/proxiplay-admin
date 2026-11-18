@@ -30,6 +30,7 @@ import { db, storage } from "./client-app";
 import { resolveHasMainPrize, resolveMainPrizeFields, validateGamePrizes } from "./gamePrizeValidation";
 import { resolveCreateGameDescriptions } from "./gameDescriptions";
 import { adminGameState } from "@/lib/admin/gamePublication";
+import { merchantDeliveryInfo, type PrizeDeliverer } from "@/lib/admin/gameFulfillment";
 
 type GameCollectionName = "games" | "jeux";
 type MerchantCollectionName = "enseignes" | "merchants";
@@ -99,6 +100,7 @@ type FirestoreMerchantDocument = {
   merchantName?: string;
   owner?: DocumentReference | string | { id?: string; path?: string } | null;
   owner_id?: DocumentReference | null;
+  email?: string;
 };
 
 export type GamesAdminData = {
@@ -387,6 +389,7 @@ function mapMerchantOption(
     id: snapshot.id,
     name: readText(merchant.name, merchant.title, merchant.merchantName, "Marchand sans nom"),
     collectionName,
+    ...merchantDeliveryInfo(merchant),
   };
 }
 
@@ -840,6 +843,10 @@ export type CreateGameInput = {
   imageFile: File | null;
   restrictedToAdults: boolean;
   secondaryPrizes: CreateGameSecondaryPrizeInput[];
+  /** Who hands the prize over; translated by planGameFulfillment (gamesQueriesFixed.createGame). */
+  prizeDeliverer: PrizeDeliverer;
+  /** Only used for a shop without an account and without an e-mail on its record. */
+  partnerEmail: string;
 };
 
 export type CreateGameResult = {

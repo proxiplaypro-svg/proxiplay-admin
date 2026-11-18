@@ -1,0 +1,6 @@
+{
+  "proposedIndexes": [
+    {"collectionGroup":"analytics_expirations","query":"where expiration_at_ms <= now orderBy expiration_at_ms limit N","fields":[["expiration_at_ms","ASCENDING"]]},
+    {"collectionGroup":"contributions","query":"player contribution reconciliation is served by analytics_player_activity/{hash}/contributions; no collection-group query required","fields":[]}
+  ]
+}

@@ -9,6 +9,15 @@ const { newUnsubscribeToken, tokenRef, unsubscribeLink, withUnsubscribeFooter, d
 const fail = (code, message) => { throw new HttpsError(code, message); };
 const clean = (value, max) => typeof value === "string" && value.trim().length <= max ? value.trim() : "";
 const now = () => new Date().toISOString();
+const FOLLOW_UP_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
+function followUpDue(data, at = Date.now()) {
+  if (data.do_not_contact || !["contacted", "follow_up"].includes(data.status)) return false;
+  const scheduled = data.next_follow_up_at ? Date.parse(data.next_follow_up_at) : Number.NaN;
+  if (Number.isFinite(scheduled)) return scheduled <= at;
+  if (data.status === "follow_up") return true;
+  const lastContact = data.last_contact_at ? Date.parse(data.last_contact_at) : Number.NaN;
+  return Number.isFinite(lastContact) && at - lastContact >= FOLLOW_UP_DELAY_MS;
+}
 const statusAfterSuccessfulEmail = (status) => ["new", "to_contact", "follow_up"].includes(status) ? "contacted" : status;
 function validateMessage(input) {
   const to = clean(input.to, 254).toLowerCase(); const subject = clean(input.subject, 200); const body = clean(input.body, 10000);
@@ -183,10 +192,13 @@ function createProspectEmailService({ db, assertAdmin, sender, crawler = crawlWe
       } else if (input.action === "primary") {
         if (!(data.emails || []).some((item) => item.email === input.email)) fail("invalid-argument", "Email public introuvable.");
         update(tx, ref, data, { emails: data.emails.map((item) => ({ ...item, is_primary: item.email === input.email })) });
-      } else if (input.action === "generate") {
+      } else if (input.action === "generate" || input.action === "generate_follow_up") {
         if (data.proposal && input.replace !== true) fail("failed-precondition", "Confirmez le remplacement du brouillon.");
+        const kind = input.action === "generate_follow_up" ? "follow_up" : "initial";
+        if (kind === "follow_up" && !followUpDue(data)) fail("failed-precondition", "Ce prospect n’est pas à relancer ou ne doit pas être contacté.");
+        if (kind === "initial" && data.do_not_contact) fail("failed-precondition", "Ce prospect ne doit pas être contacté.");
         const settings = parseSettings((await tx.get(db.doc("prospection_internal/commercial_settings"))).data()?.values || {});
-        const proposal = { ...await generator.generate({ name: data.name, city: data.city, category: data.category, subcategory: data.subcategory, website: data.website }, settings),
+        const proposal = { ...await generator.generate({ name: data.name, city: data.city, category: data.category, subcategory: data.subcategory, website: data.website }, settings, { kind }),
           to: prospectRecipient(data), id: randomUUID(), revision: 1, status: "draft" };
         update(tx, ref, data, { proposal }); return { proposal };
       } else if (input.action === "save") {

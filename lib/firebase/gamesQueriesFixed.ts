@@ -8,6 +8,7 @@ import {
   setDoc,
   Timestamp,
   updateDoc,
+  writeBatch,
   type DocumentData,
   type DocumentReference,
 } from "firebase/firestore";
@@ -25,7 +26,12 @@ import {
   type DuplicateGameResult,
   type UpdateGameInput,
 } from "./gamesQueries";
-import { resolveHasMainPrize, resolveMainPrizeFields, validateGamePrizes } from "./gamePrizeValidation";
+import {
+  resolveDuplicatedMainPrizeFields,
+  resolveHasMainPrize,
+  validateGamePrizes,
+} from "./gamePrizeValidation";
+import { planGameFulfillment, resolveShopOwner } from "@/lib/admin/gameFulfillment";
 
 export * from "./gamesQueries";
 
@@ -255,10 +261,24 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
   if (prizeValidationError) throw new Error(prizeValidationError);
 
   const merchantRef = doc(db, input.merchantCollectionName, input.merchantId);
-  const ownerRef = await resolveMerchantOwnerReference(
-    input.merchantCollectionName,
-    input.merchantId,
-  );
+  const merchantSnapshot = await getDoc(merchantRef);
+  if (!merchantSnapshot.exists()) {
+    throw new Error("Le commerce sélectionné n'existe plus. Rechargez la page.");
+  }
+  const merchantData = merchantSnapshot.data() as MerchantOwnerDocument & {
+    email?: unknown;
+    managed_by_admin?: unknown;
+  };
+  // Same ownership rules as the Cloud Functions, so no game is created that
+  // the server would refuse at the first participation or draw.
+  const shopOwner = resolveShopOwner(merchantData);
+  const fulfillment = planGameFulfillment({
+    owner: shopOwner,
+    deliverer: input.prizeDeliverer,
+    shop: merchantData,
+    partnerEmail: input.partnerEmail,
+  });
+  const ownerRef = shopOwner.kind === "owner" ? doc(db, shopOwner.ownerPath) : null;
   const gameRef = doc(collection(db, input.collectionName));
   const now = new Date();
 
@@ -301,6 +321,8 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
     game_type: "scratcher",
     type: "standard",
     access_mode: input.accessMode,
+    fulfillment_type: fulfillment.fulfillmentType,
+    ...(fulfillment.fulfillmentType === "partner" ? { partner_delivery_enabled: true } : {}),
     ...(input.accessMode === "qr_only"
       ? { qr_consumes_participation: input.qrConsumesParticipation }
       : {}),
@@ -324,7 +346,13 @@ export async function createGame(input: CreateGameInput): Promise<CreateGameResu
     ...buildStatusPatch("brouillon"),
   };
 
-  await setDoc(gameRef, payload);
+  // Only a shop without an account is touched: the management flag and, when
+  // it has none, the delivery e-mail. status / commercial_status are never
+  // written and an existing e-mail is never replaced (planGameFulfillment).
+  const batch = writeBatch(db);
+  if (Object.keys(fulfillment.shopPatch).length > 0) batch.update(merchantRef, fulfillment.shopPatch);
+  batch.set(gameRef, payload);
+  await batch.commit();
 
   return {
     game: {
@@ -424,6 +452,7 @@ export async function duplicateGameDocument(
   const createdRef = doc(collection(db, input.collectionName));
   const now = Timestamp.now();
   const hasMainPrize = resolveHasMainPrize(source.hasMainPrize, source.prize_value);
+  const duplicatedMainPrizeFields = resolveDuplicatedMainPrizeFields(source);
   const secondaryPrizes = Array.isArray(source.secondary_prizes)
     ? source.secondary_prizes.map((prize) => ({ ...(prize ?? {}) }))
     : [];
@@ -446,6 +475,13 @@ export async function duplicateGameDocument(
     game_type: readString(source.game_type, "scratcher"),
     type: readString(source.type, "standard"),
     access_mode: readString(source.access_mode, "public"),
+    // Without these, a relaunch of an ownerless game would be refused by the
+    // Functions ("Remise du lot non configuree"). The duplicate has no
+    // historic prize, so keeping the per-game partner activation is safe.
+    ...(["merchant", "partner", "platform"].includes(readString(source.fulfillment_type))
+      ? { fulfillment_type: source.fulfillment_type }
+      : {}),
+    ...(source.partner_delivery_enabled === true ? { partner_delivery_enabled: true } : {}),
     ...(readString(source.access_mode) === "qr_only"
       ? { qr_consumes_participation: source.qr_consumes_participation !== false }
       : {}),
@@ -456,8 +492,8 @@ export async function duplicateGameDocument(
     hasMainPrize,
     ...(hasMainPrize
       ? {
-          main_prize_title: resolveMainPrizeFields(source).mainPrizeTitle,
-          main_prize_description: resolveMainPrizeFields(source).mainPrizeDescription,
+          main_prize_title: duplicatedMainPrizeFields.mainPrizeTitle,
+          main_prize_description: duplicatedMainPrizeFields.mainPrizeDescription,
           main_prize_image: readString(source.main_prize_image),
         }
       : {}),
@@ -513,7 +549,7 @@ export async function duplicateGameDocument(
     collectionName: input.collectionName,
     imageMissing: !imageUrl,
     hasMainPrize,
-    ...resolveMainPrizeFields(source),
+    ...duplicatedMainPrizeFields,
     mainPrizeValue,
     mainPrizeImage: readString(source.main_prize_image) || null,
     secondaryPrizes: mappedSecondaryPrizes,

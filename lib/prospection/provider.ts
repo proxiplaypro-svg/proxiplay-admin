@@ -40,9 +40,12 @@ export class GooglePlacesProvider implements ProspectProvider {
     const queue = queries.map(query => ({ query, token: undefined as string | undefined, tokens: new Set<string>(), pages: 0 }));
     let calls = 0;
     try {
-      metrics.googleCalls++;
-      const location = await this.request("places:searchText", "places.location", { textQuery: input.location, pageSize: 1, languageCode: "fr" });
-      const center = location.places?.[0]?.location;
+      let center = input.center;
+      if (!center) {
+        metrics.googleCalls++;
+        const location = await this.request("places:searchText", "places.location", { textQuery: input.location, pageSize: 1, languageCode: "fr" });
+        center = location.places?.[0]?.location;
+      }
       if (!center || !Number.isFinite(center.latitude) || !Number.isFinite(center.longitude)) throw new ProspectError("Localisation introuvable.");
       while (queue.length && calls < budget && results.length < input.limit) {
         const task = queue.shift()!;

@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import type { QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 import { mapGameDocument } from "./lib/firebase/gamesQueries";
-import { resolveMainPrizeFields, validateGamePrizes } from "./lib/firebase/gamePrizeValidation";
+import {
+  resolveDuplicatedMainPrizeFields,
+  resolveMainPrizeFields,
+  validateGamePrizes,
+} from "./lib/firebase/gamePrizeValidation";
 
 // Historical mobile-created games may lack both dedicated prize fields.
 // Relaunching them must still use the legacy name/description; explicit
@@ -158,8 +162,9 @@ test("les autres parcours utilisent la meme resolution des champs", () => {
   assert.match(pageSource, /\.\.\.resolveMainPrizeFields\(game\)/);
 
   const fixedSource = readFileSync("lib/firebase/gamesQueriesFixed.ts", "utf8");
-  assert.match(fixedSource, /main_prize_title: resolveMainPrizeFields\(source\)\.mainPrizeTitle/);
-  assert.match(fixedSource, /main_prize_description: resolveMainPrizeFields\(source\)\.mainPrizeDescription/);
+  assert.match(fixedSource, /const duplicatedMainPrizeFields = resolveDuplicatedMainPrizeFields\(source\)/);
+  assert.match(fixedSource, /main_prize_title: duplicatedMainPrizeFields\.mainPrizeTitle/);
+  assert.match(fixedSource, /main_prize_description: duplicatedMainPrizeFields\.mainPrizeDescription/);
 });
 
 test("les champs dédiés vides ou nuls retombent sur les informations générales", () => {
@@ -212,9 +217,9 @@ test("Crepe Touch : duplication et reouverture d'un brouillon aux champs dedies 
   assert.equal(source.hasWinner, true);
   assert.equal(source.sessionCount, 42);
 
+  // The duplicate itself goes through resolveDuplicatedMainPrizeFields
+  // (asserted in "les autres parcours utilisent la meme resolution").
   const fixedSource = readFileSync("lib/firebase/gamesQueriesFixed.ts", "utf8");
-  assert.match(fixedSource, /main_prize_title: resolveMainPrizeFields\(source\)\.mainPrizeTitle/);
-  assert.match(fixedSource, /main_prize_description: resolveMainPrizeFields\(source\)\.mainPrizeDescription/);
   assert.match(fixedSource, /main_prize_title: input\.mainPrizeTitle\.trim\(\)/);
   assert.match(fixedSource, /main_prize_description: input\.mainPrizeDescription\.trim\(\)/);
 });
@@ -231,4 +236,32 @@ test("un tirage final sans texte de lot ni informations generales reste refuse",
     mainPrizeDescription: fields.mainPrizeTitle || fields.mainPrizeDescription,
     secondaryPrizes: [{ name: "une crepe sucree offerte", count: 10 }],
   }), "Le lot principal est obligatoire lorsque le tirage final est active.");
+});
+
+test("un brouillon duplique avec tirage final, valeur et lots instantanes reste enregistrable", () => {
+  // Cas reel : le jeu original a les informations visibles, mais les deux
+  // champs dedies etaient vides dans Firestore.
+  const source = {
+    title: "un menu Midi semaine",
+    description: "Un menu midi semaine chez Crepe Touch Dunkerque",
+    hasMainPrize: true,
+    prize_value: 15.95,
+    main_prize_title: "",
+    main_prize_description: "",
+    secondary_prizes: [{ name: "une crepe sucree offerte", count: 10 }],
+  };
+
+  const copiedPrize = resolveDuplicatedMainPrizeFields(source);
+  assert.deepEqual(copiedPrize, {
+    mainPrizeTitle: "un menu Midi semaine",
+    mainPrizeDescription: "Un menu midi semaine chez Crepe Touch Dunkerque",
+  });
+  assert.equal(source.prize_value, 15.95, "la valeur du lot est preservee");
+
+  const validationError = validateGamePrizes({
+    hasMainPrize: source.hasMainPrize,
+    mainPrizeDescription: copiedPrize.mainPrizeTitle || copiedPrize.mainPrizeDescription,
+    secondaryPrizes: source.secondary_prizes,
+  });
+  assert.equal(validationError, null, "le brouillon doit etre enregistrable");
 });

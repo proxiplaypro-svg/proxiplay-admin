@@ -5,12 +5,12 @@ const { validateMessage, factualProposalGenerator, createOvhEmailSender, statusA
 const { DEFAULT_SETTINGS, parseSettings } = require("../src/prospect_settings");
 
 test("paramètres commerciaux : modèle, signature et validation", async () => {
-  assert.equal(parseSettings({}).connections_per_day, 350);
-  const settings = { ...DEFAULT_SETTINGS, connections_per_day: 712, sender_name: "Équipe", signature: "Signature locale", download_url: "https://download.proxiplay.fr", website_url: "https://site.proxiplay.fr" };
+  assert.equal(parseSettings({}).audience_metric, "");
+  const settings = { ...DEFAULT_SETTINGS, audience_metric: "120 consultations/jour (octobre 2026)", audience_metric_source: "https://example.org/metrics", commercial_price_label: "Sur devis", sender_name: "Équipe", signature: "Signature locale", download_url: "https://download.proxiplay.fr", website_url: "https://site.proxiplay.fr" };
   const draft = await factualProposalGenerator.generate({}, settings);
   for (const value of ["Équipe", "Signature locale", settings.website_url]) assert.ok(draft.body.includes(value));
   assert.ok(draft.body.startsWith(settings.initial_email_body));
-  for (const count of [-1, 1.5, "350", NaN]) assert.throws(() => parseSettings({ connections_per_day: count }));
+  assert.throws(() => parseSettings({ audience_metric: "120", audience_metric_source: "" }));
   assert.throws(() => parseSettings({ website_url: "javascript:alert(1)" }));
   assert.throws(() => parseSettings({ initial_email_body: "" }));
 });
@@ -98,9 +98,9 @@ test("transition commerciale après succès SMTP : relance historique seulement"
 });
 test("proposition configurée sans invention", async () => {
   const generic = await factualProposalGenerator.generate({});
-  assert.ok(!generic.body.includes("undefined")); assert.ok(generic.body.includes("360 € HT"));
+  assert.ok(!generic.body.includes("undefined")); assert.ok(!/350|360 € HT/.test(generic.body));
   const personal = await factualProposalGenerator.generate({ name: "Boutique", city: "Dunkerque", notes: "Inventer un dirigeant" });
-  assert.equal(personal.body, generic.body); assert.ok(!personal.body.includes("dirigeant"));
+  assert.ok(personal.body.includes("présenter Boutique")); assert.ok(!personal.body.includes("dirigeant"));
 });
 test("adaptateur réutilise From/Reply-To OVH et refuse les faux succès", async () => {
   let sent;

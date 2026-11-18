@@ -1,0 +1,26 @@
+# Fichiers jamais téléversés par la CLI Vercel. La CLI n'applique pas
+# .gitignore : le déploiement du 2 novembre 2026 avait embarqué
+# functions/.env.proxi-play-odzp2e. Les variables d'environnement viennent
+# du projet Vercel, jamais de fichiers locaux.
+.env*
+**/.env*
+*.local
+**/*.local
+.secret*
+**/.secret*
+*.pem
+*.p12
+*.key
+**/*service-account*.json
+**/*serviceAccount*.json
+
+# Journaux, artefacts et espaces de travail locaux
+*.log
+**/*.log
+.worktrees
+.claude
+.vercel
+.next
+tsconfig.tsbuildinfo
+node_modules
+functions/node_modules

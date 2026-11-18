@@ -12,10 +12,10 @@ import {ProspectEmail} from './components/admin/prospection/ProspectEmail';
 import {ProspectionSettings} from './components/admin/prospection/ProspectionSettings';
 let current = {id:'prospect-demo',name:'Boutique',email:'contact@boutique.fr',proposal:null,emails:[]};
 let sends=0, saves=0;
-let settings={connections_per_day:350,download_url:'https://download.proxiplay.fr',website_url:'https://www.proxiplay.fr',sender_name:'Pascal',signature:'Proxiplay',phone:'',initial_email_subject:'Objet',initial_email_body:'Message'}; let settingsRevision=0;
+let settings={download_url:'https://download.proxiplay.fr',website_url:'https://www.proxiplay.fr',sender_name:'Pascal',signature:'Proxiplay',phone:'',audience_metric:'',audience_metric_source:'',commercial_price_label:'',initial_email_subject:'Objet',initial_email_body:'Message',follow_up_email_subject:'Relance',follow_up_email_body:'Message de relance'}; let settingsRevision=0;
 window.fixtureRequest = async input => {
   if(input.action==='settings_get') return {settings,revision:settingsRevision};
-  if(input.action==='settings_save') {settings=input.settings;settingsRevision++;document.getElementById('saved-count').textContent=JSON.stringify(settings.connections_per_day);return {settings,revision:settingsRevision};}
+  if(input.action==='settings_save') {settings=input.settings;settingsRevision++;document.getElementById('saved-count').textContent=JSON.stringify(settings.audience_metric);return {settings,revision:settingsRevision};}
   if(input.id !== 'prospect-demo') throw new Error('Wrong prospect identifier');
   if(input.action==='generate') current={...current,proposal:{id:'draft-demo',revision:1,status:'draft',to:current.email,subject:'Proxiplay',body:'Bonjour, decouvrez Proxiplay.'}};
   if(input.action==='save') { saves++; current={...current,proposal:{...current.proposal,to:input.to,subject:input.subject,body:input.body,revision:current.proposal.revision+1}}; }
@@ -60,10 +60,10 @@ test("éditeur réel : génération sans envoi, annulation, édition, confirmati
       await page.evaluate(label => [...document.querySelectorAll("button")].find(b => b.textContent === label).click(), text);
     };
     const counts = async () => JSON.parse(await page.$eval("#counts", el => el.textContent));
-    await click("Configurer la prospection"); await page.waitForSelector('input[type="number"]');
-    await page.$eval('input[type="number"]', input => { input.focus(); input.select(); });
-    await page.keyboard.press("Backspace"); await click("Enregistrer les paramètres");
-    await page.waitForFunction(() => document.getElementById('saved-count').textContent === 'null');
+    await click("Configurer la prospection"); await page.waitForSelector('input[maxlength="500"]');
+    await page.$eval('input[maxlength="500"]', input => { input.focus(); input.select(); });
+    await page.keyboard.type("Audience vérifiée"); await page.$eval('input[placeholder="https://…"]', input => { input.value = "https://example.org/source"; input.dispatchEvent(new Event('input', { bubbles: true })); }); await click("Enregistrer les paramètres");
+    await page.waitForFunction(() => document.getElementById('saved-count').textContent === '"Audience vérifiée"');
     await click("Générer la proposition"); await page.waitForSelector('input[type="email"]');
     assert.equal((await counts()).sends, 0);
     await page.$eval('textarea[rows="19"]', input => { input.focus(); input.select(); });

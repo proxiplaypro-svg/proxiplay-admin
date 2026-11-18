@@ -11,6 +11,7 @@ export const SECTOR_QUERIES: Record<string, readonly string[]> = {
   "habitat": ["magasin aménagement maison"],
   "services locaux": ["pressing", "cordonnier", "toilettage animaux"],
 };
+export const PROXIPLAY_CATEGORY_PRESETS = { "commerces de proximité": ["commerces"], restauration: ["restaurants", "bars/cafés"], beauté: ["beauté", "coiffure"], loisirs: ["loisirs", "sport"], "équipement de la maison": ["habitat"], "services aux particuliers": ["artisans B2C", "services locaux"] } as const;
 export function queriesForSector(sector: string): readonly string[] { return SECTOR_QUERIES[sector] || [sector]; }
 export function isArtisanSearch(categories: string[]) { return categories.includes("artisans B2C"); }
 export function businessCallBudget(limit: number, categories: string[]) {
