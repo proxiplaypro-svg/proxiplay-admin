@@ -199,7 +199,7 @@ Tarif multirégion `eur3`, à confirmer sur la grille Google en vigueur.
   redirection de secours va vers OneLink le temps de la première lecture.
   C'est sans effet pour `bus_dunkerque`, dont la destination est OneLink.
 
-## 8. Mise en production (chaque étape sur accord explicite)
+## 8. Mise en production du 11/11 (historique, voir section 9)
 
 État vérifié le 11/11/2026 :
 
@@ -251,9 +251,11 @@ Aucun déploiement plus récent ni aucune modification locale ne serait écrasé
 - **Site** : `vercel rollback dpl_8LoRL9RdZeXe1gnKpTVwrSgrYaRT --scope proxiplaypro-svgs-projects`.
   `/bus` redevient une 404 et l'ancienne politique de confidentialité
   revient.
-- **Admin** : `vercel rollback dpl_4UThEKBMwu6AABfybbp3TUmFM5wL --scope proxiplaypro-svgs-projects`.
-  Faire d'abord le retour arrière du site, sinon `/bus` renverrait une
-  erreur.
+- **Admin** : ne plus revenir à `dpl_4UThEKBMwu6AABfybbp3TUmFM5wL` (07/11),
+  qui retirerait tout ce qui a été déployé depuis. Le module étant dans
+  `main` (voir section 9), le retour arrière se fait par un commit qui le
+  retire de `main`, puis un déploiement. Faire d'abord le retour arrière du
+  site, sinon `/bus` renverrait une erreur.
 - **Campagne seule** : statut « En pause ». La redirection continue et
   n'est plus comptée.
 - **Changer de destination** se fait dans l'Admin, sans toucher au QR
@@ -270,3 +272,24 @@ Aucun déploiement plus récent ni aucune modification locale ne serait écrasé
 Supprimer l'environnement de test : les Admin Preview `mc1x7njbm` et
 `8g4rhep14`, la clé du compte de service `qr-preview`, et éventuellement
 le projet `proxiplay-qr-preview`.
+
+## 9. Incident du 13/11 au 18/11/2026 : module absent de la production
+
+- **Ce qui s'est passé.** Le module a été déployé le 11/11 par
+  `vercel deploy --prod` depuis `wt-admin-qr-campaigns` (déploiement
+  `7hSSw8Jfm`), sans être fusionné dans `main`. Le 13/11, le déploiement
+  Git de `main` (`26411f0`) l'a remplacé : pages et API QR en 404, entrée
+  « Campagnes QR » absente du menu, redirection `/api/public/qr/[slug]`
+  absente. Les ouvertures de cette période n'ont pas été comptées.
+- **Correctif.** Les commits QR ont été rejoués sur `main` (`fc56aae` à
+  `09e35f5`) puis poussés. Le déploiement Git de production de `09e35f5`
+  a été vérifié le 18/11 : `/admin/qr-campaigns` 200, API 401 sans jeton,
+  entrée de menu présente, campagne `bus_dunkerque` visible.
+- **Règle.** Le projet `proxiplay-admin` déploie automatiquement `main` en
+  production à chaque push. Une fonctionnalité n'est en production durablement
+  que si elle est dans `main` ; ne plus déployer en production depuis un
+  worktree de fonctionnalité.
+- **Contrôle sans fausser les chiffres.** Ne pas appeler
+  `/api/public/qr/*` en production pour vérifier : chaque appel est compté.
+  Vérifier `/admin/qr-campaigns` et `/api/admin/qr-campaigns` (401 attendu
+  sans jeton), puis scanner une seule fois un QR imprimé.
