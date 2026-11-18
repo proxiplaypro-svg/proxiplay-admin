@@ -55,6 +55,9 @@ async function computeMerchantStats(enseigneRef) {
     });
   }
 
+  // A winner is a prizes document (main or instant win). instant_winners are
+  // planned slots, created with the game; a win only updates one of them, so
+  // counting them would add every planned prize as a winner.
   let winnersCount = 0;
   const gameRefChunks = chunkArray(gameRefs, PRIZES_IN_QUERY_LIMIT);
 
@@ -65,11 +68,6 @@ async function computeMerchantStats(enseigneRef) {
       .get();
 
     winnersCount += prizesSnapshot.size;
-  }
-
-  for (const gameDoc of gamesSnapshot.docs) {
-    const instantWinnersSnapshot = await gameDoc.ref.collection("instant_winners").get();
-    winnersCount += instantWinnersSnapshot.size;
   }
 
   return {

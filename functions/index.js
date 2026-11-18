@@ -487,39 +487,9 @@ exports.onPrizeCreated = onDocumentCreated("prizes/{prizeId}", async (event) => 
   }
 });
 
-exports.onInstantWinnerCreated = onDocumentCreated(
-  "games/{gameId}/instant_winners/{winnerId}",
-  async (event) => {
-    const snapshot = event.data;
-    const gameId = event.params.gameId;
-
-    if (!snapshot) {
-      logger.warn("onInstantWinnerCreated triggered without snapshot.");
-      return;
-    }
-
-    try {
-      const gameRef = db.doc(`games/${gameId}`);
-      const enseigneRef = await getMerchantRefFromGameRef(gameRef);
-
-      await updateMerchantStats(enseigneRef, {
-        winners_count: FieldValue.increment(1),
-      });
-
-      logger.info("Merchant winners_count incremented from instant winner", {
-        winnerId: snapshot.id,
-        gameId,
-        enseignePath: enseigneRef.path,
-      });
-    } catch (error) {
-      logger.error("Failed to update winners_count on merchant from instant winner", {
-        winnerId: snapshot.id,
-        gameId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  },
-);
+// No trigger on games/{gameId}/instant_winners: those documents are the
+// instant-win slots planned when a game is generated, not winners. A real
+// instant win creates a prizes document, already counted by onPrizeCreated.
 
 const dashboardAutomations = createDashboardAutomations({ db, logger, auth: admin.auth() });
 exports.dashboardStatsConsolidation = dashboardAutomations.dashboardStatsConsolidation;
@@ -542,7 +512,6 @@ const {
   onAdminStatsEnseigneDeleted,
   onAdminStatsParticipantCreated,
   onAdminStatsPrizeCreated,
-  onAdminStatsInstantWinnerCreated,
 } = createAdminStatsTriggers();
 
 exports.rebuildAdminStatsCallable = rebuildAdminStatsCallable;
@@ -555,4 +524,3 @@ exports.onAdminStatsEnseigneCreated = onAdminStatsEnseigneCreated;
 exports.onAdminStatsEnseigneDeleted = onAdminStatsEnseigneDeleted;
 exports.onAdminStatsParticipantCreated = onAdminStatsParticipantCreated;
 exports.onAdminStatsPrizeCreated = onAdminStatsPrizeCreated;
-exports.onAdminStatsInstantWinnerCreated = onAdminStatsInstantWinnerCreated;

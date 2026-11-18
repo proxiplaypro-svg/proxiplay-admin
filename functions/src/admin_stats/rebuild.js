@@ -21,15 +21,17 @@ async function rebuildAdminStats() {
     merchantsCountSnapshot,
     participationsCountSnapshot,
     winnersCountSnapshot,
-    instantWinnersCountSnapshot,
   ] = await Promise.all([
     db.collection("games").get(),
     db.collection("users").count().get(),
     db.collection("users").where("user_role", "==", "joueur").count().get(),
     db.collection("enseignes").count().get(),
     db.collectionGroup("participants").count().get(),
+    // One prizes document per real win, main or instant (prize_type
+    // "secondaire"). instant_winners are the slots planned when a game is
+    // generated: a win only updates one (hasWinner: true), so they are never
+    // winners and must not be added here.
     db.collection("prizes").count().get(),
-    db.collectionGroup("instant_winners").count().get(),
   ]);
 
   const now = new Date();
@@ -45,8 +47,7 @@ async function rebuildAdminStats() {
     playersCount: playersCountSnapshot.data().count,
     merchantsCount: merchantsCountSnapshot.data().count,
     participationsCount: participationsCountSnapshot.data().count,
-    winnersCount:
-      winnersCountSnapshot.data().count + instantWinnersCountSnapshot.data().count,
+    winnersCount: winnersCountSnapshot.data().count,
   };
 
   await writeAdminStatsRebuild(stats);
