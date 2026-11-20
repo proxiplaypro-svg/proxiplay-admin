@@ -12,7 +12,8 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { auth } from "./auth";
 import { db } from "./client-app";
-import { functionsClient } from "./functions";
+import { canonicalFunctionsClient, functionsClient } from "./functions";
+import type { PlayerDeletionPayload, PlayerDeletionResult } from "@/lib/admin/playerDeletion";
 import type { AdminFollowUpChannel, AdminFollowUpStatus } from "./adminQueries";
 import {
   duplicateGameDocument,
@@ -285,6 +286,18 @@ function buildMarkAsContactedPatch(
     follow_up_status: "relance" as const,
     follow_up_note: normalizeFollowUpNote(followUpNote),
   };
+}
+
+// Suppression d'un compte joueur : Cloud Function du depot canonique
+// (us-central1). Supprime le compte Auth puis les donnees, journal compris.
+export async function deletePlayerAccountAction(payload: PlayerDeletionPayload) {
+  const callable = httpsCallable<PlayerDeletionPayload, PlayerDeletionResult>(
+    canonicalFunctionsClient,
+    "adminDeletePlayerAccount",
+  );
+
+  const result = await callable(payload);
+  return result.data;
 }
 
 export async function rebuildAdminStatsAction() {

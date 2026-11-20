@@ -4,6 +4,13 @@ import { FirebaseError } from "firebase/app";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
+  buildPlayerDeletionPayload,
+  playerDeletionErrorMessage,
+  PLAYER_DELETION_CONFIRMATION_WORD,
+  PLAYER_DELETION_REASON_MAX,
+} from "@/lib/admin/playerDeletion";
+import {
+  deletePlayerAccountAction,
   getAdminFollowUpErrorMessage,
   markPlayerAsContactedAction,
   updatePlayerFollowUpAction,
@@ -217,6 +224,9 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
   const [relaunching, setRelaunching] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<EditFormState>({
     firstName: "",
@@ -288,19 +298,37 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
     setFollowUpForm((current) => (current ? { ...current, [key]: value } : current));
   };
 
+  const closeDeletePanel = () => {
+    setDeleteConfirm(false);
+    setDeleteReason("");
+    setDeleteConfirmation("");
+    setDeleteError(null);
+  };
+
+  // Suppression par la Cloud Function adminDeletePlayerAccount : compte Auth
+  // supprime, donnees effacees, demande journalisee. Motif et confirmation
+  // explicite exiges (controles aussi par le serveur).
   const handleDelete = async () => {
     if (!player) return;
+    const checked = buildPlayerDeletionPayload({
+      userId: player.id,
+      reason: deleteReason,
+      confirmation: deleteConfirmation,
+    });
+    if (!checked.ok) {
+      setDeleteError(checked.error);
+      return;
+    }
+    setDeleteError(null);
     setDeleting(true);
     try {
-      const { doc, deleteDoc } = await import("firebase/firestore");
-      const { db } = await import("@/lib/firebase/client-app");
-      await deleteDoc(doc(db, "users", player.id));
+      await deletePlayerAccountAction(checked.payload);
+      // Rechargement complet : la liste est relue sans le joueur supprime.
       window.location.href = "/admin/joueurs";
     } catch (err) {
       console.error(err);
-      setFeedback("Impossible de supprimer ce joueur.");
+      setDeleteError(playerDeletionErrorMessage(err));
       setDeleting(false);
-      setDeleteConfirm(false);
     }
   };
 
@@ -521,15 +549,50 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
                 Supprimer
               </button>
             ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-[#A32D2D]">Confirmer ?</span>
-                <button type="button" disabled={deleting} onClick={() => void handleDelete()} className="rounded-[8px] bg-[#E24B4A] px-4 py-[10px] text-[12px] font-medium text-white">
-                  {deleting ? "Suppression..." : "Oui, supprimer"}
-                </button>
-                <button type="button" onClick={() => setDeleteConfirm(false)} className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] text-[#666666]">
-                  Annuler
-                </button>
-              </div>
+              <form
+                className="grid w-full max-w-[420px] gap-2 rounded-[10px] border border-[#F09595] bg-[#FCEBEB] p-3"
+                onSubmit={(event) => { event.preventDefault(); void handleDelete(); }}
+              >
+                <p className="text-[12px] text-[#A32D2D]">
+                  Suppression définitive du compte (connexion et données). Elle est journalisée avec votre motif.
+                </p>
+                <label className="grid gap-1 text-[12px] text-[#1A1A1A]">
+                  Motif (obligatoire)
+                  <textarea
+                    required
+                    maxLength={PLAYER_DELETION_REASON_MAX}
+                    value={deleteReason}
+                    onChange={(event) => setDeleteReason(event.target.value)}
+                    className="rounded-[8px] border border-[#E0E0DA] bg-white px-3 py-2 text-[12px]"
+                    placeholder="Ex. : demande du joueur par e-mail du 20/11/2026"
+                  />
+                </label>
+                <label className="grid gap-1 text-[12px] text-[#1A1A1A]">
+                  Saisissez {PLAYER_DELETION_CONFIRMATION_WORD} pour confirmer
+                  <input
+                    required
+                    value={deleteConfirmation}
+                    onChange={(event) => setDeleteConfirmation(event.target.value)}
+                    autoComplete="off"
+                    className="rounded-[8px] border border-[#E0E0DA] bg-white px-3 py-2 text-[12px]"
+                  />
+                </label>
+                {deleteError ? (
+                  <p role="alert" className="text-[12px] font-medium text-[#A32D2D]">{deleteError}</p>
+                ) : null}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="submit"
+                    disabled={deleting || deleteConfirmation.trim() !== PLAYER_DELETION_CONFIRMATION_WORD}
+                    className="rounded-[8px] bg-[#E24B4A] px-4 py-[10px] text-[12px] font-medium text-white disabled:opacity-50"
+                  >
+                    {deleting ? "Suppression..." : "Supprimer définitivement"}
+                  </button>
+                  <button type="button" disabled={deleting} onClick={closeDeletePanel} className="rounded-[8px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] text-[#666666]">
+                    Annuler
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         </div>
