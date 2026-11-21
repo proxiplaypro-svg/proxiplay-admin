@@ -53,6 +53,10 @@ type FirestorePushNotificationDocument = {
   user_refs?: string;
   notification_delivery_state?: unknown;
   attempted_tokens?: number | string;
+  targeted_players?: number | string;
+  players_with_token?: number | string;
+  sent_at?: Timestamp;
+  admin_campaign_version?: number;
   num_sent?: number | string;
   num_failed?: number | string;
   delivered_count?: number | string;
@@ -121,6 +125,8 @@ type CreateAdminPushNotificationPayload = {
   targetDevice: string;
   targetUserGroup: string;
   userRefs: string[];
+  audienceMode: NotificationTabAudience;
+  segmentId: NotificationSegmentId | "All";
   scheduledTimeMs?: number;
   destinationType: NotificationDestinationType;
   destinationId: string;
@@ -372,6 +378,8 @@ export function buildCreateAdminPushNotificationPayload(input: CreatePushNotific
     targetDevice: target.target_audience,
     targetUserGroup: target.target_user_group,
     userRefs: target.user_refs ? [target.user_refs] : [],
+    audienceMode: input.audienceMode,
+    segmentId: input.segmentId,
     destinationType: input.destinationType,
     destinationId: input.destinationId.trim(),
     ...(scheduledTimeMs === undefined ? {} : { scheduledTimeMs }),
@@ -408,6 +416,10 @@ function mapNotificationDocument(id: string, data: FirestorePushNotificationDocu
     deliveryCount: delivery.sent,
     deliveryFailureCount: delivery.failed,
     deliveryAttemptCount: delivery.attempted,
+    targetedPlayers: readOptionalNumber(data.targeted_players),
+    playersWithToken: readOptionalNumber(data.players_with_token),
+    sentAtLabel: data.sent_at ? formatDateTime(data.sent_at.toMillis()) : null,
+    legacyBlocked: data.status === "pending" && !!data.scheduled_time && data.admin_campaign_version !== 2,
   };
 }
 

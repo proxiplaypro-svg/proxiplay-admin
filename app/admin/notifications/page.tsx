@@ -14,11 +14,21 @@ function getStatusBadge(status: string) {
     case "scheduled":
       return "bg-[#FAEEDA] text-[#633806]";
     case "sent":
+    case "succeeded":
       return "bg-[#EAF3DE] text-[#3B6D11]";
+    case "failed":
+    case "partial_failed":
+      return "bg-[#FCE8E6] text-[#A32D2D]";
     default:
       return "bg-[#E6F1FB] text-[#185FA5]";
   }
 }
+
+const statusLabels: Record<string, string> = {
+  started: "En attente", scheduled: "En attente", pending: "En attente",
+  sending: "En cours", succeeded: "Terminé", sent: "Terminé",
+  partial_failed: "Partiellement échoué", failed: "Échoué",
+};
 
 export default function NotificationsPage() {
   const [items, setItems] = useState<PushNotification[]>([]);
@@ -101,11 +111,12 @@ export default function NotificationsPage() {
                     <p className="mt-1 truncate text-[12px] text-[#666666]">{item.message || "Message non renseigne"}</p>
                   </div>
                   <div className="text-[12px] text-[#666666]">
-                    <p className="font-medium text-[#1A1A1A]">{item.scheduledTimeLabel}</p>
+                    <p className="font-medium text-[#1A1A1A]">{item.sentAtLabel ? `Envoi : ${item.sentAtLabel}` : `Prévu : ${item.scheduledTimeLabel}`}</p>
                     <p className="mt-1 text-[#999999]">Creation : {item.createdAtLabel}</p>
                   </div>
                   <div className="text-[12px] text-[#666666]">
                     <p className="font-medium text-[#1A1A1A]">{item.targetAudience || "All"}</p>
+                    <p className="mt-1 text-[#999999]">Ciblés : {item.targetedPlayers ?? "—"} · Avec token : {item.playersWithToken ?? "—"}</p>
                     <p className="mt-1 text-[#999999]">
                       {formatPushNotificationDelivery(
                         item.deliveryCount,
@@ -116,7 +127,7 @@ export default function NotificationsPage() {
                   </div>
                   <div className="flex items-center justify-start md:justify-end">
                     <span className={`inline-flex rounded-full px-3 py-[4px] text-[11px] font-medium ${getStatusBadge(item.status)}`}>
-                      {item.status}
+                      {item.legacyBlocked ? "Bloquée (ancien format)" : statusLabels[item.status] ?? item.status}
                     </span>
                   </div>
                 </article>

@@ -273,4 +273,8 @@ export interface PushNotification {
   deliveryCount: number | null;
   deliveryFailureCount: number | null;
   deliveryAttemptCount: number | null;
+  targetedPlayers: number | null;
+  playersWithToken: number | null;
+  sentAtLabel: string | null;
+  legacyBlocked: boolean;
 }

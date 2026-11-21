@@ -70,6 +70,8 @@ test("immediate notification delegates to the callable without a scheduled time"
       targetDevice: "All",
       targetUserGroup: "All",
       userRefs: ["users/abc123"],
+      audienceMode: "single",
+      segmentId: "All",
       destinationType: "none",
       destinationId: "",
     },
@@ -93,6 +95,16 @@ test("scheduled notification sends the callable timestamp in milliseconds", () =
   assert.deepEqual(payload.userRefs, []);
   assert.equal(payload.destinationType, "internal");
   assert.equal(payload.destinationId, "home");
+});
+
+test("collective segment sends its identifier without a client-side recipient list", () => {
+  const payload = buildCreateAdminPushNotificationPayload({
+    title: "Titre", message: "Message", imageUrl: "", destinationType: "none",
+    destinationId: "", audienceMode: "segment", segmentId: "inactifs_j30", userUid: "", scheduledAt: null,
+  });
+  assert.equal(payload.audienceMode, "segment");
+  assert.equal(payload.segmentId, "inactifs_j30");
+  assert.deepEqual(payload.userRefs, []);
 });
 
 test("destination is sent through unmodified for every type the backend accepts", () => {
