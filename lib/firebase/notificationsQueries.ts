@@ -590,6 +590,37 @@ export async function createPushNotification(input: CreatePushNotificationInput)
   return result.data.id;
 }
 
+// The deployed callable accepts an array of canonical user paths. Do not send
+// audienceMode here: this bulk path uses the existing production contract and
+// does not depend on the undeployed Firebase campaign changes.
+export async function createAdminPlayerPushBatch(title: string, body: string, userRefs: string[]) {
+  await ensureNotificationsAuthenticated();
+  if (!title.trim() || !body.trim() || userRefs.length < 1 || userRefs.length > 50 ||
+      userRefs.some((path) => !/^users\/[^/,]+$/.test(path))) {
+    throw new Error("Lot de notification invalide.");
+  }
+
+  const create = httpsCallable<{
+    title: string;
+    body: string;
+    userRefs: string[];
+    targetDevice: "All";
+    targetUserGroup: "All";
+    destinationType: "none";
+    destinationId: "";
+  }, CreateAdminPushNotificationResult>(pushNotificationsFunctions, "createAdminPushNotification");
+  const response = await create({
+    title: title.trim(),
+    body: body.trim(),
+    userRefs,
+    targetDevice: "All",
+    targetUserGroup: "All",
+    destinationType: "none",
+    destinationId: "",
+  });
+  return response.data;
+}
+
 export async function getLatestPushNotifications() {
   await ensureNotificationsAuthenticated();
 

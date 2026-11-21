@@ -1,6 +1,5 @@
 "use client";
 
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import Script from "next/script";
 import { useRouter } from "next/navigation";
@@ -12,7 +11,13 @@ import {
 } from "@/lib/firebase/adminQueries";
 import { auth } from "@/lib/firebase/auth";
 import { db } from "@/lib/firebase/client-app";
-import { createPushNotification } from "@/lib/firebase/notificationsQueries";
+import { createAdminPlayerPushBatch, createPushNotification } from "@/lib/firebase/notificationsQueries";
+import {
+  buildPlayerPushBatches,
+  runPlayerPushBatches,
+  type PlayerPushBatch,
+  type PlayerPushBatchResult,
+} from "@/lib/firebase/playerPushBatches";
 
 type FollowUpFilter = "tous" | "a_faire" | "relance" | "sans_reponse" | "ok";
 type ActivityFilter = "tous" | "actif" | "inactif";
@@ -20,12 +25,23 @@ type LastContactSort = "recent_first" | "oldest_first" | "never_first";
 type FeedbackState = { tone: "success" | "error"; text: string } | null;
 type PushModalState = {
   open: boolean;
+  mode: "bulk" | "single";
   userIds: string[];
   title: string;
   message: string;
   heading: string;
   description: string;
 };
+type PushCampaignReport = {
+  title: string;
+  totalPlayers: number;
+  totalBatches: number;
+  testMode: boolean;
+  startedAt: string;
+  batches: PlayerPushBatch[];
+  results: PlayerPushBatchResult[];
+};
+const pushCampaignStorageKey = "proxiplay-admin-player-push-campaign";
 type AnalyticsChartPoint = { label: string; value: number };
 type AnalyticsDataset = {
   data: number[];
@@ -121,6 +137,7 @@ function activityColors(p: AdminPlayerListItem) {
 function getBulkPushModalState(userIds: string[]): PushModalState {
   return {
     open: true,
+    mode: "bulk",
     userIds,
     title: "",
     message: "",
@@ -131,6 +148,7 @@ function getBulkPushModalState(userIds: string[]): PushModalState {
 function getSinglePushModalState(playerId: string): PushModalState {
   return {
     open: true,
+    mode: "single",
     userIds: [playerId],
     title: "On vous a reserve des parties !",
     message: "Revenez jouer sur ProxiPlay, vos chances vous attendent.",
@@ -187,8 +205,15 @@ export default function AdminPlayersPage() {
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [pushSubmitting, setPushSubmitting] = useState(false);
+  const [pushConfirming, setPushConfirming] = useState(false);
+  const [pushTestMode, setPushTestMode] = useState(false);
+  const [pushTestIds, setPushTestIds] = useState<Set<string>>(new Set());
+  const [pushTestSearch, setPushTestSearch] = useState("");
+  const [pushCampaignReport, setPushCampaignReport] = useState<PushCampaignReport | null>(null);
+  const pushSendingRef = useRef(false);
   const [pushModal, setPushModal] = useState<PushModalState>({
     open: false,
+    mode: "bulk",
     userIds: [],
     title: "",
     message: "",
@@ -201,6 +226,19 @@ export default function AdminPlayersPage() {
   const signupsChartCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const exhaustedChartRef = useRef<AnalyticsChartInstance | null>(null);
   const signupsChartRef = useRef<AnalyticsChartInstance | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(pushCampaignStorageKey);
+      if (saved) setPushCampaignReport(JSON.parse(saved) as PushCampaignReport);
+    } catch { /* A private browsing session may block storage. */ }
+  }, []);
+
+  useEffect(() => {
+    if (!pushCampaignReport) return;
+    try { sessionStorage.setItem(pushCampaignStorageKey, JSON.stringify(pushCampaignReport)); }
+    catch { /* The current page still retains the results. */ }
+  }, [pushCampaignReport]);
 
   useEffect(() => {
     if (window.Chart) setChartJsReady(true);
@@ -404,11 +442,16 @@ export default function AdminPlayersPage() {
     }
 
     setFeedback(null);
+    setPushConfirming(false);
+    setPushTestMode(false);
+    setPushTestIds(new Set());
+    setPushTestSearch("");
     setPushModal(getBulkPushModalState(userIds));
   };
 
   const openSinglePushModal = (playerId: string) => {
     setFeedback(null);
+    setPushConfirming(false);
     setPushModal(getSinglePushModalState(playerId));
   };
 
@@ -416,6 +459,7 @@ export default function AdminPlayersPage() {
     if (pushSubmitting) return;
     setPushModal({
       open: false,
+      mode: "bulk",
       userIds: [],
       title: "",
       message: "",
@@ -425,11 +469,14 @@ export default function AdminPlayersPage() {
   };
 
   const submitPushNotification = () => {
+    if (pushSendingRef.current || pushSubmitting) return;
     void (async () => {
       const title = pushModal.title.trim();
       const message = pushModal.message.trim();
       const user = auth.currentUser;
       const userIds = [...new Set(pushModal.userIds.map((id) => id.trim()).filter(Boolean))];
+      const targetIds = pushModal.mode === "bulk" && pushTestMode
+        ? userIds.filter((id) => pushTestIds.has(id)) : userIds;
 
       if (!title || !message) {
         setFeedback({ tone: "error", text: "Titre et message sont obligatoires." });
@@ -446,11 +493,31 @@ export default function AdminPlayersPage() {
         return;
       }
 
+      if (pushModal.mode === "bulk" && pushTestMode && (targetIds.length < 1 || targetIds.length > 5)) {
+        setFeedback({ tone: "error", text: "Choisis entre 1 et 5 joueurs pour le mode test." });
+        return;
+      }
+
+      let batches;
+      try {
+        batches = buildPlayerPushBatches(targetIds);
+      } catch (error) {
+        setFeedback({ tone: "error", text: error instanceof Error ? error.message : "Sélection invalide." });
+        return;
+      }
+
+      if (!pushConfirming) {
+        setPushConfirming(true);
+        setFeedback(null);
+        return;
+      }
+
+      pushSendingRef.current = true;
       setPushSubmitting(true);
       setFeedback(null);
 
       try {
-        if (userIds.length === 1) {
+        if (pushModal.mode === "single") {
           await createPushNotification({
             title,
             message,
@@ -459,35 +526,31 @@ export default function AdminPlayersPage() {
             destinationId: "",
             audienceMode: "single",
             segmentId: "All",
-            userUid: userIds[0],
+            userUid: targetIds[0],
             scheduledAt: null,
           });
         } else {
-          // No successful multi-user FlutterFlow document establishes a canonical
-          // representation for multiple user_refs. Preserve the existing batch schema.
-          await addDoc(collection(db, "ff_push_notifications"), {
-            created_at: serverTimestamp(),
-            created_by: `/users/${user.uid}`,
-            notification_title: title,
-            notification_text: message,
-            notification_image_url: "",
-            notification_sound: "",
-            initial_page_name: "",
-            parameter_data: "",
-            scheduled_time: serverTimestamp(),
-            status: "pending",
-            target_audience: "specific",
-            target_user_group: "specific",
-            user_refs: userIds.join(","),
+          setPushCampaignReport({
+            title, totalPlayers: targetIds.length, totalBatches: batches.length,
+            testMode: pushTestMode, startedAt: new Date().toISOString(), batches, results: [],
           });
+          await runPlayerPushBatches(
+            batches,
+            (userRefs) => createAdminPlayerPushBatch(title, message, userRefs),
+            (result) => setPushCampaignReport((current) => current
+              ? { ...current, results: [...current.results, result] } : current),
+          );
         }
 
         setFeedback({
           tone: "success",
-          text: `Notification créée dans ff_push_notifications pour ${userIds.length} joueur${userIds.length > 1 ? "s" : ""}.`,
+          text: pushModal.mode === "single"
+            ? "Demande de notification créée. Consulte son statut dans l’historique."
+            : "Traitement des lots terminé. Vérifie le résultat de chaque lot ci-dessous ; « créé » ne confirme pas l’envoi FCM.",
         });
         setPushModal({
           open: false,
+          mode: "bulk",
           userIds: [],
           title: "",
           message: "",
@@ -495,11 +558,13 @@ export default function AdminPlayersPage() {
           description: "",
         });
         setSelection(new Set());
+        setPushConfirming(false);
       } catch (e) {
         console.error(e);
         const messageText = e instanceof Error ? e.message : "Impossible de créer la notification push.";
         setFeedback({ tone: "error", text: messageText });
       } finally {
+        pushSendingRef.current = false;
         setPushSubmitting(false);
       }
     })();
@@ -581,12 +646,96 @@ export default function AdminPlayersPage() {
           
         </div>
 
-        {selectedIds.length > 0 ? <div className="flex flex-col gap-3 border-b border-[#C0DD97] bg-[#EAF3DE] px-5 py-4 lg:flex-row lg:items-center lg:justify-between"><span className="text-[12.5px] font-medium text-[#3B6D11]">{selectedIds.length} joueurs selectionnes</span><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => openBulkPushModal(selectedIds)} className="rounded-[8px] bg-[#639922] px-3 py-[9px] text-[12px] font-medium text-white transition hover:bg-[#57881D]">Envoyer une notif push</button><button type="button" onClick={() => setSelection(new Set())} className="rounded-[8px] border border-[#C0DD97] bg-white px-3 py-[9px] text-[12px] text-[#3B6D11] transition hover:bg-[#F7F7F5]">Deselectionner</button></div></div> : null}
+        {selectedIds.length > 0 ? <div className="flex flex-col gap-3 border-b border-[#C0DD97] bg-[#EAF3DE] px-5 py-4 lg:flex-row lg:items-center lg:justify-between"><span className="text-[12.5px] font-medium text-[#3B6D11]">{selectedIds.length} joueurs selectionnes</span><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => openBulkPushModal(selectedIds)} disabled={pushSubmitting} className="rounded-[8px] bg-[#639922] px-3 py-[9px] text-[12px] font-medium text-white transition hover:bg-[#57881D] disabled:opacity-50">Envoyer une notif push</button><button type="button" onClick={() => setSelection(new Set())} className="rounded-[8px] border border-[#C0DD97] bg-white px-3 py-[9px] text-[12px] text-[#3B6D11] transition hover:bg-[#F7F7F5]">Deselectionner</button></div></div> : null}
 
         {loading ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Chargement des joueurs Firestore...</div> : filtered.length === 0 ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Aucun document users joueur ne correspond a la recherche ou aux filtres selectionnes.</div> : <div className="overflow-x-auto"><table className="min-w-full"><thead><tr className="border-b border-[#F0F0EC]"><th className={thClass}><input ref={selectAllRef} type="checkbox" checked={allVisibleSelected} onChange={() => setSelection((cur) => { const next = new Set(cur); if (allVisibleSelected) { visibleIds.forEach((id) => next.delete(id)); } else { visibleIds.forEach((id) => next.add(id)); } return next; })} aria-label="Tout selectionner" className="h-4 w-4 rounded-[3px] border border-[#D3D1C7]" /></th>{["Joueur", "Contact", "Performance", "Activite", "Actions"].map((headerLabel) => <th key={headerLabel} className={thClass}>{headerLabel}</th>)}</tr></thead><tbody>{filtered.map((p) => { const tone = activityColors(p); const platform: "iOS" | "Android" | "Inconnue" = "Inconnue"; return <tr key={p.id} className="cursor-pointer border-b border-[#F0F0EC] transition hover:bg-[#FAFAF8] last:border-b-0" onClick={() => router.push(`/admin/joueurs/${p.id}`)}><td className="px-[14px] py-[10px]"><button type="button" onClick={(event) => { event.stopPropagation(); setSelection((cur) => { const next = new Set(cur); next.has(p.id) ? next.delete(p.id) : next.add(p.id); return next; }); }} aria-label={`Selectionner ${label(p)}`} className={`flex h-[14px] w-[14px] items-center justify-center rounded-[3px] border ${selection.has(p.id) ? "border-[#639922] bg-[#EAF3DE]" : "border-[#D3D1C7] bg-white"}`}>{selection.has(p.id) ? <span className="h-[6px] w-[6px] rounded-[1px] bg-[#639922]" /> : null}</button></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-3"><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-medium ${tone.avatar}`}>{initials(p)}</div><div><p className="text-[12.5px] font-medium text-[#1A1A1A]">{label(p)}</p><span className={`mt-1 inline-flex rounded-full px-2 py-[3px] text-[10px] ${platformBadge(platform)}`}>{platform}</span></div></div></td><td className="px-[14px] py-[10px]"><p className="max-w-[220px] truncate text-[11px] text-[#666666]">{p.email}</p><p className="mt-1 text-[11px] text-[#999999]">{p.city}</p></td><td className="px-[14px] py-[10px]"><p className="text-[12px] font-medium text-[#1A1A1A]">{fmt(p.gamesPlayedCount)} parties</p><p className="mt-1 text-[11px] font-medium text-[#639922]">{fmt(p.winsCount)} gains</p></td><td className="px-[14px] py-[10px]"><span className={`inline-flex rounded-full px-3 py-[4px] text-[11px] font-medium ${tone.badge}`}>{p.assiduityLabel}</span><p className="mt-2 text-[11px] text-[#999999]">{p.lastRealActivityLabel}</p></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-2">{(p.assiduityLabel === "A relancer" || p.assiduityLabel === "Inactif" || p.assiduityLabel === "Jamais actif") ? <button type="button" onClick={(event) => { event.stopPropagation(); openSinglePushModal(p.id); }} className="rounded-[6px] bg-[#EAF3DE] px-2 py-[6px] text-[11px] font-medium text-[#3B6D11] transition hover:bg-[#DDEAC7]">Relancer</button> : null}</div></td></tr>; })}</tbody></table></div>}
       </section>
 
-      {pushModal.open ? <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(26,26,26,0.28)] px-4"><div className="w-full max-w-[540px] rounded-[14px] border border-[#E8E8E4] bg-white p-5 shadow-[0_24px_80px_rgba(26,26,26,0.16)]"><div className="flex items-start justify-between gap-4"><div><h3 className="text-[16px] font-medium text-[#1A1A1A]">{pushModal.heading}</h3><p className="mt-1 text-[12px] text-[#999999]">{pushModal.description}</p></div><button type="button" onClick={closePushModal} className="text-[12px] text-[#999999] transition hover:text-[#1A1A1A]">Fermer</button></div><div className="mt-4 grid gap-4"><label className="grid gap-2"><div className="flex items-center justify-between text-[12px] text-[#666666]"><span>Titre</span><span className="text-[#999999]">{pushModal.title.length}/50</span></div><input type="text" maxLength={50} value={pushModal.title} onChange={(e) => setPushModal((cur) => ({ ...cur, title: e.target.value }))} className="h-[42px] rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 text-[13px] text-[#1A1A1A] outline-none" /></label><label className="grid gap-2"><div className="flex items-center justify-between text-[12px] text-[#666666]"><span>Message</span><span className="text-[#999999]">{pushModal.message.length}/150</span></div><textarea maxLength={150} rows={5} value={pushModal.message} onChange={(e) => setPushModal((cur) => ({ ...cur, message: e.target.value }))} className="rounded-[10px] border border-[#E8E8E4] bg-[#F7F7F5] px-3 py-3 text-[13px] text-[#1A1A1A] outline-none" /></label><p className="text-[12px] text-[#999999]">{pushModal.userIds.length} joueur{pushModal.userIds.length > 1 ? "s" : ""} cible{pushModal.userIds.length > 1 ? "s" : ""}</p><div className="flex items-center justify-end gap-2"><button type="button" onClick={closePushModal} className="rounded-[10px] border border-[#E8E8E4] bg-white px-4 py-[10px] text-[12px] text-[#666666] transition hover:bg-[#FAFAF8]">Annuler</button><button type="button" onClick={submitPushNotification} disabled={pushSubmitting} className="rounded-[10px] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881D] disabled:cursor-not-allowed disabled:opacity-50">{pushSubmitting ? "Envoi..." : "Envoyer"}</button></div></div></div></div> : null}
+      {pushCampaignReport ? (
+        <section className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
+          <h2 className="text-[16px] font-medium">Résultats de la campagne {pushCampaignReport.testMode ? "test" : "collective"}</h2>
+          <p className="mt-1 text-[12px] text-[#666666]">{pushCampaignReport.title} · {pushCampaignReport.totalPlayers} joueurs · {pushCampaignReport.totalBatches} lots · {new Date(pushCampaignReport.startedAt).toLocaleString("fr-FR")}</p>
+          <p className="mt-1 text-[11px] text-[#666666]">Ces résultats restent dans cet onglet après rechargement. « Créé » signifie que la demande existe, pas que FCM l’a acceptée.</p>
+          <div className="mt-4 space-y-2">
+            {(pushCampaignReport.batches ?? pushCampaignReport.results).map((batch) => {
+              const result = pushCampaignReport.results.find((item) => item.number === batch.number);
+              return <details key={batch.number} className="rounded-[8px] border border-[#E8E8E4] p-3">
+                <summary className="cursor-pointer text-[12px] font-medium">
+                  Lot {batch.number}/{pushCampaignReport.totalBatches} · {batch.uids.length} joueurs · {result ? result.status === "created" ? "Créé" : result.status === "error" ? "Erreur" : "Résultat incertain" : "Sans résultat enregistré"}
+                  {result?.documentId ? " · Document : " + result.documentId : ""}
+                </summary>
+                {result?.message ? <p className="mt-2 text-[11px] text-[#A32D2D]">{result.message}</p> : null}
+                <p className="mt-2 text-[11px] text-[#666666]">UID du lot pour vérification manuelle :</p>
+                <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all text-[11px]">{batch.uids.join("\n")}</pre>
+              </details>;
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {pushModal.open ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(26,26,26,0.28)] px-4">
+          <div className="max-h-[90vh] w-full max-w-[580px] overflow-y-auto rounded-[14px] border border-[#E8E8E4] bg-white p-5 shadow-[0_24px_80px_rgba(26,26,26,0.16)]">
+            <div className="flex items-start justify-between gap-4">
+              <div><h3 className="text-[16px] font-medium">{pushModal.heading}</h3><p className="mt-1 text-[12px] text-[#999999]">{pushModal.description}</p></div>
+              <button type="button" onClick={closePushModal} disabled={pushSubmitting} className="text-[12px] text-[#666666] disabled:opacity-50">Fermer</button>
+            </div>
+            <div className="mt-4 grid gap-4">
+              <label className="grid gap-2 text-[12px]">Titre
+                <input type="text" maxLength={50} value={pushModal.title} disabled={pushSubmitting} onChange={(event) => { setPushConfirming(false); setPushModal((current) => ({ ...current, title: event.target.value })); }} className="h-[42px] rounded-[10px] border border-[#E8E8E4] px-3 text-[13px]" />
+              </label>
+              <label className="grid gap-2 text-[12px]">Message
+                <textarea maxLength={150} rows={5} value={pushModal.message} disabled={pushSubmitting} onChange={(event) => { setPushConfirming(false); setPushModal((current) => ({ ...current, message: event.target.value })); }} className="rounded-[10px] border border-[#E8E8E4] px-3 py-3 text-[13px]" />
+              </label>
+              {pushModal.mode === "bulk" ? (
+                <div className="rounded-[10px] border border-[#E8E8E4] p-3">
+                  <label className="flex items-center gap-2 text-[12px] font-medium">
+                    <input type="checkbox" checked={pushTestMode} disabled={pushSubmitting} onChange={(event) => { setPushTestMode(event.target.checked); setPushTestIds(new Set()); setPushConfirming(false); }} />
+                    Mode test : choisir 1 à 5 joueurs parmi les joueurs ciblés
+                  </label>
+                  {pushTestMode ? <p className="mt-2 text-[11px] text-[#A32D2D]">Le mode test crée de vraies demandes push pour les joueurs choisis.</p> : null}
+                  {pushTestMode ? (
+                    <div className="mt-3">
+                      <input type="search" value={pushTestSearch} disabled={pushSubmitting} onChange={(event) => setPushTestSearch(event.target.value)} placeholder="Rechercher un nom ou un UID" className="w-full rounded-[8px] border border-[#E8E8E4] px-3 py-2 text-[12px]" />
+                      <p className="mt-2 text-[11px] text-[#666666]">{pushTestIds.size}/5 joueurs choisis</p>
+                      <div className="mt-2 max-h-36 space-y-1 overflow-y-auto">
+                        {pushModal.userIds.filter((id) => {
+                          const player = players.find((item) => item.id === id);
+                          return (id + " " + (player ? label(player) : "")).toLowerCase().includes(pushTestSearch.toLowerCase());
+                        }).slice(0, 50).map((id) => {
+                          const player = players.find((item) => item.id === id);
+                          return <label key={id} className="flex gap-2 text-[11px]">
+                            <input type="checkbox" checked={pushTestIds.has(id)} disabled={pushSubmitting || (pushTestIds.size >= 5 && !pushTestIds.has(id))} onChange={() => { setPushConfirming(false); setPushTestIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }} />
+                            <span>{player ? label(player) : id} · {id}</span>
+                          </label>;
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {pushConfirming ? (
+                <div className="rounded-[10px] border border-[#C0DD97] bg-[#EAF3DE] p-3 text-[12px]">
+                  Confirmer la création de notifications pour {pushModal.mode === "bulk" && pushTestMode ? pushTestIds.size : pushModal.userIds.length} joueur(s), en {Math.ceil((pushModal.mode === "bulk" && pushTestMode ? pushTestIds.size : pushModal.userIds.length) / 50)} lot(s) ? Aucun lot ne sera relancé automatiquement.
+                </div>
+              ) : null}
+              {feedback?.tone === "error" ? <p className="text-[12px] text-[#A32D2D]">{feedback.text}</p> : null}
+              {pushSubmitting && pushCampaignReport ? (
+                <div className="text-[12px]">
+                  <p>Lots traités : {pushCampaignReport.results.length}/{pushCampaignReport.totalBatches}. Ne ferme pas cet onglet.</p>
+                  <ul className="mt-2 max-h-24 overflow-y-auto">
+                    {pushCampaignReport.results.map((result) => <li key={result.number}>Lot {result.number} : {result.status === "created" ? "créé · " + result.documentId : result.status === "error" ? "erreur" : "résultat incertain"}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={closePushModal} disabled={pushSubmitting} className="rounded-[10px] border border-[#E8E8E4] px-4 py-[10px] text-[12px] disabled:opacity-50">Annuler</button>
+                <button type="button" onClick={submitPushNotification} disabled={pushSubmitting} className="rounded-[10px] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white disabled:opacity-50">{pushSubmitting ? "Création des lots..." : pushConfirming ? "Confirmer et lancer" : "Vérifier avant lancement"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

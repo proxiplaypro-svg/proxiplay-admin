@@ -192,6 +192,6 @@ test("existing automatic notification producer keeps the canonical user referenc
 
 test("player page routes an individual notification through the canonical creator", () => {
   const source = readFileSync("app/admin/joueurs/page.tsx", "utf8");
-  assert.match(source, /if \(userIds\.length === 1\) \{[\s\S]*?createPushNotification\(\{/);
+  assert.match(source, /if \(pushModal\.mode === "single"\) \{[\s\S]*?createPushNotification\(\{/);
   assert.match(source, /audienceMode:\s*"single"/);
 });
