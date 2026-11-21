@@ -108,6 +108,8 @@ function buildSections(counts: { gamesToFix: number; merchantsWithoutGame: numbe
       icon: "⚙",
       items: [
         { href: "/admin/abonnements", label: "Abonnements", icon: "◊" },
+        { href: "/admin/souscriptions", label: "Souscriptions", icon: "◊" },
+        { href: "/admin/commerciaux", label: "Commerciaux et codes", icon: "◊" },
         { href: "/admin/commercants-technique", label: "Diagnostic commerçants", icon: "◌", groupLabel: "Supervision technique" },
         { href: "/admin/games-technique", label: "Diagnostic jeux", icon: "◌" },
         { href: "/admin/relances-auto", label: "Relances automatiques", icon: "◌" },
