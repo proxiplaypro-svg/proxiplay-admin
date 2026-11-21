@@ -190,8 +190,9 @@ test("existing automatic notification producer keeps the canonical user referenc
   assert.match(source, /target_user_group:\s*"All"/);
 });
 
-test("player page routes an individual notification through the canonical creator", () => {
+test("player row relaunch opens email while bulk push uses the callable", () => {
   const source = readFileSync("app/admin/joueurs/page.tsx", "utf8");
-  assert.match(source, /if \(pushModal\.mode === "single"\) \{[\s\S]*?createPushNotification\(\{/);
-  assert.match(source, /audienceMode:\s*"single"/);
+  assert.match(source, /mailto:/);
+  assert.match(source, /Relance e-mail/);
+  assert.match(source, /createAdminPlayerPushBatch\(title, message, userRefs, scheduledTimeMs\)/);
 });

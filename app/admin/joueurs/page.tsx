@@ -10,14 +10,14 @@ import {
   type AdminPlayerListItem,
 } from "@/lib/firebase/adminQueries";
 import { auth } from "@/lib/firebase/auth";
-import { db } from "@/lib/firebase/client-app";
-import { createAdminPlayerPushBatch, createPushNotification } from "@/lib/firebase/notificationsQueries";
+import { createAdminPlayerPushBatch } from "@/lib/firebase/notificationsQueries";
 import {
   buildPlayerPushBatches,
   runPlayerPushBatches,
   type PlayerPushBatch,
   type PlayerPushBatchResult,
 } from "@/lib/firebase/playerPushBatches";
+import { formatParisScheduledTime, parseParisScheduledTime } from "@/lib/firebase/playerPushSchedule";
 
 type FollowUpFilter = "tous" | "a_faire" | "relance" | "sans_reponse" | "ok";
 type ActivityFilter = "tous" | "actif" | "inactif";
@@ -25,7 +25,6 @@ type LastContactSort = "recent_first" | "oldest_first" | "never_first";
 type FeedbackState = { tone: "success" | "error"; text: string } | null;
 type PushModalState = {
   open: boolean;
-  mode: "bulk" | "single";
   userIds: string[];
   title: string;
   message: string;
@@ -38,6 +37,7 @@ type PushCampaignReport = {
   totalBatches: number;
   testMode: boolean;
   startedAt: string;
+  scheduledTimeMs: number | null;
   batches: PlayerPushBatch[];
   results: PlayerPushBatchResult[];
 };
@@ -137,23 +137,11 @@ function activityColors(p: AdminPlayerListItem) {
 function getBulkPushModalState(userIds: string[]): PushModalState {
   return {
     open: true,
-    mode: "bulk",
     userIds,
     title: "",
     message: "",
     heading: "Envoyer une notif push",
     description: "La notification sera créée dans ff_push_notifications pour les joueurs sélectionnés.",
-  };
-}
-function getSinglePushModalState(playerId: string): PushModalState {
-  return {
-    open: true,
-    mode: "single",
-    userIds: [playerId],
-    title: "On vous a reserve des parties !",
-    message: "Revenez jouer sur ProxiPlay, vos chances vous attendent.",
-    heading: "Relancer le joueur par notification push",
-    description: "Tu peux ajuster le titre et le message avant l’envoi.",
   };
 }
 function startOfLocalDay(value: number | Date) {
@@ -209,11 +197,13 @@ export default function AdminPlayersPage() {
   const [pushTestMode, setPushTestMode] = useState(false);
   const [pushTestIds, setPushTestIds] = useState<Set<string>>(new Set());
   const [pushTestSearch, setPushTestSearch] = useState("");
+  const [pushScheduleMode, setPushScheduleMode] = useState<"now" | "later">("now");
+  const [pushScheduleLocal, setPushScheduleLocal] = useState("");
+  const [pushConfirmedScheduleMs, setPushConfirmedScheduleMs] = useState<number | null>(null);
   const [pushCampaignReport, setPushCampaignReport] = useState<PushCampaignReport | null>(null);
   const pushSendingRef = useRef(false);
   const [pushModal, setPushModal] = useState<PushModalState>({
     open: false,
-    mode: "bulk",
     userIds: [],
     title: "",
     message: "",
@@ -446,20 +436,16 @@ export default function AdminPlayersPage() {
     setPushTestMode(false);
     setPushTestIds(new Set());
     setPushTestSearch("");
+    setPushScheduleMode("now");
+    setPushScheduleLocal("");
+    setPushConfirmedScheduleMs(null);
     setPushModal(getBulkPushModalState(userIds));
-  };
-
-  const openSinglePushModal = (playerId: string) => {
-    setFeedback(null);
-    setPushConfirming(false);
-    setPushModal(getSinglePushModalState(playerId));
   };
 
   const closePushModal = () => {
     if (pushSubmitting) return;
     setPushModal({
       open: false,
-      mode: "bulk",
       userIds: [],
       title: "",
       message: "",
@@ -475,7 +461,7 @@ export default function AdminPlayersPage() {
       const message = pushModal.message.trim();
       const user = auth.currentUser;
       const userIds = [...new Set(pushModal.userIds.map((id) => id.trim()).filter(Boolean))];
-      const targetIds = pushModal.mode === "bulk" && pushTestMode
+      const targetIds = pushTestMode
         ? userIds.filter((id) => pushTestIds.has(id)) : userIds;
 
       if (!title || !message) {
@@ -493,20 +479,25 @@ export default function AdminPlayersPage() {
         return;
       }
 
-      if (pushModal.mode === "bulk" && pushTestMode && (targetIds.length < 1 || targetIds.length > 5)) {
+      if (pushTestMode && (targetIds.length < 1 || targetIds.length > 5)) {
         setFeedback({ tone: "error", text: "Choisis entre 1 et 5 joueurs pour le mode test." });
         return;
       }
 
       let batches;
+      let scheduledTimeMs: number | undefined;
       try {
         batches = buildPlayerPushBatches(targetIds);
+        if (pushScheduleMode === "later") {
+          scheduledTimeMs = parseParisScheduledTime(pushScheduleLocal);
+        }
       } catch (error) {
         setFeedback({ tone: "error", text: error instanceof Error ? error.message : "Sélection invalide." });
         return;
       }
 
       if (!pushConfirming) {
+        setPushConfirmedScheduleMs(scheduledTimeMs ?? null);
         setPushConfirming(true);
         setFeedback(null);
         return;
@@ -517,40 +508,24 @@ export default function AdminPlayersPage() {
       setFeedback(null);
 
       try {
-        if (pushModal.mode === "single") {
-          await createPushNotification({
-            title,
-            message,
-            imageUrl: "",
-            destinationType: "none",
-            destinationId: "",
-            audienceMode: "single",
-            segmentId: "All",
-            userUid: targetIds[0],
-            scheduledAt: null,
-          });
-        } else {
-          setPushCampaignReport({
+        setPushCampaignReport({
             title, totalPlayers: targetIds.length, totalBatches: batches.length,
-            testMode: pushTestMode, startedAt: new Date().toISOString(), batches, results: [],
+            testMode: pushTestMode, startedAt: new Date().toISOString(), scheduledTimeMs: scheduledTimeMs ?? null,
+            batches, results: [],
           });
-          await runPlayerPushBatches(
+        await runPlayerPushBatches(
             batches,
-            (userRefs) => createAdminPlayerPushBatch(title, message, userRefs),
+            (userRefs) => createAdminPlayerPushBatch(title, message, userRefs, scheduledTimeMs),
             (result) => setPushCampaignReport((current) => current
               ? { ...current, results: [...current.results, result] } : current),
-          );
-        }
+        );
 
         setFeedback({
           tone: "success",
-          text: pushModal.mode === "single"
-            ? "Demande de notification créée. Consulte son statut dans l’historique."
-            : "Traitement des lots terminé. Vérifie le résultat de chaque lot ci-dessous ; « créé » ne confirme pas l’envoi FCM.",
+          text: "Traitement des lots terminé. Vérifie le résultat de chaque lot ci-dessous ; « créé » ne confirme pas l’envoi FCM.",
         });
         setPushModal({
           open: false,
-          mode: "bulk",
           userIds: [],
           title: "",
           message: "",
@@ -584,7 +559,7 @@ export default function AdminPlayersPage() {
         </div>
         <div className="flex flex-wrap gap-3">
           <button type="button" onClick={() => exportCsv(filtered, "proxiplay-joueurs.csv")} className="rounded-[10px] border border-[#E0E0DA] bg-white px-4 py-[10px] text-[12px] text-[#1A1A1A] transition hover:bg-[#FAFAF8]">Exporter CSV</button>
-          <button type="button" onClick={() => openBulkPushModal(selectedPlayers.length > 0 ? selectedPlayers.map((player) => player.id) : filtered.map((player) => player.id))} disabled={pushSubmitting} className="rounded-[10px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#57881D]">{pushSubmitting ? "Envoi..." : "Envoyer une notif"}</button>
+          <button type="button" onClick={() => openBulkPushModal(selectedPlayers.length > 0 ? selectedPlayers.map((player) => player.id) : filtered.map((player) => player.id))} disabled={pushSubmitting} className="rounded-[10px] border border-[#639922] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#57881D]">{pushSubmitting ? "Création..." : "Notif push"}</button>
         </div>
       </div>
 
@@ -648,13 +623,13 @@ export default function AdminPlayersPage() {
 
         {selectedIds.length > 0 ? <div className="flex flex-col gap-3 border-b border-[#C0DD97] bg-[#EAF3DE] px-5 py-4 lg:flex-row lg:items-center lg:justify-between"><span className="text-[12.5px] font-medium text-[#3B6D11]">{selectedIds.length} joueurs selectionnes</span><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => openBulkPushModal(selectedIds)} disabled={pushSubmitting} className="rounded-[8px] bg-[#639922] px-3 py-[9px] text-[12px] font-medium text-white transition hover:bg-[#57881D] disabled:opacity-50">Envoyer une notif push</button><button type="button" onClick={() => setSelection(new Set())} className="rounded-[8px] border border-[#C0DD97] bg-white px-3 py-[9px] text-[12px] text-[#3B6D11] transition hover:bg-[#F7F7F5]">Deselectionner</button></div></div> : null}
 
-        {loading ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Chargement des joueurs Firestore...</div> : filtered.length === 0 ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Aucun document users joueur ne correspond a la recherche ou aux filtres selectionnes.</div> : <div className="overflow-x-auto"><table className="min-w-full"><thead><tr className="border-b border-[#F0F0EC]"><th className={thClass}><input ref={selectAllRef} type="checkbox" checked={allVisibleSelected} onChange={() => setSelection((cur) => { const next = new Set(cur); if (allVisibleSelected) { visibleIds.forEach((id) => next.delete(id)); } else { visibleIds.forEach((id) => next.add(id)); } return next; })} aria-label="Tout selectionner" className="h-4 w-4 rounded-[3px] border border-[#D3D1C7]" /></th>{["Joueur", "Contact", "Performance", "Activite", "Actions"].map((headerLabel) => <th key={headerLabel} className={thClass}>{headerLabel}</th>)}</tr></thead><tbody>{filtered.map((p) => { const tone = activityColors(p); const platform: "iOS" | "Android" | "Inconnue" = "Inconnue"; return <tr key={p.id} className="cursor-pointer border-b border-[#F0F0EC] transition hover:bg-[#FAFAF8] last:border-b-0" onClick={() => router.push(`/admin/joueurs/${p.id}`)}><td className="px-[14px] py-[10px]"><button type="button" onClick={(event) => { event.stopPropagation(); setSelection((cur) => { const next = new Set(cur); next.has(p.id) ? next.delete(p.id) : next.add(p.id); return next; }); }} aria-label={`Selectionner ${label(p)}`} className={`flex h-[14px] w-[14px] items-center justify-center rounded-[3px] border ${selection.has(p.id) ? "border-[#639922] bg-[#EAF3DE]" : "border-[#D3D1C7] bg-white"}`}>{selection.has(p.id) ? <span className="h-[6px] w-[6px] rounded-[1px] bg-[#639922]" /> : null}</button></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-3"><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-medium ${tone.avatar}`}>{initials(p)}</div><div><p className="text-[12.5px] font-medium text-[#1A1A1A]">{label(p)}</p><span className={`mt-1 inline-flex rounded-full px-2 py-[3px] text-[10px] ${platformBadge(platform)}`}>{platform}</span></div></div></td><td className="px-[14px] py-[10px]"><p className="max-w-[220px] truncate text-[11px] text-[#666666]">{p.email}</p><p className="mt-1 text-[11px] text-[#999999]">{p.city}</p></td><td className="px-[14px] py-[10px]"><p className="text-[12px] font-medium text-[#1A1A1A]">{fmt(p.gamesPlayedCount)} parties</p><p className="mt-1 text-[11px] font-medium text-[#639922]">{fmt(p.winsCount)} gains</p></td><td className="px-[14px] py-[10px]"><span className={`inline-flex rounded-full px-3 py-[4px] text-[11px] font-medium ${tone.badge}`}>{p.assiduityLabel}</span><p className="mt-2 text-[11px] text-[#999999]">{p.lastRealActivityLabel}</p></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-2">{(p.assiduityLabel === "A relancer" || p.assiduityLabel === "Inactif" || p.assiduityLabel === "Jamais actif") ? <button type="button" onClick={(event) => { event.stopPropagation(); openSinglePushModal(p.id); }} className="rounded-[6px] bg-[#EAF3DE] px-2 py-[6px] text-[11px] font-medium text-[#3B6D11] transition hover:bg-[#DDEAC7]">Relancer</button> : null}</div></td></tr>; })}</tbody></table></div>}
+        {loading ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Chargement des joueurs Firestore...</div> : filtered.length === 0 ? <div className="px-5 py-10 text-[12.5px] text-[#999999]">Aucun document users joueur ne correspond a la recherche ou aux filtres selectionnes.</div> : <div className="overflow-x-auto"><table className="min-w-full"><thead><tr className="border-b border-[#F0F0EC]"><th className={thClass}><input ref={selectAllRef} type="checkbox" checked={allVisibleSelected} onChange={() => setSelection((cur) => { const next = new Set(cur); if (allVisibleSelected) { visibleIds.forEach((id) => next.delete(id)); } else { visibleIds.forEach((id) => next.add(id)); } return next; })} aria-label="Tout selectionner" className="h-4 w-4 rounded-[3px] border border-[#D3D1C7]" /></th>{["Joueur", "Contact", "Performance", "Activite", "Actions"].map((headerLabel) => <th key={headerLabel} className={thClass}>{headerLabel}</th>)}</tr></thead><tbody>{filtered.map((p) => { const tone = activityColors(p); const platform: "iOS" | "Android" | "Inconnue" = "Inconnue"; return <tr key={p.id} className="cursor-pointer border-b border-[#F0F0EC] transition hover:bg-[#FAFAF8] last:border-b-0" onClick={() => router.push(`/admin/joueurs/${p.id}`)}><td className="px-[14px] py-[10px]"><button type="button" onClick={(event) => { event.stopPropagation(); setSelection((cur) => { const next = new Set(cur); next.has(p.id) ? next.delete(p.id) : next.add(p.id); return next; }); }} aria-label={`Selectionner ${label(p)}`} className={`flex h-[14px] w-[14px] items-center justify-center rounded-[3px] border ${selection.has(p.id) ? "border-[#639922] bg-[#EAF3DE]" : "border-[#D3D1C7] bg-white"}`}>{selection.has(p.id) ? <span className="h-[6px] w-[6px] rounded-[1px] bg-[#639922]" /> : null}</button></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-3"><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-medium ${tone.avatar}`}>{initials(p)}</div><div><p className="text-[12.5px] font-medium text-[#1A1A1A]">{label(p)}</p><span className={`mt-1 inline-flex rounded-full px-2 py-[3px] text-[10px] ${platformBadge(platform)}`}>{platform}</span></div></div></td><td className="px-[14px] py-[10px]"><p className="max-w-[220px] truncate text-[11px] text-[#666666]">{p.email}</p><p className="mt-1 text-[11px] text-[#999999]">{p.city}</p></td><td className="px-[14px] py-[10px]"><p className="text-[12px] font-medium text-[#1A1A1A]">{fmt(p.gamesPlayedCount)} parties</p><p className="mt-1 text-[11px] font-medium text-[#639922]">{fmt(p.winsCount)} gains</p></td><td className="px-[14px] py-[10px]"><span className={`inline-flex rounded-full px-3 py-[4px] text-[11px] font-medium ${tone.badge}`}>{p.assiduityLabel}</span><p className="mt-2 text-[11px] text-[#999999]">{p.lastRealActivityLabel}</p></td><td className="px-[14px] py-[10px]"><div className="flex items-center gap-2">{(p.assiduityLabel === "A relancer" || p.assiduityLabel === "Inactif" || p.assiduityLabel === "Jamais actif") && p.email !== "Non renseigne" ? <a href={`mailto:${encodeURIComponent(p.email)}?subject=${encodeURIComponent("Votre retour sur ProxiPlay")}`} onClick={(event) => event.stopPropagation()} className="rounded-[6px] bg-[#EAF3DE] px-2 py-[6px] text-[11px] font-medium text-[#3B6D11] transition hover:bg-[#DDEAC7]">Relance e-mail</a> : null}</div></td></tr>; })}</tbody></table></div>}
       </section>
 
       {pushCampaignReport ? (
         <section className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
           <h2 className="text-[16px] font-medium">Résultats de la campagne {pushCampaignReport.testMode ? "test" : "collective"}</h2>
-          <p className="mt-1 text-[12px] text-[#666666]">{pushCampaignReport.title} · {pushCampaignReport.totalPlayers} joueurs · {pushCampaignReport.totalBatches} lots · {new Date(pushCampaignReport.startedAt).toLocaleString("fr-FR")}</p>
+          <p className="mt-1 text-[12px] text-[#666666]">{pushCampaignReport.title} · {pushCampaignReport.totalPlayers} joueurs · {pushCampaignReport.totalBatches} lots · {pushCampaignReport.scheduledTimeMs ? `Programmé le ${formatParisScheduledTime(pushCampaignReport.scheduledTimeMs)} (Paris)` : "Envoi immédiat"} · Créé le {new Date(pushCampaignReport.startedAt).toLocaleString("fr-FR")}</p>
           <p className="mt-1 text-[11px] text-[#666666]">Ces résultats restent dans cet onglet après rechargement. « Créé » signifie que la demande existe, pas que FCM l’a acceptée.</p>
           <div className="mt-4 space-y-2">
             {(pushCampaignReport.batches ?? pushCampaignReport.results).map((batch) => {
@@ -687,8 +662,18 @@ export default function AdminPlayersPage() {
               <label className="grid gap-2 text-[12px]">Message
                 <textarea maxLength={150} rows={5} value={pushModal.message} disabled={pushSubmitting} onChange={(event) => { setPushConfirming(false); setPushModal((current) => ({ ...current, message: event.target.value })); }} className="rounded-[10px] border border-[#E8E8E4] px-3 py-3 text-[13px]" />
               </label>
-              {pushModal.mode === "bulk" ? (
-                <div className="rounded-[10px] border border-[#E8E8E4] p-3">
+              <fieldset className="rounded-[10px] border border-[#E8E8E4] p-3 text-[12px]">
+                <legend className="px-1 font-medium">Quand envoyer ?</legend>
+                <div className="flex gap-5">
+                  <label className="flex items-center gap-2"><input type="radio" name="player-push-schedule" checked={pushScheduleMode === "now"} disabled={pushSubmitting} onChange={() => { setPushScheduleMode("now"); setPushConfirming(false); }} />Envoyer maintenant</label>
+                  <label className="flex items-center gap-2"><input type="radio" name="player-push-schedule" checked={pushScheduleMode === "later"} disabled={pushSubmitting} onChange={() => { setPushScheduleMode("later"); setPushConfirming(false); }} />Programmer</label>
+                </div>
+                {pushScheduleMode === "later" ? <label className="mt-3 grid gap-1">Date et heure à Paris (minimum 2 minutes dans le futur)
+                  <input type="datetime-local" value={pushScheduleLocal} disabled={pushSubmitting} onChange={(event) => { setPushScheduleLocal(event.target.value); setPushConfirming(false); }} className="rounded-[8px] border border-[#E8E8E4] px-3 py-2" />
+                </label> : null}
+                {pushScheduleMode === "later" ? <p className="mt-2 text-[11px] text-[#A32D2D]">Le traitement des notifications programmées doit être validé sur un seul compte avant toute campagne collective.</p> : null}
+              </fieldset>
+              <div className="rounded-[10px] border border-[#E8E8E4] p-3">
                   <label className="flex items-center gap-2 text-[12px] font-medium">
                     <input type="checkbox" checked={pushTestMode} disabled={pushSubmitting} onChange={(event) => { setPushTestMode(event.target.checked); setPushTestIds(new Set()); setPushConfirming(false); }} />
                     Mode test : choisir 1 à 5 joueurs parmi les joueurs ciblés
@@ -712,11 +697,10 @@ export default function AdminPlayersPage() {
                       </div>
                     </div>
                   ) : null}
-                </div>
-              ) : null}
+              </div>
               {pushConfirming ? (
                 <div className="rounded-[10px] border border-[#C0DD97] bg-[#EAF3DE] p-3 text-[12px]">
-                  Confirmer la création de notifications pour {pushModal.mode === "bulk" && pushTestMode ? pushTestIds.size : pushModal.userIds.length} joueur(s), en {Math.ceil((pushModal.mode === "bulk" && pushTestMode ? pushTestIds.size : pushModal.userIds.length) / 50)} lot(s) ? Aucun lot ne sera relancé automatiquement.
+                  Confirmer la création de notifications pour {pushTestMode ? pushTestIds.size : pushModal.userIds.length} joueur(s), en {Math.ceil((pushTestMode ? pushTestIds.size : pushModal.userIds.length) / 50)} lot(s), {pushConfirmedScheduleMs !== null ? `programmés le ${formatParisScheduledTime(pushConfirmedScheduleMs)} (Paris)` : "à envoyer maintenant"} ? Aucun lot ne sera relancé automatiquement.
                 </div>
               ) : null}
               {feedback?.tone === "error" ? <p className="text-[12px] text-[#A32D2D]">{feedback.text}</p> : null}

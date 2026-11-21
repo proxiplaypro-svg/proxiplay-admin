@@ -4,10 +4,13 @@ import { FirebaseError } from "firebase/app";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   collection,
+  doc,
   getDocs,
   limit,
   orderBy,
   query,
+  runTransaction,
+  serverTimestamp,
   Timestamp,
   where,
 } from "firebase/firestore";
@@ -593,11 +596,12 @@ export async function createPushNotification(input: CreatePushNotificationInput)
 // The deployed callable accepts an array of canonical user paths. Do not send
 // audienceMode here: this bulk path uses the existing production contract and
 // does not depend on the undeployed Firebase campaign changes.
-export async function createAdminPlayerPushBatch(title: string, body: string, userRefs: string[]) {
+export async function createAdminPlayerPushBatch(title: string, body: string, userRefs: string[], scheduledTimeMs?: number) {
   await ensureNotificationsAuthenticated();
   if (!title.trim() || !body.trim() || userRefs.length < 1 || userRefs.length > 50 ||
+      (scheduledTimeMs !== undefined && (!Number.isFinite(scheduledTimeMs) || scheduledTimeMs <= Date.now())) ||
       userRefs.some((path) => !/^users\/[^/,]+$/.test(path))) {
-    throw new Error("Lot de notification invalide.");
+    throw new FirebaseError("functions/invalid-argument", "Lot de notification invalide ou heure programmée déjà passée.");
   }
 
   const create = httpsCallable<{
@@ -608,6 +612,7 @@ export async function createAdminPlayerPushBatch(title: string, body: string, us
     targetUserGroup: "All";
     destinationType: "none";
     destinationId: "";
+    scheduledTimeMs?: number;
   }, CreateAdminPushNotificationResult>(pushNotificationsFunctions, "createAdminPushNotification");
   const response = await create({
     title: title.trim(),
@@ -617,6 +622,7 @@ export async function createAdminPlayerPushBatch(title: string, body: string, us
     targetUserGroup: "All",
     destinationType: "none",
     destinationId: "",
+    ...(scheduledTimeMs === undefined ? {} : { scheduledTimeMs }),
   });
   return response.data;
 }
@@ -624,13 +630,28 @@ export async function createAdminPlayerPushBatch(title: string, body: string, us
 export async function getLatestPushNotifications() {
   await ensureNotificationsAuthenticated();
 
-  const snapshot = await getDocs(
-    query(collection(db, "ff_push_notifications"), orderBy("created_at", "desc"), limit(20)),
-  );
-
-  return snapshot.docs.map((docSnapshot) =>
+  const [recent, scheduled] = await Promise.all([
+    getDocs(query(collection(db, "ff_push_notifications"), orderBy("created_at", "desc"), limit(20))),
+    getDocs(query(collection(db, "ff_push_notifications"), where("status", "==", "scheduled"))),
+  ]);
+  const documents = new Map([...recent.docs, ...scheduled.docs].map((snapshot) => [snapshot.id, snapshot]));
+  return [...documents.values()].map((docSnapshot) =>
     mapNotificationDocument(docSnapshot.id, docSnapshot.data() as FirestorePushNotificationDocument),
-  );
+  ).sort((left, right) => right.createdAtValue - left.createdAtValue);
+}
+
+export async function cancelScheduledPushNotification(id: string) {
+  await ensureNotificationsAuthenticated();
+  const ref = doc(db, "ff_push_notifications", id);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const data = snapshot.data() as FirestorePushNotificationDocument | undefined;
+    if (!data || data.status !== "scheduled" || !data.scheduled_time ||
+        data.scheduled_time.toMillis() <= Date.now()) {
+      throw new Error("Cette notification n’est plus annulable. Actualise son statut.");
+    }
+    transaction.update(ref, { status: "cancelled", cancelled_at: serverTimestamp() });
+  });
 }
 
 export function getNotificationsErrorMessage(error: unknown) {
