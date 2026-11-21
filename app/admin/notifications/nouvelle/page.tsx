@@ -408,7 +408,9 @@ export default function NewNotificationPage() {
         scheduledAt,
       });
 
-      setFeedback({ tone: "success", text: "Notification transmise au moteur d’envoi." });
+      setFeedback({ tone: "success", text: scheduledAt
+        ? "Campagne programmée. Consulte son statut dans l’historique."
+        : "Campagne créée. L’envoi est en attente de traitement ; consulte son statut dans l’historique." });
       window.setTimeout(() => {
         router.push("/admin/notifications");
       }, 2000);

@@ -4,10 +4,13 @@ import { FirebaseError } from "firebase/app";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   collection,
+  doc,
   getDocs,
   limit,
   orderBy,
   query,
+  runTransaction,
+  serverTimestamp,
   Timestamp,
   where,
 } from "firebase/firestore";
@@ -53,6 +56,10 @@ type FirestorePushNotificationDocument = {
   user_refs?: string;
   notification_delivery_state?: unknown;
   attempted_tokens?: number | string;
+  targeted_players?: number | string;
+  players_with_token?: number | string;
+  sent_at?: Timestamp;
+  admin_campaign_version?: number;
   num_sent?: number | string;
   num_failed?: number | string;
   delivered_count?: number | string;
@@ -121,6 +128,8 @@ type CreateAdminPushNotificationPayload = {
   targetDevice: string;
   targetUserGroup: string;
   userRefs: string[];
+  audienceMode: NotificationTabAudience;
+  segmentId: NotificationSegmentId | "All";
   scheduledTimeMs?: number;
   destinationType: NotificationDestinationType;
   destinationId: string;
@@ -372,6 +381,8 @@ export function buildCreateAdminPushNotificationPayload(input: CreatePushNotific
     targetDevice: target.target_audience,
     targetUserGroup: target.target_user_group,
     userRefs: target.user_refs ? [target.user_refs] : [],
+    audienceMode: input.audienceMode,
+    segmentId: input.segmentId,
     destinationType: input.destinationType,
     destinationId: input.destinationId.trim(),
     ...(scheduledTimeMs === undefined ? {} : { scheduledTimeMs }),
@@ -408,6 +419,10 @@ function mapNotificationDocument(id: string, data: FirestorePushNotificationDocu
     deliveryCount: delivery.sent,
     deliveryFailureCount: delivery.failed,
     deliveryAttemptCount: delivery.attempted,
+    targetedPlayers: readOptionalNumber(data.targeted_players),
+    playersWithToken: readOptionalNumber(data.players_with_token),
+    sentAtLabel: data.sent_at ? formatDateTime(data.sent_at.toMillis()) : null,
+    legacyBlocked: data.status === "pending" && !!data.scheduled_time && data.admin_campaign_version !== 2,
   };
 }
 
@@ -578,16 +593,65 @@ export async function createPushNotification(input: CreatePushNotificationInput)
   return result.data.id;
 }
 
+// The deployed callable accepts an array of canonical user paths. Do not send
+// audienceMode here: this bulk path uses the existing production contract and
+// does not depend on the undeployed Firebase campaign changes.
+export async function createAdminPlayerPushBatch(title: string, body: string, userRefs: string[], scheduledTimeMs?: number) {
+  await ensureNotificationsAuthenticated();
+  if (!title.trim() || !body.trim() || userRefs.length < 1 || userRefs.length > 50 ||
+      (scheduledTimeMs !== undefined && (!Number.isFinite(scheduledTimeMs) || scheduledTimeMs <= Date.now())) ||
+      userRefs.some((path) => !/^users\/[^/,]+$/.test(path))) {
+    throw new FirebaseError("functions/invalid-argument", "Lot de notification invalide ou heure programmée déjà passée.");
+  }
+
+  const create = httpsCallable<{
+    title: string;
+    body: string;
+    userRefs: string[];
+    targetDevice: "All";
+    targetUserGroup: "All";
+    destinationType: "none";
+    destinationId: "";
+    scheduledTimeMs?: number;
+  }, CreateAdminPushNotificationResult>(pushNotificationsFunctions, "createAdminPushNotification");
+  const response = await create({
+    title: title.trim(),
+    body: body.trim(),
+    userRefs,
+    targetDevice: "All",
+    targetUserGroup: "All",
+    destinationType: "none",
+    destinationId: "",
+    ...(scheduledTimeMs === undefined ? {} : { scheduledTimeMs }),
+  });
+  return response.data;
+}
+
 export async function getLatestPushNotifications() {
   await ensureNotificationsAuthenticated();
 
-  const snapshot = await getDocs(
-    query(collection(db, "ff_push_notifications"), orderBy("created_at", "desc"), limit(20)),
-  );
-
-  return snapshot.docs.map((docSnapshot) =>
+  const [recent, scheduled] = await Promise.all([
+    getDocs(query(collection(db, "ff_push_notifications"), orderBy("created_at", "desc"), limit(20))),
+    getDocs(query(collection(db, "ff_push_notifications"), where("status", "==", "scheduled"))),
+  ]);
+  const documents = new Map([...recent.docs, ...scheduled.docs].map((snapshot) => [snapshot.id, snapshot]));
+  return [...documents.values()].map((docSnapshot) =>
     mapNotificationDocument(docSnapshot.id, docSnapshot.data() as FirestorePushNotificationDocument),
-  );
+  ).sort((left, right) => right.createdAtValue - left.createdAtValue);
+}
+
+export async function cancelScheduledPushNotification(id: string) {
+  await ensureNotificationsAuthenticated();
+  const ref = doc(db, "ff_push_notifications", id);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const data = snapshot.data() as FirestorePushNotificationDocument | undefined;
+    if (!data || data.status !== "scheduled" || !data.scheduled_time ||
+        data.scheduled_time.toMillis() <= Date.now()) {
+      throw new Error("Cette notification n’est plus annulable. Actualise son statut.");
+    }
+    transaction.update(ref, { status: "cancelled", cancelled_at: serverTimestamp() });
+  });
 }
 
 export function getNotificationsErrorMessage(error: unknown) {

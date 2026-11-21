@@ -70,6 +70,8 @@ test("immediate notification delegates to the callable without a scheduled time"
       targetDevice: "All",
       targetUserGroup: "All",
       userRefs: ["users/abc123"],
+      audienceMode: "single",
+      segmentId: "All",
       destinationType: "none",
       destinationId: "",
     },
@@ -93,6 +95,16 @@ test("scheduled notification sends the callable timestamp in milliseconds", () =
   assert.deepEqual(payload.userRefs, []);
   assert.equal(payload.destinationType, "internal");
   assert.equal(payload.destinationId, "home");
+});
+
+test("collective segment sends its identifier without a client-side recipient list", () => {
+  const payload = buildCreateAdminPushNotificationPayload({
+    title: "Titre", message: "Message", imageUrl: "", destinationType: "none",
+    destinationId: "", audienceMode: "segment", segmentId: "inactifs_j30", userUid: "", scheduledAt: null,
+  });
+  assert.equal(payload.audienceMode, "segment");
+  assert.equal(payload.segmentId, "inactifs_j30");
+  assert.deepEqual(payload.userRefs, []);
 });
 
 test("destination is sent through unmodified for every type the backend accepts", () => {
@@ -178,8 +190,9 @@ test("existing automatic notification producer keeps the canonical user referenc
   assert.match(source, /target_user_group:\s*"All"/);
 });
 
-test("player page routes an individual notification through the canonical creator", () => {
+test("player row relaunch opens email while bulk push uses the callable", () => {
   const source = readFileSync("app/admin/joueurs/page.tsx", "utf8");
-  assert.match(source, /if \(userIds\.length === 1\) \{[\s\S]*?createPushNotification\(\{/);
-  assert.match(source, /audienceMode:\s*"single"/);
+  assert.match(source, /mailto:/);
+  assert.match(source, /Relance e-mail/);
+  assert.match(source, /createAdminPlayerPushBatch\(title, message, userRefs, scheduledTimeMs\)/);
 });

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { PushNotification } from "@/types/dashboard";
 import {
   formatPushNotificationDelivery,
+  cancelScheduledPushNotification,
   getLatestPushNotifications,
   getNotificationsErrorMessage,
 } from "@/lib/firebase/notificationsQueries";
@@ -14,47 +15,62 @@ function getStatusBadge(status: string) {
     case "scheduled":
       return "bg-[#FAEEDA] text-[#633806]";
     case "sent":
+    case "succeeded":
       return "bg-[#EAF3DE] text-[#3B6D11]";
+    case "failed":
+    case "partial_failed":
+      return "bg-[#FCE8E6] text-[#A32D2D]";
+    case "cancelled":
+      return "bg-[#F1EFE8] text-[#5F5E5A]";
     default:
       return "bg-[#E6F1FB] text-[#185FA5]";
   }
 }
 
+const statusLabels: Record<string, string> = {
+  started: "En attente", scheduled: "Programmée", pending: "En attente",
+  sending: "En cours", succeeded: "Terminé", sent: "Terminé",
+  partial_failed: "Partiellement échoué", failed: "Échoué",
+  cancelled: "Annulée",
+};
+
 export default function NotificationsPage() {
   const [items, setItems] = useState<PushNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
+  const loadNotifications = useCallback(async () => {
       setLoading(true);
       setError(null);
 
       try {
         const notifications = await getLatestPushNotifications();
-        if (!cancelled) {
-          setItems(notifications);
-        }
+        setItems(notifications);
       } catch (fetchError) {
-        if (!cancelled) {
-          console.error(fetchError);
-          setError(getNotificationsErrorMessage(fetchError));
-        }
+        console.error(fetchError);
+        setError(getNotificationsErrorMessage(fetchError));
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
-    };
-
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => { void loadNotifications(); }, [loadNotifications]);
+
+  const cancelNotification = async (item: PushNotification) => {
+    if (!window.confirm(`Annuler la notification programmée pour le ${item.scheduledTimeLabel} ?`)) return;
+    setCancellingId(item.id);
+    setError(null);
+    try {
+      await cancelScheduledPushNotification(item.id);
+      await loadNotifications();
+    } catch (cancelError) {
+      await loadNotifications();
+      setError(getNotificationsErrorMessage(cancelError));
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   return (
     <section className="space-y-5 bg-[#F7F7F5] text-[#1A1A1A]">
@@ -79,7 +95,7 @@ export default function NotificationsPage() {
         <div className="flex items-center justify-between border-b border-[#F0F0EC] px-5 py-4">
           <div>
             <h2 className="text-[18px] font-medium text-[#1A1A1A]">Dernieres notifications</h2>
-            <p className="mt-1 text-[12px] text-[#999999]">20 derniers documents ff_push_notifications</p>
+            <p className="mt-1 text-[12px] text-[#999999]">20 dernières notifications et toutes celles encore programmées</p>
           </div>
           <span className="text-[12px] text-[#999999]">{items.length} notifications</span>
         </div>
@@ -101,11 +117,12 @@ export default function NotificationsPage() {
                     <p className="mt-1 truncate text-[12px] text-[#666666]">{item.message || "Message non renseigne"}</p>
                   </div>
                   <div className="text-[12px] text-[#666666]">
-                    <p className="font-medium text-[#1A1A1A]">{item.scheduledTimeLabel}</p>
+                    <p className="font-medium text-[#1A1A1A]">{item.sentAtLabel ? `Envoi : ${item.sentAtLabel}` : `Prévu : ${item.scheduledTimeLabel}`}</p>
                     <p className="mt-1 text-[#999999]">Creation : {item.createdAtLabel}</p>
                   </div>
                   <div className="text-[12px] text-[#666666]">
                     <p className="font-medium text-[#1A1A1A]">{item.targetAudience || "All"}</p>
+                    <p className="mt-1 text-[#999999]">Ciblés : {item.targetedPlayers ?? "—"} · Avec token : {item.playersWithToken ?? "—"}</p>
                     <p className="mt-1 text-[#999999]">
                       {formatPushNotificationDelivery(
                         item.deliveryCount,
@@ -114,10 +131,15 @@ export default function NotificationsPage() {
                       ) ?? "Count indisponible"}
                     </p>
                   </div>
-                  <div className="flex items-center justify-start md:justify-end">
+                  <div className="flex flex-col items-start gap-2 md:items-end">
                     <span className={`inline-flex rounded-full px-3 py-[4px] text-[11px] font-medium ${getStatusBadge(item.status)}`}>
-                      {item.status}
+                      {item.legacyBlocked ? "Bloquée (ancien format)" : statusLabels[item.status] ?? item.status}
                     </span>
+                    {item.status === "scheduled" && item.scheduledTimeValue > Date.now() ? (
+                      <button type="button" onClick={() => void cancelNotification(item)} disabled={cancellingId !== null} className="text-[11px] font-medium text-[#A32D2D] underline disabled:opacity-50">
+                        {cancellingId === item.id ? "Annulation..." : "Annuler"}
+                      </button>
+                    ) : null}
                   </div>
                 </article>
               ))}
