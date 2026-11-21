@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatParisScheduledTime, parseParisScheduledTime } from "./lib/firebase/playerPushSchedule";
+import {
+  PLAYER_PUSH_SCHEDULING_ENABLED,
+  formatParisScheduledTime,
+  parseParisScheduledTime,
+  resolvePlayerPushScheduledTime,
+} from "./lib/firebase/playerPushSchedule";
+
+test("immediate push remains available while scheduling is disabled", () => {
+  assert.equal(PLAYER_PUSH_SCHEDULING_ENABLED, false);
+  assert.equal(resolvePlayerPushScheduledTime("now", ""), undefined);
+  assert.throws(() => resolvePlayerPushScheduledTime("later", "2026-07-15T10:30"),
+    /Programmation indisponible/);
+});
+
+test("the existing Paris scheduling path can be reactivated explicitly", () => {
+  assert.equal(resolvePlayerPushScheduledTime("later", "2026-07-15T10:30", Date.UTC(2026, 6, 15, 7, 0), true),
+    Date.UTC(2026, 6, 15, 8, 30));
+});
 
 test("Paris winter and summer wall times become Unix milliseconds", () => {
   assert.equal(parseParisScheduledTime("2026-01-15T10:30", Date.UTC(2026, 0, 15, 8, 0)),

@@ -4,6 +4,20 @@ const parisFormatter = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 });
 
+// Reactivate only after the deployed scheduled processor has been corrected and verified.
+export const PLAYER_PUSH_SCHEDULING_ENABLED = false;
+
+export function resolvePlayerPushScheduledTime(
+  mode: "now" | "later",
+  localValue: string,
+  nowMs: number = Date.now(),
+  schedulingEnabled: boolean = PLAYER_PUSH_SCHEDULING_ENABLED,
+): number | undefined {
+  if (mode === "now") return undefined;
+  if (!schedulingEnabled) throw new Error("Programmation indisponible : correction des fonctions en attente.");
+  return parseParisScheduledTime(localValue, nowMs);
+}
+
 function parisParts(timestamp: number) {
   return Object.fromEntries(parisFormatter.formatToParts(timestamp)
     .filter((part) => part.type !== "literal")

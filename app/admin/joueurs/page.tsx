@@ -17,7 +17,7 @@ import {
   type PlayerPushBatch,
   type PlayerPushBatchResult,
 } from "@/lib/firebase/playerPushBatches";
-import { formatParisScheduledTime, parseParisScheduledTime } from "@/lib/firebase/playerPushSchedule";
+import { PLAYER_PUSH_SCHEDULING_ENABLED, formatParisScheduledTime, resolvePlayerPushScheduledTime } from "@/lib/firebase/playerPushSchedule";
 
 type FollowUpFilter = "tous" | "a_faire" | "relance" | "sans_reponse" | "ok";
 type ActivityFilter = "tous" | "actif" | "inactif";
@@ -488,9 +488,7 @@ export default function AdminPlayersPage() {
       let scheduledTimeMs: number | undefined;
       try {
         batches = buildPlayerPushBatches(targetIds);
-        if (pushScheduleMode === "later") {
-          scheduledTimeMs = parseParisScheduledTime(pushScheduleLocal);
-        }
+        scheduledTimeMs = resolvePlayerPushScheduledTime(pushScheduleMode, pushScheduleLocal);
       } catch (error) {
         setFeedback({ tone: "error", text: error instanceof Error ? error.message : "Sélection invalide." });
         return;
@@ -666,8 +664,9 @@ export default function AdminPlayersPage() {
                 <legend className="px-1 font-medium">Quand envoyer ?</legend>
                 <div className="flex gap-5">
                   <label className="flex items-center gap-2"><input type="radio" name="player-push-schedule" checked={pushScheduleMode === "now"} disabled={pushSubmitting} onChange={() => { setPushScheduleMode("now"); setPushConfirming(false); }} />Envoyer maintenant</label>
-                  <label className="flex items-center gap-2"><input type="radio" name="player-push-schedule" checked={pushScheduleMode === "later"} disabled={pushSubmitting} onChange={() => { setPushScheduleMode("later"); setPushConfirming(false); }} />Programmer</label>
+                  <label className="flex items-center gap-2 text-[#999999]"><input type="radio" name="player-push-schedule" checked={pushScheduleMode === "later"} disabled={pushSubmitting || !PLAYER_PUSH_SCHEDULING_ENABLED} onChange={() => { setPushScheduleMode("later"); setPushConfirming(false); }} />Programmer</label>
                 </div>
+                {!PLAYER_PUSH_SCHEDULING_ENABLED ? <p className="mt-2 text-[11px] text-[#A32D2D]">Programmation indisponible : correction des fonctions en attente.</p> : null}
                 {pushScheduleMode === "later" ? <label className="mt-3 grid gap-1">Date et heure à Paris (minimum 2 minutes dans le futur)
                   <input type="datetime-local" value={pushScheduleLocal} disabled={pushSubmitting} onChange={(event) => { setPushScheduleLocal(event.target.value); setPushConfirming(false); }} className="rounded-[8px] border border-[#E8E8E4] px-3 py-2" />
                 </label> : null}
