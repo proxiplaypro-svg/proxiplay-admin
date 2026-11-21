@@ -196,3 +196,24 @@ test("player row relaunch opens email while bulk push uses the callable", () => 
   assert.match(source, /Relance e-mail/);
   assert.match(source, /createAdminPlayerPushBatch\(title, message, userRefs, scheduledTimeMs\)/);
 });
+
+test("the former new-notification route cannot create pushes and directs admins to players", () => {
+  const route = readFileSync("app/admin/notifications/nouvelle/page.tsx", "utf8");
+  const history = readFileSync("app/admin/notifications/page.tsx", "utf8");
+  const legacy = readFileSync("app/admin/notifications/nouvelle/legacyComposer.tsx", "utf8");
+  assert.match(route, /href="\/admin\/joueurs"/);
+  assert.doesNotMatch(route, /createPushNotification|createAdminPushNotification|setDoc|addDoc/);
+  assert.match(history, /href="\/admin\/joueurs"/);
+  assert.doesNotMatch(history, /href="\/admin\/notifications\/nouvelle"/);
+  assert.match(legacy, /createPushNotification/);
+});
+
+test("the active player composer confirms its audience and keeps scheduling disabled", () => {
+  const players = readFileSync("app/admin/joueurs/page.tsx", "utf8");
+  const schedule = readFileSync("lib/firebase/playerPushSchedule.ts", "utf8");
+  assert.match(players, /Math\.ceil\(\(pushTestMode \? pushTestIds\.size : pushModal\.userIds\.length\) \/ 50\)/);
+  assert.match(players, /buildPlayerPushBatches\(targetIds\)/);
+  assert.match(players, /Mode test : choisir 1 à 5 joueurs/);
+  assert.match(players, /disabled=\{pushSubmitting \|\| !PLAYER_PUSH_SCHEDULING_ENABLED\}/);
+  assert.match(schedule, /PLAYER_PUSH_SCHEDULING_ENABLED = false/);
+});

@@ -84,7 +84,7 @@ export default function NotificationsPage() {
           </p>
         </div>
         <Link
-          href="/admin/notifications/nouvelle"
+          href="/admin/joueurs"
           className="inline-flex items-center justify-center rounded-[10px] bg-[#639922] px-4 py-[10px] text-[12px] font-medium text-white transition hover:bg-[#57881D]"
         >
           Nouvelle notification
