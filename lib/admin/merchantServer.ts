@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin-app";
 import { isAllowedAdminEmail } from "@/lib/firebase/adminAccess";
 import { commerceFields, merchantEmail, MerchantError, ownerUid, textField } from "./merchantSchema";
+import { readMerchantCgvStatus } from "./merchantCgv";
 
 export async function existingMerchantAccount(email: string) {
   let account;
@@ -80,13 +81,14 @@ export async function readMerchantAccount(merchantId: string) {
   const uid = ownerUid(shop.data()!);
   if (!uid) return { account: null };
   const user = await getAdminDb().doc(`users/${uid}`).get();
+  const cgvHistory = await getAdminDb().collection(`merchant_cgv_acceptances/${uid}/history`).orderBy("accepted_at", "desc").limit(1).get();
   let account;
   try { account = await getAdminAuth().getUser(uid); }
   catch (error) {
     if ((error as { code?: string }).code === "auth/user-not-found") return { account: null, warning: "Le propriétaire enregistré n’a plus de compte. Associez un compte commerçant existant.", ownerUid: uid };
     throw error;
   }
-  return { account: { uid, email: account.email ?? "", first_name: user.data()?.first_name ?? "", last_name: user.data()?.last_name ?? "", account_phone: user.data()?.phone_number ?? "", active: !account.disabled && user.data()?.account_status === "active", role: user.data()?.user_role ?? "" } };
+  return { account: { uid, email: account.email ?? "", first_name: user.data()?.first_name ?? "", last_name: user.data()?.last_name ?? "", account_phone: user.data()?.phone_number ?? "", active: !account.disabled && user.data()?.account_status === "active", role: user.data()?.user_role ?? "", ...readMerchantCgvStatus(cgvHistory.docs[0]?.data()) } };
 }
 
 export async function manageMerchantAccount(merchantId: string, body: Record<string, unknown>) {
