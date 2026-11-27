@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase/auth";
 import { merchantRequest } from "@/lib/admin/merchantClient";
+import { merchantCgvLabel } from "@/lib/admin/merchantCgv";
 
-type Account = { uid: string; email: string; first_name: string; last_name: string; account_phone: string; active: boolean; role: string };
+type Account = { uid: string; email: string; first_name: string; last_name: string; account_phone: string; active: boolean; role: string; cgvAcceptedVersion?: string | null; cgvAcceptedAt?: string | null };
 export default function MerchantAccount({ merchantId }: { merchantId: string }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [owner, setOwner] = useState("");
@@ -46,6 +47,7 @@ export default function MerchantAccount({ merchantId }: { merchantId: string }) 
     {loading ? <p>Chargement du compte…</p> : <>
       {account ? <form className="game-edit-form" onSubmit={e => { e.preventDefault(); void run("update"); }}>
         <p><strong>{account.email}</strong> · {account.active ? "Actif" : "Désactivé"}</p>
+        <p data-testid="merchant-cgv-status">{merchantCgvLabel(account)}</p>
         <p className="muted">Une modification de l’email met à jour l’adresse de connexion et celle de ses commerces. Pour changer de propriétaire, associez un autre compte ci-dessous.</p>
         <fieldset disabled={busy || account.role !== "commercant"} className="merchant-fieldset">
           <label className="game-edit-field"><span className="search-label">Email du commerçant</span><input className="search-input" type="email" required maxLength={300} value={account.email} onChange={e => setAccount({ ...account, email: e.target.value })} /></label>

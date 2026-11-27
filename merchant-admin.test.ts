@@ -259,3 +259,20 @@ test("gestion Proxiplay : statistiques lisibles, fiche/jeux réservés à l’ad
   const final = (await shopRef.get()).data()!;
   for (const [key, value] of Object.entries(stats)) assert.equal(final[key], value);
 });
+
+test("CGV : la fiche affiche la trace serveur, jamais le seul champ de users/{uid}", async () => {
+  const { merchantId } = await create();
+  const uid = ownerUid((await db.doc(`enseignes/${merchantId}`).get()).data()!);
+  const read = async () => (await (await GET(request("GET", undefined, merchantId))).json()).account;
+  const before = await read();
+  assert.equal(before.cgvAcceptedVersion, null);
+  assert.equal(before.cgvAcceptedAt, null);
+  // Champ posé dans la fiche sans trace serveur : reste « non acceptées ».
+  await db.doc(`users/${uid}`).update({ cgv_accepted_version: "2.1", cgv_accepted_at: new Date() });
+  assert.equal((await read()).cgvAcceptedVersion, null);
+  const acceptedAt = new Date("2026-12-01T09:05:00Z");
+  await db.doc(`merchant_cgv_acceptances/${uid}/history/2.1`).create({ uid, cgv_version: "2.1", accepted_at: acceptedAt, source: "login" });
+  const after = await read();
+  assert.equal(after.cgvAcceptedVersion, "2.1");
+  assert.equal(after.cgvAcceptedAt, acceptedAt.toISOString());
+});
