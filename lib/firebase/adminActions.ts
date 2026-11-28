@@ -14,6 +14,7 @@ import { auth } from "./auth";
 import { db } from "./client-app";
 import { canonicalFunctionsClient, functionsClient } from "./functions";
 import type { PlayerDeletionPayload, PlayerDeletionResult } from "@/lib/admin/playerDeletion";
+import type { BirthdayCorrectionPayload, BirthdayCorrectionResult } from "@/lib/admin/playerBirthdayCorrection";
 import type { AdminFollowUpChannel, AdminFollowUpStatus } from "./adminQueries";
 import {
   duplicateGameDocument,
@@ -294,6 +295,18 @@ export async function deletePlayerAccountAction(payload: PlayerDeletionPayload) 
   const callable = httpsCallable<PlayerDeletionPayload, PlayerDeletionResult>(
     canonicalFunctionsClient,
     "adminDeletePlayerAccount",
+  );
+
+  const result = await callable(payload);
+  return result.data;
+}
+
+// Correction de la date de naissance d'un joueur : Cloud Function du depot
+// canonique (us-central1). Seule voie depuis le verrouillage des regles.
+export async function correctPlayerBirthdayAction(payload: BirthdayCorrectionPayload) {
+  const callable = httpsCallable<BirthdayCorrectionPayload, BirthdayCorrectionResult>(
+    canonicalFunctionsClient,
+    "adminCorrectPlayerBirthday",
   );
 
   const result = await callable(payload);
