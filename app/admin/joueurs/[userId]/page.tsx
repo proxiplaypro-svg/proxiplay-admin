@@ -3,6 +3,7 @@
 import { FirebaseError } from "firebase/app";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { PlayerBirthdayCorrectionPanel } from "@/components/admin/PlayerBirthdayCorrectionPanel";
 import {
   buildPlayerDeletionPayload,
   playerDeletionErrorMessage,
@@ -621,6 +622,8 @@ export default function PlayerDetailsPage({ params }: PlayerDetailsPageProps) {
             </article>
           ))}
         </div>
+
+        <PlayerBirthdayCorrectionPanel userId={player.id} />
 
         <div className="rounded-[12px] border border-[#E8E8E4] bg-white p-5">
           <h2 className="mb-4 text-[15px] font-medium text-[#1A1A1A]">Performance</h2>
